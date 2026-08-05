@@ -1,0 +1,24 @@
+FROM node:20-bookworm-slim AS base
+RUN corepack enable && corepack prepare pnpm@9.15.0 --activate
+WORKDIR /app
+
+FROM base AS deps
+COPY package.json pnpm-workspace.yaml pnpm-lock.yaml ./
+COPY apps/platform-api/package.json apps/platform-api/
+COPY packages/channels/package.json packages/channels/
+RUN pnpm install --frozen-lockfile=false --filter @cep/platform-api...
+
+FROM deps AS build
+COPY packages/channels packages/channels
+COPY apps/platform-api apps/platform-api
+RUN pnpm --filter @cep/platform-api exec prisma generate
+RUN pnpm --filter @cep/channels build
+RUN pnpm --filter @cep/platform-api build
+
+FROM node:20-bookworm-slim AS runtime
+WORKDIR /app
+ENV NODE_ENV=production
+COPY --from=build /app /app
+WORKDIR /app/apps/platform-api
+EXPOSE 4100
+CMD ["sh", "-c", "pnpm exec prisma migrate deploy && node dist/index.js"]

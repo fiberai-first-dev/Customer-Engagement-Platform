@@ -1,0 +1,154 @@
+generator client {
+  provider = "prisma-client-js"
+  output   = "../src/generated/client"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("PLATFORM_DATABASE_URL")
+}
+
+enum ChannelType {
+  whatsapp
+  instagram
+  email
+}
+
+enum ConversationStatus {
+  open
+  pending
+  resolved
+}
+
+enum MessageDirection {
+  incoming
+  outgoing
+}
+
+enum MessageStatus {
+  received
+  queued
+  sent
+  delivered
+  failed
+  mocked
+}
+
+enum ContentType {
+  text
+  image
+  file
+  audio
+  video
+  unknown
+}
+
+model Account {
+  id        String   @id
+  name      String
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  inboxes       Inbox[]
+  contacts      Contact[]
+  conversations Conversation[]
+
+  @@map("accounts")
+}
+
+model Inbox {
+  id            String      @id
+  accountId     String      @map("account_id")
+  name          String
+  channelType   ChannelType @map("channel_type")
+  /// Provider credentials + webhook secrets (WhatsApp / Instagram / Email)
+  channelConfig Json        @default("{}") @map("channel_config")
+  enabled       Boolean     @default(true)
+  createdAt     DateTime    @default(now()) @map("created_at")
+  updatedAt     DateTime    @updatedAt @map("updated_at")
+
+  account       Account        @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  conversations Conversation[]
+
+  @@index([accountId])
+  @@index([channelType])
+  @@map("inboxes")
+}
+
+model Contact {
+  id         String   @id
+  accountId  String   @map("account_id")
+  name       String?
+  email      String?
+  phone      String?
+  /// channel-scoped sender ids, e.g. { whatsapp: "+91...", instagram: "ig_scoped_id" }
+  identifiers Json    @default("{}")
+  createdAt  DateTime @default(now()) @map("created_at")
+  updatedAt  DateTime @updatedAt @map("updated_at")
+
+  account       Account        @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  conversations Conversation[]
+
+  @@index([accountId])
+  @@index([email])
+  @@index([phone])
+  @@map("contacts")
+}
+
+model Conversation {
+  id               String             @id
+  accountId        String             @map("account_id")
+  inboxId          String             @map("inbox_id")
+  contactId        String             @map("contact_id")
+  status           ConversationStatus @default(open)
+  channelType      ChannelType        @map("channel_type")
+  externalThreadId String?            @map("external_thread_id")
+  lastMessageAt    DateTime?          @map("last_message_at")
+  createdAt        DateTime           @default(now()) @map("created_at")
+  updatedAt        DateTime           @updatedAt @map("updated_at")
+
+  account  Account  @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  inbox    Inbox    @relation(fields: [inboxId], references: [id], onDelete: Cascade)
+  contact  Contact  @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  messages Message[]
+
+  @@unique([inboxId, externalThreadId])
+  @@index([accountId, status])
+  @@index([inboxId])
+  @@index([contactId])
+  @@index([lastMessageAt])
+  @@map("conversations")
+}
+
+model Message {
+  id             String           @id
+  conversationId String           @map("conversation_id")
+  direction      MessageDirection
+  content        String
+  contentType    ContentType      @default(text) @map("content_type")
+  subject        String?
+  externalId     String?          @map("external_id")
+  status         MessageStatus    @default(received)
+  rawPayload     Json?            @map("raw_payload")
+  createdAt      DateTime         @default(now()) @map("created_at")
+
+  conversation Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+
+  @@unique([conversationId, externalId])
+  @@index([conversationId, createdAt])
+  @@map("messages")
+}
+
+model WebhookEvent {
+  id        String      @id
+  inboxId   String      @map("inbox_id")
+  channel   ChannelType
+  eventKey  String      @map("event_key")
+  payload   Json
+  processed Boolean     @default(false)
+  createdAt DateTime    @default(now()) @map("created_at")
+
+  @@unique([inboxId, eventKey])
+  @@index([channel, createdAt])
+  @@map("webhook_events")
+}
