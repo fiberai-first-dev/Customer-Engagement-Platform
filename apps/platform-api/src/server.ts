@@ -3,10 +3,11 @@ import { env } from "./config/env.js";
 import { prisma } from "./config/db.js";
 import { buildApp } from "./app.js";
 import { runDatabaseMigrations } from "./scripts/migrate.js";
+import { ensureWorkspace } from "./services/WorkspaceService.js";
 
 async function main() {
-  // Always migrate/repair before accepting traffic (fresh + outdated DBs).
   await runDatabaseMigrations();
+  await ensureWorkspace();
 
   const app = await buildApp();
   try {

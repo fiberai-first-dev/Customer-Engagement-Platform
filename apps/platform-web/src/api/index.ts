@@ -292,7 +292,8 @@ export const useContacts = (accountId?: string) => useQuery({
     const q = new URLSearchParams();
     if (accountId) q.set("accountId", accountId);
     return request<Contact[]>(`/api/v1/contacts${q.toString() ? `?${q}` : ""}`);
-  }
+  },
+  enabled: Boolean(accountId),
 });
 
 export const useCreateContact = () => {

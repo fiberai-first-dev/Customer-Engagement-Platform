@@ -2,7 +2,7 @@ import { Card, CardContent } from "../../components/ui/card";
 import { Button } from "../../components/ui/button";
 import { Input } from "../../components/ui/input";
 import { useState, useMemo } from "react";
-import { Search, MoreHorizontal, Plus, Edit2 } from "lucide-react";
+import { Search, MoreHorizontal, Plus, Edit2, Loader2 } from "lucide-react";
 import { useAccounts, useContacts } from "../../api";
 import { ContactModal, type ContactFormData } from "../../components/contacts/ContactModal";
 
@@ -21,13 +21,15 @@ function joinList(primary: string | null | undefined, list?: string[] | null): s
 }
 
 export function ContactsPage() {
-  const { data: accounts } = useAccounts();
+  const { data: accounts, isLoading: accountsLoading } = useAccounts();
   const accountId = accounts?.[0]?.id || "";
-  const { data: contacts, isLoading } = useContacts(accountId);
+  const { data: contacts, isLoading: contactsLoading } = useContacts(accountId);
   const [searchQuery, setSearchQuery] = useState("");
   const [openDropdownId, setOpenDropdownId] = useState<string | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingContact, setEditingContact] = useState<ContactFormData | null>(null);
+
+  const isLoading = accountsLoading || (!!accountId && contactsLoading);
 
   const filteredContacts = useMemo(() => {
     if (!contacts) return [];
@@ -51,33 +53,43 @@ export function ContactsPage() {
     });
   }, [contacts, searchQuery]);
 
+  const openCreate = () => {
+    setEditingContact(null);
+    setIsModalOpen(true);
+  };
+
+  const openEdit = (c: (typeof filteredContacts)[number]) => {
+    setOpenDropdownId(null);
+    setEditingContact({
+      id: c.id,
+      name: c.name || "",
+      emails: c.emails?.length ? c.emails : c.email ? [c.email] : [""],
+      whatsappIds: c.whatsappIds?.length
+        ? c.whatsappIds
+        : c.whatsappId || c.identifiers?.whatsapp
+          ? [c.whatsappId || c.identifiers!.whatsapp]
+          : [""],
+      instagramId: c.identifiers?.instagram || "",
+    });
+    setIsModalOpen(true);
+  };
+
   return (
     <div className="flex h-full flex-1 flex-col overflow-hidden bg-background">
       <div className="border-b border-border bg-card/50 p-8 pb-4">
-        <div className="mb-6 flex items-center justify-between">
-          <div>
-            <h1 className="mb-2 text-3xl font-bold tracking-tight">Contacts</h1>
-            <p className="text-muted-foreground">
-              Unified directory — WhatsApp number is the phone identity.
-            </p>
-          </div>
-          <Button
-            className="gap-2"
-            onClick={() => {
-              setEditingContact(null);
-              setIsModalOpen(true);
-            }}
-          >
+        <div className="mb-6 flex items-center justify-between gap-4">
+          <h1 className="text-3xl font-bold tracking-tight">Contacts</h1>
+          <Button className="gap-2" onClick={openCreate} disabled={!accountId || accountsLoading}>
             <Plus className="h-4 w-4" />
-            Add Contact
+            Add contact
           </Button>
         </div>
 
-        <div className="relative max-w-md flex-1">
+        <div className="relative max-w-md">
           <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
           <Input
             className="pl-9"
-            placeholder="Search by id, name, email, WhatsApp or IG..."
+            placeholder="Search contacts"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
           />
@@ -90,19 +102,26 @@ export function ContactsPage() {
             <table className="w-full text-left text-sm">
               <thead className="bg-muted/50 text-muted-foreground">
                 <tr>
-                  <th className="border-b border-border px-6 py-4 font-medium">Customer ID</th>
+                  <th className="border-b border-border px-6 py-4 font-medium">ID</th>
                   <th className="border-b border-border px-6 py-4 font-medium">Name</th>
-                  <th className="border-b border-border px-6 py-4 font-medium">Emails</th>
+                  <th className="border-b border-border px-6 py-4 font-medium">Email</th>
                   <th className="border-b border-border px-6 py-4 font-medium">WhatsApp</th>
                   <th className="border-b border-border px-6 py-4 font-medium">Instagram</th>
                   <th className="w-16 border-b border-border px-6 py-4 font-medium" />
                 </tr>
               </thead>
               <tbody className="divide-y divide-border" onClick={() => setOpenDropdownId(null)}>
-                {(!filteredContacts || filteredContacts.length === 0) && (
+                {isLoading && (
+                  <tr>
+                    <td colSpan={6} className="px-6 py-12 text-center text-muted-foreground">
+                      <Loader2 className="mx-auto h-5 w-5 animate-spin" />
+                    </td>
+                  </tr>
+                )}
+                {!isLoading && filteredContacts.length === 0 && (
                   <tr>
                     <td colSpan={6} className="px-6 py-8 text-center text-muted-foreground">
-                      {isLoading ? "Loading…" : "No contacts found."}
+                      No contacts yet
                     </td>
                   </tr>
                 )}
@@ -121,9 +140,9 @@ export function ContactsPage() {
                                   .map((n) => n[0])
                                   .join("")
                                   .slice(0, 2)
-                              : "U"}
+                              : "?"}
                           </div>
-                          <span className="font-medium">{c.name || "Unknown"}</span>
+                          <span className="font-medium">{c.name || "—"}</span>
                         </div>
                       </td>
                       <td className="max-w-[220px] break-words px-6 py-4 text-muted-foreground">
@@ -137,14 +156,16 @@ export function ContactsPage() {
                           const igIdentity = c.identities?.find((i) => i.channel === "instagram");
                           const igName = (igIdentity?.metadata as { senderName?: string } | undefined)
                             ?.senderName;
-                          if (igName?.startsWith("@")) return igName;
-                          if (igName) return `@${igName}`;
-                          return c.identifiers?.instagram || "—";
+                          const ig =
+                            (igName?.startsWith("@") ? igName : igName ? `@${igName}` : null) ||
+                            (c.identifiers?.instagram ? `@${c.identifiers.instagram.replace(/^@/, "")}` : null);
+                          return ig || "—";
                         })()}
                       </td>
                       <td className="px-6 py-4">
                         <div className="relative">
                           <Button
+                            type="button"
                             variant="ghost"
                             size="icon"
                             className="h-8 w-8 text-muted-foreground"
@@ -158,27 +179,11 @@ export function ContactsPage() {
                           {openDropdownId === c.id && (
                             <div className="absolute right-0 top-full z-50 mt-1 w-36 overflow-hidden rounded-md border border-border bg-card text-card-foreground shadow-md">
                               <button
+                                type="button"
                                 className="flex w-full items-center gap-2 px-4 py-2.5 text-left text-sm transition-colors hover:bg-muted"
                                 onClick={(e) => {
                                   e.stopPropagation();
-                                  setOpenDropdownId(null);
-                                  setEditingContact({
-                                    id: c.id,
-                                    name: c.name || "",
-                                    emails: c.emails?.length
-                                      ? c.emails
-                                      : c.email
-                                        ? [c.email]
-                                        : [""],
-                                    whatsappIds: c.whatsappIds?.length
-                                      ? c.whatsappIds
-                                      : c.whatsappId || c.identifiers?.whatsapp
-                                        ? [c.whatsappId || c.identifiers!.whatsapp]
-                                        : [""],
-                                    instagramId: c.identifiers?.instagram || "",
-                                    emailId: c.identifiers?.email || "",
-                                  });
-                                  setIsModalOpen(true);
+                                  openEdit(c);
                                 }}
                               >
                                 <Edit2 className="h-3.5 w-3.5" />
@@ -196,17 +201,15 @@ export function ContactsPage() {
         </Card>
       </div>
 
-      {accountId && (
-        <ContactModal
-          isOpen={isModalOpen}
-          onClose={() => {
-            setIsModalOpen(false);
-            setEditingContact(null);
-          }}
-          initialData={editingContact}
-          accountId={accountId}
-        />
-      )}
+      <ContactModal
+        isOpen={isModalOpen}
+        onClose={() => {
+          setIsModalOpen(false);
+          setEditingContact(null);
+        }}
+        initialData={editingContact}
+        accountId={accountId}
+      />
     </div>
   );
 }

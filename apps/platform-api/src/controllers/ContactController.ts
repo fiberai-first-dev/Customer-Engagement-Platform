@@ -1,4 +1,5 @@
 import type { FastifyRequest, FastifyReply } from "fastify";
+import { Prisma } from "../generated/client/index.js";
 import { prisma } from "../config/db.js";
 import {
   asStringList,
@@ -52,6 +53,11 @@ function shapeContact(c: {
   };
 }
 
+function normalizeInstagramId(raw?: string | null): string | null {
+  if (!raw?.trim()) return null;
+  return raw.trim().replace(/^@+/, "");
+}
+
 export class ContactController {
   static async listContacts(
     request: FastifyRequest<{ Querystring: { accountId?: string } }>,
@@ -84,8 +90,13 @@ export class ContactController {
         emailId?: string;
       };
 
-      if (!body.accountId) {
+      if (!body.accountId?.trim()) {
         return reply.code(400).send({ error: "accountId is required" });
+      }
+
+      const account = await prisma.account.findUnique({ where: { id: body.accountId } });
+      if (!account) {
+        return reply.code(400).send({ error: "account not found" });
       }
 
       const lists = withPrimaryAndLists({
@@ -94,27 +105,29 @@ export class ContactController {
         email: body.email ?? body.emailId,
         whatsappId: body.whatsappId,
       });
+      const instagramId = normalizeInstagramId(body.instagramId);
+      const emailId = body.emailId?.trim() || lists.email;
 
       const contact = await prisma.contact.create({
         data: {
           id: ulid(),
           accountId: body.accountId,
-          name: body.name,
+          name: body.name?.trim() || null,
           email: lists.email,
-          emails: lists.emails,
+          emails: lists.emails as Prisma.InputJsonValue,
           whatsappId: lists.whatsappId,
-          whatsappIds: lists.whatsappIds,
-          instagramId: body.instagramId || null,
-          emailId: body.emailId || lists.emails[0] || null,
-          whatsappEnabled: false,
-          instagramEnabled: false,
-          emailEnabled: false,
+          whatsappIds: lists.whatsappIds as Prisma.InputJsonValue,
+          instagramId,
+          emailId,
+          whatsappEnabled: Boolean(lists.whatsappId),
+          instagramEnabled: Boolean(instagramId),
+          emailEnabled: Boolean(emailId || lists.email),
         },
       });
 
       return reply.code(201).send(shapeContact(contact));
     } catch (err: any) {
-      return reply.code(500).send({ error: err.message });
+      return reply.code(500).send({ error: err.message || "Failed to create contact" });
     }
   }
 
@@ -134,23 +147,40 @@ export class ContactController {
         emailId?: string;
       };
 
+      const existing = await prisma.contact.findUnique({ where: { id } });
+      if (!existing) {
+        return reply.code(404).send({ error: "Contact not found" });
+      }
+
       const lists = withPrimaryAndLists({
-        emails: body.emails,
-        whatsappIds: body.whatsappIds,
-        email: body.email ?? body.emailId,
-        whatsappId: body.whatsappId,
+        emails: body.emails ?? asStringList(existing.emails),
+        whatsappIds: body.whatsappIds ?? asStringList(existing.whatsappIds),
+        email: body.email ?? body.emailId ?? existing.email,
+        whatsappId: body.whatsappId ?? existing.whatsappId,
       });
+
+      const instagramId =
+        body.instagramId !== undefined
+          ? normalizeInstagramId(body.instagramId)
+          : existing.instagramId;
+      const emailId =
+        body.emailId !== undefined
+          ? body.emailId.trim() || lists.email
+          : existing.emailId || lists.email;
 
       const contact = await prisma.contact.update({
         where: { id },
         data: {
-          name: body.name,
+          name: body.name !== undefined ? body.name.trim() || null : undefined,
           email: lists.email,
-          emails: lists.emails,
+          emails: lists.emails as Prisma.InputJsonValue,
           whatsappId: lists.whatsappId,
-          whatsappIds: lists.whatsappIds,
-          instagramId: body.instagramId !== undefined ? body.instagramId || null : undefined,
-          emailId: body.emailId !== undefined ? body.emailId || lists.emails[0] || null : undefined,
+          whatsappIds: lists.whatsappIds as Prisma.InputJsonValue,
+          instagramId,
+          emailId,
+          whatsappEnabled: Boolean(lists.whatsappId),
+          instagramEnabled: Boolean(instagramId),
+          emailEnabled: Boolean(emailId || lists.email),
         },
       });
 
@@ -159,7 +189,7 @@ export class ContactController {
       if (err.code === "P2025") {
         return reply.code(404).send({ error: "Contact not found" });
       }
-      return reply.code(500).send({ error: err.message });
+      return reply.code(500).send({ error: err.message || "Failed to update contact" });
     }
   }
 }

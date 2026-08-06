@@ -2,7 +2,7 @@
  * Database bootstrap without `prisma migrate deploy` (hangs on Supabase pooler).
  *
  * Paths:
- * - Empty DB → apply init SQL, then inbox SQL, baseline history
+ * - Empty / incomplete DB → reset CEP objects, apply all SQL, baseline history
  * - Legacy account-centric DB → apply inbox SQL repair, baseline
  * - Current schema → baseline history if missing
  */
@@ -14,8 +14,22 @@ import { randomUUID } from "node:crypto";
 import { PrismaClient } from "../generated/client/index.js";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
-const apiRoot = path.resolve(here, "../..");
-const migrationsDir = path.join(apiRoot, "prisma", "migrations");
+
+/** Resolve prisma/migrations whether running from src/ or dist/. */
+function resolveMigrationsDir(): string {
+  const candidates = [
+    path.resolve(here, "../../prisma/migrations"), // src/scripts → apiRoot/prisma
+    path.resolve(here, "../../../prisma/migrations"), // dist/scripts → apiRoot/prisma
+    path.resolve(process.cwd(), "prisma/migrations"),
+  ];
+  for (const dir of candidates) {
+    if (existsSync(dir)) return dir;
+  }
+  return candidates[0]!;
+}
+
+const migrationsDir = resolveMigrationsDir();
+const apiRoot = path.resolve(migrationsDir, "../..");
 
 export function encodePasswordAtSigns(url: string): string {
   const schemeIdx = url.indexOf("://");
@@ -53,6 +67,14 @@ async function flag(
 ): Promise<boolean> {
   const rows = await prisma.$queryRawUnsafe<Array<{ exists: boolean }>>(sql, ...params);
   return Boolean(rows[0]?.exists);
+}
+
+async function tableExists(prisma: PrismaClient, table: string): Promise<boolean> {
+  return flag(
+    prisma,
+    `SELECT EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema='public' AND table_name=$1) AS exists`,
+    table,
+  );
 }
 
 function listMigrationFolders(): string[] {
@@ -138,19 +160,63 @@ async function applySqlFile(prisma: PrismaClient, filePath: string) {
   }
 }
 
+/** True when core app tables are missing (accounts required). */
 async function isEmptyDatabase(prisma: PrismaClient): Promise<boolean> {
-  return !(await flag(
-    prisma,
-    `SELECT EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema='public' AND table_name='accounts') AS exists`,
-  ));
+  return !(await tableExists(prisma, "accounts"));
+}
+
+/**
+ * Partial drop leftovers (e.g. only webhook_events + enums) break re-apply of init
+ * because CREATE TYPE fails. Detect "some but not all" core tables.
+ */
+async function isIncompleteSchema(prisma: PrismaClient): Promise<boolean> {
+  const core = ["accounts", "inboxes", "contacts", "conversations", "messages", "webhook_events"];
+  const present: string[] = [];
+  for (const table of core) {
+    if (await tableExists(prisma, table)) present.push(table);
+  }
+  if (present.length === 0) return false; // truly empty — normal empty path
+  if (present.length < core.length) {
+    console.log(`[migrate] Incomplete schema — found only: ${present.join(", ")}`);
+    return true;
+  }
+  return false;
+}
+
+/** Wipe CEP tables + enums so init SQL can run cleanly again. */
+async function resetCepSchema(prisma: PrismaClient) {
+  console.log("[migrate] Resetting CEP tables and enums for a clean apply…");
+  await prisma.$executeRawUnsafe(`
+    DROP TABLE IF EXISTS
+      "messages",
+      "conversations",
+      "contacts",
+      "inboxes",
+      "accounts",
+      "webhook_events",
+      "contact_identities",
+      "_prisma_migrations"
+    CASCADE
+  `);
+  await prisma.$executeRawUnsafe(`DROP TYPE IF EXISTS "ChannelType" CASCADE`);
+  await prisma.$executeRawUnsafe(`DROP TYPE IF EXISTS "ConversationStatus" CASCADE`);
+  await prisma.$executeRawUnsafe(`DROP TYPE IF EXISTS "MessageDirection" CASCADE`);
+  await prisma.$executeRawUnsafe(`DROP TYPE IF EXISTS "MessageStatus" CASCADE`);
+  await prisma.$executeRawUnsafe(`DROP TYPE IF EXISTS "ContentType" CASCADE`);
+}
+
+async function applyAllMigrations(prisma: PrismaClient) {
+  const folders = listMigrationFolders();
+  for (const folder of folders) {
+    await applySqlFile(prisma, migrationSqlPath(folder));
+  }
+  await baselineAllMigrations(prisma);
+  console.log("[migrate] Fresh schema ready");
 }
 
 async function needsLegacyRepair(prisma: PrismaClient): Promise<boolean> {
   if (await isEmptyDatabase(prisma)) return false;
-  const hasInboxes = await flag(
-    prisma,
-    `SELECT EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema='public' AND table_name='inboxes') AS exists`,
-  );
+  const hasInboxes = await tableExists(prisma, "inboxes");
   const hasInboxId = await flag(
     prisma,
     `SELECT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='conversations' AND column_name='inbox_id') AS exists`,
@@ -163,18 +229,12 @@ async function needsLegacyRepair(prisma: PrismaClient): Promise<boolean> {
 }
 
 async function schemaLooksCurrent(prisma: PrismaClient): Promise<boolean> {
-  const hasInboxes = await flag(
-    prisma,
-    `SELECT EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema='public' AND table_name='inboxes') AS exists`,
-  );
+  const hasInboxes = await tableExists(prisma, "inboxes");
   const hasInboxId = await flag(
     prisma,
     `SELECT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='conversations' AND column_name='inbox_id') AS exists`,
   );
-  const hasWebhook = await flag(
-    prisma,
-    `SELECT EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema='public' AND table_name='webhook_events') AS exists`,
-  );
+  const hasWebhook = await tableExists(prisma, "webhook_events");
   const hasContactChannels = await flag(
     prisma,
     `SELECT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='contacts' AND column_name='whatsapp_enabled') AS exists`,
@@ -191,10 +251,7 @@ async function schemaLooksCurrent(prisma: PrismaClient): Promise<boolean> {
     prisma,
     `SELECT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='contacts' AND column_name='phone') AS exists`,
   );
-  const hasIdentityTable = await flag(
-    prisma,
-    `SELECT EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema='public' AND table_name='contact_identities') AS exists`,
-  );
+  const hasIdentityTable = await tableExists(prisma, "contact_identities");
   return (
     hasInboxes &&
     hasInboxId &&
@@ -209,27 +266,18 @@ async function schemaLooksCurrent(prisma: PrismaClient): Promise<boolean> {
 
 async function needsContactChannelMigration(prisma: PrismaClient): Promise<boolean> {
   if (await isEmptyDatabase(prisma)) return false;
-  const hasContacts = await flag(
-    prisma,
-    `SELECT EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema='public' AND table_name='contacts') AS exists`,
-  );
+  const hasContacts = await tableExists(prisma, "contacts");
   if (!hasContacts) return false;
   const hasContactChannels = await flag(
     prisma,
     `SELECT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='contacts' AND column_name='whatsapp_enabled') AS exists`,
   );
-  const hasIdentityTable = await flag(
-    prisma,
-    `SELECT EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema='public' AND table_name='contact_identities') AS exists`,
-  );
+  const hasIdentityTable = await tableExists(prisma, "contact_identities");
   return !hasContactChannels || hasIdentityTable;
 }
 
 async function migrationHistoryMissing(prisma: PrismaClient): Promise<boolean> {
-  const hasTable = await flag(
-    prisma,
-    `SELECT EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema='public' AND table_name='_prisma_migrations') AS exists`,
-  );
+  const hasTable = await tableExists(prisma, "_prisma_migrations");
   if (!hasTable) return true;
   const folders = listMigrationFolders();
   if (!folders.length) return false;
@@ -239,12 +287,23 @@ async function migrationHistoryMissing(prisma: PrismaClient): Promise<boolean> {
   return Number(rows[0]?.c ?? 0) < folders.length;
 }
 
+function redactDbHost(url: string): string {
+  try {
+    const u = new URL(url);
+    return `${u.protocol}//${u.hostname}:${u.port || "5432"}${u.pathname}`;
+  } catch {
+    return "(unparseable DATABASE_URL)";
+  }
+}
+
 export async function runDatabaseMigrations(): Promise<void> {
   const databaseUrl = resolveDatabaseUrl();
   process.env.PLATFORM_DATABASE_URL = databaseUrl;
   process.env.DATABASE_URL = databaseUrl;
 
-  console.log("[migrate] connecting…");
+  console.log(`[migrate] migrations dir: ${migrationsDir}`);
+  console.log(`[migrate] connecting → ${redactDbHost(databaseUrl)}`);
+
   const prisma = new PrismaClient({
     datasources: { db: { url: databaseUrl } },
   });
@@ -252,20 +311,28 @@ export async function runDatabaseMigrations(): Promise<void> {
   try {
     await prisma.$queryRawUnsafe(`SELECT 1`);
     const folders = listMigrationFolders();
-    if (!folders.length) throw new Error("No prisma/migrations folders found");
+    if (!folders.length) {
+      throw new Error(`No prisma/migrations folders found under ${migrationsDir}`);
+    }
+    console.log(`[migrate] found ${folders.length} migration folder(s)`);
 
     const inboxMig =
       folders.find((f) => f.includes("inbox_contact_identity")) ?? folders[1]!;
     const contactMig =
       folders.find((f) => f.includes("contact_channel_columns")) ?? folders.at(-1)!;
 
+    // Partial leftover schema (common after DROP TABLE while enums remain)
+    if (await isIncompleteSchema(prisma)) {
+      await resetCepSchema(prisma);
+      await applyAllMigrations(prisma);
+      return;
+    }
+
     if (await isEmptyDatabase(prisma)) {
       console.log("[migrate] Empty database — applying all SQL migrations");
-      for (const folder of folders) {
-        await applySqlFile(prisma, migrationSqlPath(folder));
-      }
-      await baselineAllMigrations(prisma);
-      console.log("[migrate] Fresh schema ready");
+      // Enums may still exist after a manual table drop — clear them first
+      await resetCepSchema(prisma);
+      await applyAllMigrations(prisma);
       return;
     }
 
@@ -334,9 +401,9 @@ export async function runDatabaseMigrations(): Promise<void> {
       return;
     }
 
-    throw new Error(
-      "Database schema is unexpected. Re-run after checking tables, or restore from backup.",
-    );
+    console.log("[migrate] Unexpected schema — forcing clean recreate");
+    await resetCepSchema(prisma);
+    await applyAllMigrations(prisma);
   } finally {
     await prisma.$disconnect();
   }

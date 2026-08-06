@@ -11,15 +11,50 @@ import {
   useOAuthHints,
   useUpdateInbox,
 } from "../../api";
-import { CheckCircle2, ExternalLink, Link2, Loader2, Radio, Save } from "lucide-react";
+import { CheckCircle2, Copy, Link2, Loader2, Radio, Save } from "lucide-react";
 
 type Field = {
   key: string;
   label: string;
-  envHint: string;
   password?: boolean;
   placeholder?: string;
 };
+
+const EMPTY_WA = {
+  phoneNumberId: "",
+  accessToken: "",
+  verifyToken: "",
+  appSecret: "",
+  businessAccountId: "",
+};
+
+const EMPTY_IG = {
+  pageId: "",
+  accessToken: "",
+  verifyToken: "",
+  appSecret: "",
+  instagramAppId: "",
+  instagramUsername: "",
+};
+
+const EMPTY_EMAIL = {
+  clientId: "",
+  clientSecret: "",
+  refreshToken: "",
+  accessToken: "",
+  pubsubTopic: "",
+};
+
+function asStringRecord(config: Record<string, unknown> | undefined): Record<string, string> {
+  if (!config) return {};
+  const out: Record<string, string> = {};
+  for (const [key, value] of Object.entries(config)) {
+    if (value == null) continue;
+    if (typeof value === "string") out[key] = value;
+    else if (typeof value === "number" || typeof value === "boolean") out[key] = String(value);
+  }
+  return out;
+}
 
 function FieldGrid({
   fields,
@@ -40,11 +75,11 @@ function FieldGrid({
             value={values[field.key] ?? ""}
             onChange={(e) => onChange(field.key, e.target.value)}
             placeholder={field.placeholder}
+            autoComplete="off"
             onFocus={(e) => {
               if (e.target.value === "***") onChange(field.key, "");
             }}
           />
-          <p className="text-[11px] text-muted-foreground">env: {field.envHint}</p>
         </div>
       ))}
     </div>
@@ -54,6 +89,7 @@ function FieldGrid({
 function ChannelCard({
   title,
   description,
+  connected,
   children,
   onSave,
   saving,
@@ -61,6 +97,7 @@ function ChannelCard({
 }: {
   title: string;
   description: string;
+  connected?: boolean;
   children: ReactNode;
   onSave: () => void;
   saving: boolean;
@@ -69,15 +106,30 @@ function ChannelCard({
   return (
     <Card>
       <CardHeader className="pb-4">
-        <CardTitle>{title}</CardTitle>
-        <CardDescription>{description}</CardDescription>
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <CardTitle>{title}</CardTitle>
+            <CardDescription className="mt-1">{description}</CardDescription>
+          </div>
+          {connected != null && (
+            <span
+              className={`shrink-0 rounded-full px-2.5 py-1 text-[11px] font-medium ${
+                connected
+                  ? "bg-emerald-500/15 text-emerald-700 dark:text-emerald-300"
+                  : "bg-muted text-muted-foreground"
+              }`}
+            >
+              {connected ? "Connected" : "Not connected"}
+            </span>
+          )}
+        </div>
       </CardHeader>
       <CardContent className="space-y-5">
         {children}
         <div className="flex flex-wrap items-center gap-3">
           <Button onClick={onSave} disabled={saving}>
             {saving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}
-            Save {title}
+            Save
           </Button>
           {footer}
         </div>
@@ -87,22 +139,34 @@ function ChannelCard({
 }
 
 function CopyRow({ label, value }: { label: string; value?: string }) {
+  const [copied, setCopied] = useState(false);
   if (!value) return null;
   return (
-    <div className="rounded-lg border border-border bg-muted/30 px-3 py-2">
-      <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">{label}</p>
-      <button
+    <div className="flex items-start justify-between gap-3 rounded-lg border border-border bg-muted/30 px-3 py-2.5">
+      <div className="min-w-0">
+        <p className="text-[11px] font-medium text-muted-foreground">{label}</p>
+        <p className="mt-0.5 break-all font-mono text-xs text-foreground">{value}</p>
+      </div>
+      <Button
         type="button"
-        className="mt-1 break-all text-left font-mono text-xs text-foreground hover:underline"
-        title="Click to copy"
-        onClick={() => {
-          void navigator.clipboard.writeText(value);
+        variant="ghost"
+        size="sm"
+        className="h-8 shrink-0 gap-1.5 px-2"
+        onClick={async () => {
+          await navigator.clipboard.writeText(value);
+          setCopied(true);
+          window.setTimeout(() => setCopied(false), 1500);
         }}
       >
-        {value}
-      </button>
+        {copied ? <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600" /> : <Copy className="h-3.5 w-3.5" />}
+        {copied ? "Copied" : "Copy"}
+      </Button>
     </div>
   );
+}
+
+function isSecretSet(value: string | undefined): boolean {
+  return Boolean(value && value !== "");
 }
 
 export function SettingsPage() {
@@ -117,37 +181,21 @@ export function SettingsPage() {
   const [connecting, setConnecting] = useState<"gmail" | "instagram" | null>(null);
   const [watching, setWatching] = useState(false);
 
-  const [waConfig, setWaConfig] = useState<Record<string, string>>({
-    phoneNumberId: "",
-    accessToken: "",
-    verifyToken: "",
-    appSecret: "",
-    businessAccountId: "",
-  });
-  const [igConfig, setIgConfig] = useState<Record<string, string>>({
-    pageId: "",
-    accessToken: "",
-    verifyToken: "",
-    appSecret: "",
-    instagramAppId: "",
-    instagramUsername: "",
-  });
-  const [emailConfig, setEmailConfig] = useState<Record<string, string>>({
-    clientId: "",
-    clientSecret: "",
-    refreshToken: "",
-    accessToken: "",
-    pubsubTopic: "",
-  });
+  const [waConfig, setWaConfig] = useState<Record<string, string>>(EMPTY_WA);
+  const [igConfig, setIgConfig] = useState<Record<string, string>>(EMPTY_IG);
+  const [emailConfig, setEmailConfig] = useState<Record<string, string>>(EMPTY_EMAIL);
 
   useEffect(() => {
     if (!inboxes) return;
     const wa = inboxes.find((i) => i.channelType === "whatsapp");
-    if (wa?.channelConfig) setWaConfig((prev) => ({ ...prev, ...(wa.channelConfig as object) }));
+    setWaConfig({ ...EMPTY_WA, ...asStringRecord(wa?.channelConfig as Record<string, unknown>) });
     const ig = inboxes.find((i) => i.channelType === "instagram");
-    if (ig?.channelConfig) setIgConfig((prev) => ({ ...prev, ...(ig.channelConfig as object) }));
+    setIgConfig({ ...EMPTY_IG, ...asStringRecord(ig?.channelConfig as Record<string, unknown>) });
     const em = inboxes.find((i) => i.channelType === "email");
-    if (em?.channelConfig) setEmailConfig((prev) => ({ ...prev, ...(em.channelConfig as object) }));
+    setEmailConfig({
+      ...EMPTY_EMAIL,
+      ...asStringRecord(em?.channelConfig as Record<string, unknown>),
+    });
   }, [inboxes]);
 
   useEffect(() => {
@@ -156,28 +204,27 @@ export function SettingsPage() {
     if (!oauth || !status) return;
 
     if (status === "success") {
-      const detail =
+      const who =
         oauth === "gmail"
           ? searchParams.get("email")
-            ? ` Connected as ${searchParams.get("email")}.`
-            : " Refresh + access tokens saved to this inbox."
           : searchParams.get("username")
-            ? ` Connected as @${searchParams.get("username")}.`
-            : " Long-lived access token saved to this inbox.";
-      setBanner({ tone: "ok", text: `${oauth === "gmail" ? "Gmail" : "Instagram"} connected.${detail}` });
+            ? `@${searchParams.get("username")}`
+            : null;
+      setBanner({
+        tone: "ok",
+        text: who
+          ? `${oauth === "gmail" ? "Gmail" : "Instagram"} connected · ${who}`
+          : `${oauth === "gmail" ? "Gmail" : "Instagram"} connected`,
+      });
     } else {
       setBanner({
         tone: "err",
-        text: `${oauth === "gmail" ? "Gmail" : "Instagram"} connect failed: ${searchParams.get("message") || "unknown error"}`,
+        text: searchParams.get("message") || "Connection failed",
       });
     }
 
     const next = new URLSearchParams(searchParams);
-    next.delete("oauth");
-    next.delete("status");
-    next.delete("message");
-    next.delete("email");
-    next.delete("username");
+    ["oauth", "status", "message", "email", "username"].forEach((k) => next.delete(k));
     setSearchParams(next, { replace: true });
   }, [searchParams, setSearchParams]);
 
@@ -188,21 +235,17 @@ export function SettingsPage() {
   const handleSave = (channelType: "whatsapp" | "instagram" | "email", config: Record<string, string>) => {
     const inbox = inboxes?.find((i) => i.channelType === channelType);
     if (!inbox) {
-      alert("Inbox not found for this channel. Run backend seed first.");
+      setBanner({ tone: "err", text: "Channel inbox is missing. Contact support." });
       return;
     }
     const cleanConfig = Object.fromEntries(
       Object.entries(config).filter(([, v]) => v !== "***" && v !== undefined),
     );
     updateInbox(
-      { id: inbox.id, body: { channelConfig: cleanConfig } },
+      { id: inbox.id, body: { channelConfig: cleanConfig, enabled: true } },
       {
-        onSuccess: () => {
-          setBanner({ tone: "ok", text: `${channelType} settings saved.` });
-        },
-        onError: (err) => {
-          setBanner({ tone: "err", text: `Failed to save: ${err.message}` });
-        },
+        onSuccess: () => setBanner({ tone: "ok", text: "Saved" }),
+        onError: (err) => setBanner({ tone: "err", text: err.message }),
       },
     );
   };
@@ -210,7 +253,7 @@ export function SettingsPage() {
   const handleConnect = async (provider: "gmail" | "instagram") => {
     const inbox = provider === "gmail" ? emailInbox : igInbox;
     if (!inbox) {
-      alert("Inbox not found. Run backend seed first.");
+      setBanner({ tone: "err", text: "Channel inbox is missing. Contact support." });
       return;
     }
     setConnecting(provider);
@@ -218,28 +261,22 @@ export function SettingsPage() {
       const { url } = await startChannelOAuth(provider, inbox.id);
       window.location.href = url;
     } catch (err: any) {
-      setBanner({
-        tone: "err",
-        text: err?.message ?? `Failed to start ${provider} connect`,
-      });
+      setBanner({ tone: "err", text: err?.message ?? "Could not start connection" });
       setConnecting(null);
     }
   };
 
   const handleStartWatch = async () => {
     if (!emailInbox) {
-      alert("Email inbox not found.");
+      setBanner({ tone: "err", text: "Email inbox is missing. Contact support." });
       return;
     }
     setWatching(true);
     try {
       await startGmailWatch(emailInbox.id);
-      setBanner({
-        tone: "ok",
-        text: "Gmail watch started. New mail will push via Pub/Sub to the webhook URL above.",
-      });
+      setBanner({ tone: "ok", text: "Gmail watch started" });
     } catch (err: any) {
-      setBanner({ tone: "err", text: err?.message ?? "Failed to start Gmail watch" });
+      setBanner({ tone: "err", text: err?.message ?? "Could not start Gmail watch" });
     } finally {
       setWatching(false);
     }
@@ -253,60 +290,48 @@ export function SettingsPage() {
     );
   }
 
+  const waConnected = isSecretSet(waConfig.accessToken) && isSecretSet(waConfig.phoneNumberId);
+  const igConnected = isSecretSet(igConfig.accessToken);
+  const emailConnected = isSecretSet(emailConfig.refreshToken) || isSecretSet(emailConfig.accessToken);
+
   return (
     <div className="flex h-full flex-1 flex-col overflow-y-auto bg-background p-8">
       <div className="mx-auto w-full max-w-4xl space-y-8 pb-12">
         <div>
-          <h1 className="mb-2 text-3xl font-bold">Channel settings</h1>
-          <p className="text-muted-foreground">
-            Paste provider credentials here. For Gmail and Instagram tokens, use{" "}
-            <strong>Connect</strong> — no local CLI required. Values saved here override server env
-            for that inbox. Secrets show as *** until you replace them.
-          </p>
+          <h1 className="mb-1 text-3xl font-bold">Settings</h1>
+          <p className="text-muted-foreground">Connect WhatsApp, Instagram, and Gmail for your inbox.</p>
         </div>
 
         {banner && (
           <div
-            className={`flex items-start gap-2 rounded-lg border px-4 py-3 text-sm ${
+            className={`rounded-lg border px-4 py-3 text-sm ${
               banner.tone === "ok"
                 ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-900 dark:text-emerald-200"
                 : "border-rose-500/30 bg-rose-500/10 text-rose-900 dark:text-rose-200"
             }`}
           >
-            {banner.tone === "ok" ? (
-              <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0" />
-            ) : (
-              <ExternalLink className="mt-0.5 h-4 w-4 shrink-0" />
-            )}
-            <p>{banner.text}</p>
+            {banner.text}
           </div>
         )}
 
         <Card>
           <CardHeader className="pb-3">
-            <CardTitle className="text-base">Webhook & OAuth URLs</CardTitle>
-            <CardDescription>
-              Copy these into Meta / Google consoles. Click a URL to copy.
-            </CardDescription>
+            <CardTitle className="text-base">Callback URLs</CardTitle>
+            <CardDescription>Paste these into Meta or Google when asked.</CardDescription>
           </CardHeader>
           <CardContent className="grid gap-2">
             <CopyRow label="WhatsApp webhook" value={waInbox?.webhookUrl ?? oauthHints?.webhooks.whatsapp} />
             <CopyRow label="Instagram webhook" value={igInbox?.webhookUrl ?? oauthHints?.webhooks.instagram} />
-            <CopyRow label="Gmail Pub/Sub push" value={oauthHints?.webhooks.emailPubSub} />
-            <CopyRow
-              label="Gmail OAuth redirect (add in Google Cloud)"
-              value={oauthHints?.gmailRedirectUri}
-            />
-            <CopyRow
-              label="Instagram OAuth redirect (add in Meta)"
-              value={oauthHints?.instagramRedirectUri}
-            />
+            <CopyRow label="Gmail push URL" value={oauthHints?.webhooks.emailPubSub} />
+            <CopyRow label="Gmail OAuth redirect" value={oauthHints?.gmailRedirectUri} />
+            <CopyRow label="Instagram OAuth redirect" value={oauthHints?.instagramRedirectUri} />
           </CardContent>
         </Card>
 
         <ChannelCard
           title="WhatsApp"
-          description="Cloud API credentials used for send + webhook verify. Tokens are pasted from Meta (no OAuth button)."
+          description="Paste values from Meta WhatsApp → API Setup."
+          connected={waConnected}
           saving={isPending}
           onSave={() => handleSave("whatsapp", waConfig)}
         >
@@ -314,32 +339,19 @@ export function SettingsPage() {
             values={waConfig}
             onChange={(key, value) => setWaConfig((prev) => ({ ...prev, [key]: value }))}
             fields={[
-              { key: "phoneNumberId", label: "Phone Number ID", envHint: "WHATSAPP_PHONE_NUMBER_ID" },
-              {
-                key: "accessToken",
-                label: "Access Token",
-                envHint: "WHATSAPP_ACCESS_TOKEN",
-                password: true,
-              },
-              { key: "verifyToken", label: "Verify Token", envHint: "WHATSAPP_VERIFY_TOKEN" },
-              {
-                key: "appSecret",
-                label: "App Secret",
-                envHint: "WHATSAPP_APP_SECRET",
-                password: true,
-              },
-              {
-                key: "businessAccountId",
-                label: "Business Account ID",
-                envHint: "WHATSAPP_BUSINESS_ACCOUNT_ID",
-              },
+              { key: "phoneNumberId", label: "Phone Number ID" },
+              { key: "accessToken", label: "Access Token", password: true },
+              { key: "verifyToken", label: "Verify Token", placeholder: "Choose any secret phrase" },
+              { key: "appSecret", label: "App Secret", password: true },
+              { key: "businessAccountId", label: "Business Account ID" },
             ]}
           />
         </ChannelCard>
 
         <ChannelCard
           title="Instagram"
-          description="Save App ID + App Secret (+ verify token), then Connect to obtain a long-lived access token in the browser."
+          description="Save App ID and App Secret, then Connect."
+          connected={igConnected}
           saving={isPending}
           onSave={() => handleSave("instagram", igConfig)}
           footer={
@@ -362,34 +374,20 @@ export function SettingsPage() {
             values={igConfig}
             onChange={(key, value) => setIgConfig((prev) => ({ ...prev, [key]: value }))}
             fields={[
-              { key: "pageId", label: "Page / User ID", envHint: "INSTAGRAM_PAGE_ID" },
-              {
-                key: "accessToken",
-                label: "Access Token (filled by Connect)",
-                envHint: "INSTAGRAM_ACCESS_TOKEN",
-                password: true,
-              },
-              { key: "verifyToken", label: "Verify Token", envHint: "INSTAGRAM_VERIFY_TOKEN" },
-              {
-                key: "appSecret",
-                label: "App Secret",
-                envHint: "INSTAGRAM_APP_SECRET",
-                password: true,
-              },
-              { key: "instagramAppId", label: "App ID", envHint: "INSTAGRAM_APP_ID" },
-              { key: "instagramUsername", label: "Username", envHint: "INSTAGRAM_USERNAME" },
+              { key: "instagramAppId", label: "App ID" },
+              { key: "appSecret", label: "App Secret", password: true },
+              { key: "verifyToken", label: "Verify Token", placeholder: "Choose any secret phrase" },
+              { key: "accessToken", label: "Access Token", password: true, placeholder: "Filled after Connect" },
+              { key: "pageId", label: "Page / User ID" },
+              { key: "instagramUsername", label: "Username" },
             ]}
           />
-          <p className="text-xs text-muted-foreground">
-            Before Connect: add{" "}
-            <code className="rounded bg-muted px-1">{oauthHints?.instagramRedirectUri ?? "…/oauth/instagram/callback"}</code>{" "}
-            as an Exact OAuth redirect URI in Meta Business Login settings. Save App ID + Secret first.
-          </p>
         </ChannelCard>
 
         <ChannelCard
-          title="Gmail / Email"
-          description="Save Client ID + Client Secret + Pub/Sub topic, then Connect Gmail. Tokens are written automatically — no npm run gmail:oauth."
+          title="Gmail"
+          description="Save Client ID, Client Secret, and Pub/Sub topic, then Connect."
+          connected={emailConnected}
           saving={isPending}
           onSave={() => handleSave("email", emailConfig)}
           footer={
@@ -410,7 +408,7 @@ export function SettingsPage() {
               <Button
                 type="button"
                 variant="outline"
-                disabled={watching || isPending}
+                disabled={watching || isPending || !emailConnected}
                 onClick={() => void handleStartWatch()}
               >
                 {watching ? (
@@ -418,7 +416,7 @@ export function SettingsPage() {
                 ) : (
                   <Radio className="mr-2 h-4 w-4" />
                 )}
-                Start Gmail watch
+                Start watch
               </Button>
             </>
           }
@@ -427,33 +425,23 @@ export function SettingsPage() {
             values={emailConfig}
             onChange={(key, value) => setEmailConfig((prev) => ({ ...prev, [key]: value }))}
             fields={[
-              { key: "clientId", label: "Client ID", envHint: "GMAIL_CLIENT_ID" },
-              {
-                key: "clientSecret",
-                label: "Client Secret",
-                envHint: "GMAIL_CLIENT_SECRET",
-                password: true,
-              },
+              { key: "clientId", label: "Client ID" },
+              { key: "clientSecret", label: "Client Secret", password: true },
+              { key: "pubsubTopic", label: "Pub/Sub Topic", placeholder: "projects/…/topics/…" },
               {
                 key: "refreshToken",
-                label: "Refresh Token (filled by Connect)",
-                envHint: "GMAIL_REFRESH_TOKEN",
+                label: "Refresh Token",
                 password: true,
+                placeholder: "Filled after Connect",
               },
               {
                 key: "accessToken",
-                label: "Access Token (filled by Connect)",
-                envHint: "GMAIL_ACCESS_TOKEN",
+                label: "Access Token",
                 password: true,
+                placeholder: "Filled after Connect",
               },
-              { key: "pubsubTopic", label: "Pub/Sub Topic", envHint: "GMAIL_PUBSUB_TOPIC" },
             ]}
           />
-          <p className="text-xs text-muted-foreground">
-            Before Connect: add{" "}
-            <code className="rounded bg-muted px-1">{oauthHints?.gmailRedirectUri ?? "…/oauth/gmail/callback"}</code>{" "}
-            as an Authorized redirect URI on your Google OAuth Web client. Sign in as the mailbox that should receive support email.
-          </p>
         </ChannelCard>
       </div>
     </div>

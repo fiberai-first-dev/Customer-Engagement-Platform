@@ -10,7 +10,6 @@ export type ContactFormData = {
   emails: string[];
   whatsappIds: string[];
   instagramId: string;
-  emailId: string;
 };
 
 type Props = {
@@ -25,18 +24,15 @@ const emptyForm = (): ContactFormData => ({
   emails: [""],
   whatsappIds: [""],
   instagramId: "",
-  emailId: "",
 });
 
 function MultiStringField({
   label,
-  hint,
   values,
   onChange,
   placeholder,
 }: {
   label: string;
-  hint?: string;
   values: string[];
   onChange: (next: string[]) => void;
   placeholder: string;
@@ -80,22 +76,26 @@ function MultiStringField({
           </div>
         ))}
       </div>
-      {hint ? <p className="text-[11px] text-muted-foreground">{hint}</p> : null}
     </div>
   );
 }
 
 export function ContactModal({ isOpen, onClose, initialData, accountId }: Props) {
   const [formData, setFormData] = useState<ContactFormData>(emptyForm());
+  const [error, setError] = useState<string | null>(null);
   const createContact = useCreateContact();
   const updateContact = useUpdateContact();
 
   useEffect(() => {
+    if (!isOpen) return;
+    setError(null);
     if (initialData) {
       setFormData({
-        ...initialData,
+        id: initialData.id,
+        name: initialData.name || "",
         emails: initialData.emails?.length ? initialData.emails : [""],
         whatsappIds: initialData.whatsappIds?.length ? initialData.whatsappIds : [""],
+        instagramId: initialData.instagramId || "",
       });
     } else {
       setFormData(emptyForm());
@@ -104,25 +104,39 @@ export function ContactModal({ isOpen, onClose, initialData, accountId }: Props)
 
   if (!isOpen) return null;
 
-  const isEditing = !!initialData?.id;
+  const isEditing = Boolean(initialData?.id);
   const isPending = createContact.isPending || updateContact.isPending;
 
-  const cleanList = (values: string[]) =>
-    values.map((v) => v.trim()).filter(Boolean);
+  const cleanList = (values: string[]) => values.map((v) => v.trim()).filter(Boolean);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    setError(null);
+
+    if (!accountId) {
+      setError("Workspace is not ready. Refresh and try again.");
+      return;
+    }
+
     const emails = cleanList(formData.emails);
     const whatsappIds = cleanList(formData.whatsappIds);
+    const name = formData.name.trim();
+    const instagramId = formData.instagramId.trim().replace(/^@+/, "");
+
+    if (!name && !emails.length && !whatsappIds.length && !instagramId) {
+      setError("Add a name or at least one email, WhatsApp number, or Instagram ID.");
+      return;
+    }
+
     try {
       const body = {
-        name: formData.name || undefined,
+        name: name || undefined,
         emails,
         whatsappIds,
         email: emails[0],
         whatsappId: whatsappIds[0],
-        instagramId: formData.instagramId || undefined,
-        emailId: formData.emailId || emails[0] || undefined,
+        instagramId: instagramId || undefined,
+        emailId: emails[0] || undefined,
       };
       if (isEditing && initialData?.id) {
         await updateContact.mutateAsync({ id: initialData.id, body });
@@ -130,80 +144,79 @@ export function ContactModal({ isOpen, onClose, initialData, accountId }: Props)
         await createContact.mutateAsync({ accountId, ...body });
       }
       onClose();
-    } catch (err) {
-      console.error("Failed to save contact:", err);
-      alert("Failed to save contact. Please try again.");
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : "Failed to save contact";
+      setError(message);
     }
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-background/80 backdrop-blur-sm">
-      <div className="flex max-h-[90vh] w-full max-w-lg flex-col rounded-xl border border-border bg-card shadow-lg">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-background/80 p-4 backdrop-blur-sm">
+      <div
+        className="flex max-h-[90vh] w-full max-w-lg flex-col rounded-xl border border-border bg-card shadow-lg"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="contact-modal-title"
+      >
         <div className="flex items-center justify-between border-b border-border px-6 py-4">
-          <h2 className="text-lg font-semibold tracking-tight">
-            {isEditing ? "Edit Contact" : "Add Contact"}
+          <h2 id="contact-modal-title" className="text-lg font-semibold tracking-tight">
+            {isEditing ? "Edit contact" : "Add contact"}
           </h2>
-          <Button variant="ghost" size="icon" onClick={onClose} className="h-8 w-8 rounded-full">
+          <Button type="button" variant="ghost" size="icon" onClick={onClose} className="h-8 w-8 rounded-full">
             <X className="h-4 w-4" />
           </Button>
         </div>
 
-        <form onSubmit={handleSubmit} className="flex-1 overflow-y-auto p-6">
-          <div className="space-y-4">
+        <form onSubmit={handleSubmit} className="flex min-h-0 flex-1 flex-col">
+          <div className="flex-1 space-y-4 overflow-y-auto p-6">
+            {error && (
+              <div className="rounded-lg border border-rose-500/30 bg-rose-500/10 px-3 py-2 text-sm text-rose-800 dark:text-rose-200">
+                {error}
+              </div>
+            )}
+
             <div className="space-y-2">
               <label className="text-sm font-medium">Name</label>
               <Input
                 value={formData.name}
                 onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                placeholder="John Doe"
+                placeholder="Jane Doe"
               />
             </div>
 
             <MultiStringField
-              label="Emails"
+              label="Email"
               values={formData.emails}
               onChange={(emails) => setFormData({ ...formData, emails })}
-              placeholder="john@example.com"
+              placeholder="jane@example.com"
             />
 
             <MultiStringField
-              label="WhatsApp number"
+              label="WhatsApp"
               values={formData.whatsappIds}
               onChange={(whatsappIds) => setFormData({ ...formData, whatsappIds })}
               placeholder="919876543210"
-              hint="Same as the phone number used on WhatsApp. Add more if the person has multiple WA numbers."
             />
 
-            <div className="space-y-4 border-t border-border pt-4">
-              <h3 className="text-sm font-medium text-muted-foreground">Other channels</h3>
-              <div className="space-y-2">
-                <label className="text-sm font-medium">Instagram ID / username</label>
-                <Input
-                  value={formData.instagramId}
-                  onChange={(e) => setFormData({ ...formData, instagramId: e.target.value })}
-                  placeholder="@johndoe"
-                />
-              </div>
-              <div className="space-y-2">
-                <label className="text-sm font-medium">Email channel ID</label>
-                <Input
-                  value={formData.emailId}
-                  onChange={(e) => setFormData({ ...formData, emailId: e.target.value })}
-                  placeholder="john@example.com"
-                />
-              </div>
+            <div className="space-y-2">
+              <label className="text-sm font-medium">Instagram</label>
+              <Input
+                value={formData.instagramId}
+                onChange={(e) => setFormData({ ...formData, instagramId: e.target.value })}
+                placeholder="username"
+              />
             </div>
           </div>
-        </form>
 
-        <div className="flex items-center justify-end gap-3 rounded-b-xl border-t border-border bg-muted/40 px-6 py-4">
-          <Button type="button" variant="ghost" onClick={onClose} disabled={isPending}>
-            Cancel
-          </Button>
-          <Button type="submit" onClick={handleSubmit} disabled={isPending}>
-            {isPending ? "Saving..." : "Save Contact"}
-          </Button>
-        </div>
+          <div className="flex items-center justify-end gap-3 border-t border-border bg-muted/40 px-6 py-4">
+            <Button type="button" variant="ghost" onClick={onClose} disabled={isPending}>
+              Cancel
+            </Button>
+            <Button type="submit" disabled={isPending || !accountId}>
+              {isPending ? "Saving…" : "Save"}
+            </Button>
+          </div>
+        </form>
       </div>
     </div>
   );
