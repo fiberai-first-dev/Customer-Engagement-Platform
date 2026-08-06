@@ -18,15 +18,18 @@ async function resolveOutboundRecipient(input: {
   contact: {
     email: string | null;
     whatsappId?: string | null;
+    whatsappIds?: unknown;
     instagramId?: string | null;
     emailId?: string | null;
   };
   externalThreadId: string | null;
 }): Promise<string> {
   if (input.channelType === "whatsapp") {
-    const to = input.contact.whatsappId ?? input.externalThreadId;
+    const fromList = asStringList(input.contact.whatsappIds)[0];
+    const to = input.contact.whatsappId ?? fromList ?? input.externalThreadId;
     if (!to) throw new Error("No WhatsApp recipient on contact");
-    return to;
+    // Graph API expects digits only (no + / spaces)
+    return normalizeWhatsAppId(to) ?? to;
   }
 
   if (input.channelType === "instagram") {
@@ -76,11 +79,32 @@ export function asStringList(value: unknown): string[] {
     .filter(Boolean);
 }
 
-/** Normalize WhatsApp numbers for stable match/storage (digits only, no leading +). */
+/** Normalize WhatsApp numbers for matching (digits only, no leading +). */
 export function normalizeWhatsAppId(raw: string | null | undefined): string | null {
   if (!raw) return null;
   const digits = raw.replace(/[^\d]/g, "");
   return digits || null;
+}
+
+/**
+ * Canonical storage / display: "+{countryCode} {nationalNumber}".
+ * Example: 916303481401 → "+91 6303481401"
+ */
+export function formatWhatsAppStorage(raw: string | null | undefined): string | null {
+  const digits = normalizeWhatsAppId(raw);
+  if (!digits) return null;
+
+  // Prefer last 10 digits as national number when longer (common WA cloud format)
+  if (digits.length > 10) {
+    const national = digits.slice(-10);
+    const country = digits.slice(0, -10);
+    return `+${country} ${national}`;
+  }
+  // Bare 10-digit mobile → default India (product market)
+  if (digits.length === 10) {
+    return `+91 ${digits}`;
+  }
+  return `+${digits}`;
 }
 
 export function uniqStrings(values: Array<string | null | undefined>): string[] {
@@ -97,14 +121,16 @@ export function uniqStrings(values: Array<string | null | undefined>): string[] 
   return out;
 }
 
+/** Dedupe by digits; store as "+CC NNNNNNNN". */
 export function uniqWhatsAppIds(values: Array<string | null | undefined>): string[] {
   const out: string[] = [];
   const seen = new Set<string>();
   for (const raw of values) {
-    const v = normalizeWhatsAppId(raw);
-    if (!v || seen.has(v)) continue;
-    seen.add(v);
-    out.push(v);
+    const digits = normalizeWhatsAppId(raw);
+    const formatted = formatWhatsAppStorage(raw);
+    if (!digits || !formatted || seen.has(digits)) continue;
+    seen.add(digits);
+    out.push(formatted);
   }
   return out;
 }
@@ -138,17 +164,40 @@ function appendWhatsAppIds(existing: unknown, ...extra: Array<string | null | un
   return uniqWhatsAppIds([...asStringList(existing), ...extra]);
 }
 
+function whatsappLookupVariants(digits: string): string[] {
+  // Match both full E.164-style and national (last 10) forms used by Meta / Contacts UI.
+  const forms = new Set<string>([digits]);
+  if (digits.length > 10) forms.add(digits.slice(-10));
+  if (digits.length === 10) forms.add(`91${digits}`);
+
+  const out: string[] = [];
+  for (const form of forms) {
+    const formatted = formatWhatsAppStorage(form);
+    out.push(form, `+${form}`);
+    if (formatted) {
+      out.push(formatted, formatted.replace(/\s+/g, ""));
+    }
+  }
+  return uniqStrings(out);
+}
+
 function whatsappMatchOr(accountId: string, ...candidates: Array<string | null | undefined>) {
-  const ids = uniqWhatsAppIds(candidates);
+  const ids = [
+    ...new Set(
+      candidates
+        .map((c) => normalizeWhatsAppId(c))
+        .filter((c): c is string => Boolean(c)),
+    ),
+  ];
   if (!ids.length) return null;
   return {
     accountId,
-    OR: ids.flatMap((id) => [
-      { whatsappId: id },
-      { whatsappIds: { array_contains: id } },
-      { whatsappId: `+${id}` },
-      { whatsappIds: { array_contains: `+${id}` } },
-    ]),
+    OR: ids.flatMap((id) =>
+      whatsappLookupVariants(id).flatMap((variant) => [
+        { whatsappId: variant },
+        { whatsappIds: { array_contains: variant } },
+      ]),
+    ),
   };
 }
 
@@ -234,7 +283,7 @@ export async function enableContactChannel(input: {
       where: { id: input.contactId },
       data: {
         whatsappEnabled: true,
-        whatsappId: whatsappIds[0] ?? normalizeWhatsAppId(input.externalId),
+        whatsappId: whatsappIds[0] ?? formatWhatsAppStorage(input.externalId),
         whatsappIds,
         whatsappDetails: details,
         name: input.name ?? undefined,
@@ -398,7 +447,7 @@ export async function findOrCreateContact(input: {
       data: {
         ...base,
         whatsappEnabled: true,
-        whatsappId: whatsappIds[0] ?? senderKey,
+        whatsappId: whatsappIds[0] ?? formatWhatsAppStorage(senderKey),
         whatsappIds,
         whatsappDetails: details,
       },

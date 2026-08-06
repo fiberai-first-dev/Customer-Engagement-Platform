@@ -23,11 +23,23 @@ function listField(primary: unknown, list: unknown, opts?: { digitsOnly?: boolea
       : v.replace(/[^\d+a-zA-Z@._-]/g, "").toLowerCase();
     if (!key || seen.has(key)) return;
     seen.add(key);
-    out.push(opts?.digitsOnly ? key : v);
+    // Keep original formatting for display (e.g. "+91 6303481401")
+    out.push(opts?.digitsOnly ? formatWhatsAppDisplay(v) : v);
   };
   if (Array.isArray(list)) list.forEach(push);
   push(primary);
   return out;
+}
+
+/** Store/display: "+{country} {number}" e.g. "+91 6303481401" */
+export function formatWhatsAppDisplay(raw: string): string {
+  const digits = raw.replace(/[^\d]/g, "");
+  if (!digits) return raw.trim();
+  if (digits.length > 10) {
+    return `+${digits.slice(0, -10)} ${digits.slice(-10)}`;
+  }
+  if (digits.length === 10) return `+91 ${digits}`;
+  return `+${digits}`;
 }
 
 /** All external IDs for a channel (WhatsApp / email can have multiple). */
@@ -77,13 +89,7 @@ export function identityFor(contact: any, channel: ChannelType): string | null {
 export function formatIdentity(identity: string, channel: ChannelType): string {
   if (!identity) return identity;
   if (channel === "whatsapp") {
-    const digits = identity.replace(/[^\d]/g, "");
-    if (/^91\d{10}$/.test(digits)) {
-      return `+91 ${digits.slice(2)}`;
-    }
-    if (/^\d+$/.test(digits)) {
-      return `+${digits}`;
-    }
+    return formatWhatsAppDisplay(identity);
   }
   return identity;
 }
@@ -126,16 +132,18 @@ export function channelAccent(channel: ChannelType, active: boolean): string {
 export function contactDisplayName(contact: {
   name?: string | null;
   whatsappId?: string | null;
+  whatsappIds?: string[] | null;
   email?: string | null;
   identifiers?: Record<string, string>;
 }): string {
-  return (
-    contact.name ||
+  if (contact.name?.trim()) return contact.name.trim();
+  const whatsapp =
     contact.whatsappId ||
     contact.identifiers?.whatsapp ||
-    contact.email ||
-    "Unknown"
-  );
+    contact.whatsappIds?.find((id) => typeof id === "string" && id.trim()) ||
+    null;
+  if (whatsapp) return formatWhatsAppDisplay(whatsapp);
+  return contact.email || "Unknown";
 }
 
 export function initials(name: string): string {

@@ -3,16 +3,23 @@ import { env } from "./config/env.js";
 import { prisma } from "./config/db.js";
 import { buildApp } from "./app.js";
 import { runDatabaseMigrations } from "./scripts/migrate.js";
-import { ensureWorkspace } from "./services/WorkspaceService.js";
+import { bootstrapRuntime } from "./services/StartupService.js";
 
 async function main() {
+  // Schema first — creates tables when missing; no-op when current
   await runDatabaseMigrations();
-  await ensureWorkspace();
+
+  // Workspace + sync .env channel creds + enable channels + Gmail watch + IG subscribe
+  // Channel steps never abort boot (warnings only)
+  await bootstrapRuntime();
 
   const app = await buildApp();
   try {
     await app.listen({ port: env.port, host: "0.0.0.0" });
     app.log.info(`platform-api listening on :${env.port}`);
+    app.log.info(
+      `webhooks: /webhooks/whatsapp | /webhooks/instagram | /webhooks/email/pubsub`,
+    );
   } catch (err) {
     app.log.error(err);
     await prisma.$disconnect();

@@ -15,9 +15,8 @@ services:
   #     timeout: 5s
   #     retries: 10
 
-  # Bootstrap: platform-api runs SQL migrate/repair at boot (no prisma migrate deploy).
-  # Fresh DB: `cd platform-api && npm run bootstrap` then `docker compose up -d --build`
-  # See platform-api/BOOTSTRAP.md
+  # Boot: migrate if tables missing + sync non-empty .env channel creds into DB.
+  # Just: docker compose -f apps/docker-compose.yml up -d --build
   platform-api:
     build:
       context: ./platform-api

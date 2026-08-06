@@ -110,7 +110,10 @@ export const whatsappAdapter: ChannelAdapter<WhatsAppChannelConfig> = {
       return { ok: false, status: "failed", error: "WhatsApp phoneNumberId/accessToken missing" };
     }
 
-    const to = message.to.replace(/^\+/, "");
+    const to = message.to.replace(/[^\d]/g, "");
+    if (!to) {
+      return { ok: false, status: "failed", error: "WhatsApp recipient missing" };
+    }
     const body = {
       messaging_product: "whatsapp",
       to,

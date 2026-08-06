@@ -26,6 +26,7 @@ import {
   cn,
   contactDisplayName,
   formatIdentities,
+  formatWhatsAppDisplay,
   identitiesFor,
   initials,
 } from "./utils";
@@ -98,7 +99,7 @@ export function CustomerDetails({ contact, onClose }: Props) {
   const whatsappIds = listValues(
     contact.whatsappId ?? contact.identifiers?.whatsapp,
     contact.whatsappIds,
-  );
+  ).map(formatWhatsAppDisplay);
 
   return (
     <aside className="flex w-[400px] shrink-0 flex-col border-l border-border bg-card">

@@ -3,12 +3,25 @@ import { prisma } from "../config/db.js";
 import { getChannelAdapter, resolveChannelConfig } from "../adapters/shared/index.js";
 import { ingestInboundMessages } from "../services/MessagingService.js";
 import { handlePubSubNotification } from "../services/EmailService.js";
-import type { ChannelType } from "../generated/client/index.js";
+import type { ChannelType, Inbox } from "../generated/client/index.js";
 
 const channelTypes = ["whatsapp", "instagram", "email"] as const;
 
+/** Prefer enabled inbox; fall back to any inbox for the channel. */
+async function resolveChannelInbox(channelType: ChannelType): Promise<Inbox | null> {
+  const enabled = await prisma.inbox.findFirst({
+    where: { channelType, enabled: true },
+    orderBy: { createdAt: "asc" },
+  });
+  if (enabled) return enabled;
+  return prisma.inbox.findFirst({
+    where: { channelType },
+    orderBy: { createdAt: "asc" },
+  });
+}
+
 export class WebhookController {
-  /** GET /webhooks/:channel — verify against first matching enabled inbox */
+  /** GET /webhooks/:channel — Meta verify */
   static async unifiedVerifyWebhook(
     request: FastifyRequest<{ Params: { channel: string }; Querystring: Record<string, string> }>,
     reply: FastifyReply,
@@ -19,37 +32,43 @@ export class WebhookController {
     const adapter = getChannelAdapter(request.params.channel as ChannelType);
     if (!adapter.verifyWebhook) return reply.code(400).send("verification not supported");
 
+    const channelType = request.params.channel as ChannelType;
     const inboxes = await prisma.inbox.findMany({
-      where: { channelType: request.params.channel as ChannelType, enabled: true },
+      where: { channelType },
+      orderBy: [{ enabled: "desc" }, { createdAt: "asc" }],
     });
     for (const inbox of inboxes) {
       const config = resolveChannelConfig(inbox.channelType, inbox.channelConfig);
       const challenge = adapter.verifyWebhook(config as never, request.query);
       if (challenge != null) {
+        if (!inbox.enabled) {
+          await prisma.inbox.update({ where: { id: inbox.id }, data: { enabled: true } });
+        }
         return reply.type("text/plain").send(challenge);
       }
     }
     return reply.code(403).send("forbidden");
   }
 
-  /** POST /webhooks/:channel — route to first enabled inbox for that channel */
+  /** POST /webhooks/:channel — ingest into the channel inbox */
   static async unifiedReceiveWebhook(
     request: FastifyRequest<{ Params: { channel: string } }>,
     reply: FastifyReply,
   ) {
-    if (!channelTypes.includes(request.params.channel as ChannelType)) {
+    const channel = request.params.channel;
+    request.log.info(
+      { channel, path: `/webhooks/${channel}` },
+      `webhook POST /webhooks/${channel}`,
+    );
+    if (!channelTypes.includes(channel as ChannelType)) {
       return reply.code(404).send({ error: "not found" });
     }
-    const inbox = await prisma.inbox.findFirst({
-      where: {
-        channelType: request.params.channel as ChannelType,
-        enabled: true,
-      },
-      orderBy: { createdAt: "asc" },
-    });
-    const resolved = inbox;
+    const resolved = await resolveChannelInbox(channel as ChannelType);
     if (!resolved) {
-      return reply.code(404).send({ error: "no active inbox found for this channel" });
+      return reply.code(404).send({ error: "no inbox found for this channel — run seed / restart API" });
+    }
+    if (!resolved.enabled) {
+      await prisma.inbox.update({ where: { id: resolved.id }, data: { enabled: true } });
     }
     try {
       const result = await ingestInboundMessages({
@@ -61,7 +80,8 @@ export class WebhookController {
       if (!result.created && !result.duplicates) {
         request.log.warn(
           {
-            channel: request.params.channel,
+            channel,
+            path: `/webhooks/${channel}`,
             inboxId: resolved.id,
             kind,
             bodyKeys: body && typeof body === "object" ? Object.keys(body) : [],
@@ -71,7 +91,8 @@ export class WebhookController {
       } else {
         request.log.info(
           {
-            channel: request.params.channel,
+            channel,
+            path: `/webhooks/${channel}`,
             inboxId: resolved.id,
             created: result.created,
             duplicates: result.duplicates,
@@ -81,6 +102,7 @@ export class WebhookController {
       }
       return reply.code(200).send({ ok: true, ...result });
     } catch (err: any) {
+      request.log.error({ err, channel, path: `/webhooks/${channel}` }, "webhook ingest failed");
       return reply.code(400).send({ ok: false, error: err.message });
     }
   }

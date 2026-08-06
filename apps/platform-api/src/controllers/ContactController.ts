@@ -5,6 +5,7 @@ import {
   asStringList,
   contactIdentifiersFromRow,
   contactToIdentities,
+  formatWhatsAppStorage,
   withPrimaryAndLists,
 } from "../services/MessagingService.js";
 import { ulid } from "ulid";
@@ -26,18 +27,22 @@ function shapeContact(c: {
   emailDetails?: unknown;
 }) {
   const emails = asStringList(c.emails);
-  const whatsappIds = asStringList(c.whatsappIds);
+  const whatsappIds = asStringList(c.whatsappIds)
+    .map((id) => formatWhatsAppStorage(id) ?? id)
+    .filter(Boolean);
+  const primaryWa =
+    formatWhatsAppStorage(c.whatsappId) ?? whatsappIds[0] ?? null;
   const identities = contactToIdentities(c as never);
   return {
     id: c.id,
     name: c.name,
     email: c.email ?? emails[0] ?? null,
     emails: emails.length ? emails : c.email ? [c.email] : [],
-    whatsappId: c.whatsappId ?? whatsappIds[0] ?? null,
+    whatsappId: primaryWa,
     whatsappIds: whatsappIds.length
       ? whatsappIds
-      : c.whatsappId
-        ? [c.whatsappId]
+      : primaryWa
+        ? [primaryWa]
         : [],
     whatsappEnabled: c.whatsappEnabled,
     instagramEnabled: c.instagramEnabled,
@@ -46,7 +51,10 @@ function shapeContact(c: {
     identities: identities.map((identity) => ({
       id: identity.id,
       channel: identity.channel,
-      externalId: identity.externalId,
+      externalId:
+        identity.channel === "whatsapp"
+          ? formatWhatsAppStorage(identity.externalId) ?? identity.externalId
+          : identity.externalId,
       metadata: identity.metadata,
       enabled: identity.enabled,
     })),

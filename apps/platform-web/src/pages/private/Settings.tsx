@@ -16,7 +16,6 @@ import { CheckCircle2, Copy, Link2, Loader2, Radio, Save } from "lucide-react";
 type Field = {
   key: string;
   label: string;
-  password?: boolean;
   placeholder?: string;
 };
 
@@ -71,14 +70,12 @@ function FieldGrid({
         <div key={field.key} className="grid gap-1.5">
           <label className="text-sm font-medium">{field.label}</label>
           <Input
-            type={field.password ? "password" : "text"}
+            type="text"
             value={values[field.key] ?? ""}
             onChange={(e) => onChange(field.key, e.target.value)}
             placeholder={field.placeholder}
             autoComplete="off"
-            onFocus={(e) => {
-              if (e.target.value === "***") onChange(field.key, "");
-            }}
+            spellCheck={false}
           />
         </div>
       ))}
@@ -89,7 +86,6 @@ function FieldGrid({
 function ChannelCard({
   title,
   description,
-  connected,
   children,
   onSave,
   saving,
@@ -97,7 +93,6 @@ function ChannelCard({
 }: {
   title: string;
   description: string;
-  connected?: boolean;
   children: ReactNode;
   onSave: () => void;
   saving: boolean;
@@ -106,23 +101,8 @@ function ChannelCard({
   return (
     <Card>
       <CardHeader className="pb-4">
-        <div className="flex items-start justify-between gap-3">
-          <div>
-            <CardTitle>{title}</CardTitle>
-            <CardDescription className="mt-1">{description}</CardDescription>
-          </div>
-          {connected != null && (
-            <span
-              className={`shrink-0 rounded-full px-2.5 py-1 text-[11px] font-medium ${
-                connected
-                  ? "bg-emerald-500/15 text-emerald-700 dark:text-emerald-300"
-                  : "bg-muted text-muted-foreground"
-              }`}
-            >
-              {connected ? "Connected" : "Not connected"}
-            </span>
-          )}
-        </div>
+        <CardTitle>{title}</CardTitle>
+        <CardDescription className="mt-1">{description}</CardDescription>
       </CardHeader>
       <CardContent className="space-y-5">
         {children}
@@ -163,10 +143,6 @@ function CopyRow({ label, value }: { label: string; value?: string }) {
       </Button>
     </div>
   );
-}
-
-function isSecretSet(value: string | undefined): boolean {
-  return Boolean(value && value !== "");
 }
 
 export function SettingsPage() {
@@ -238,11 +214,8 @@ export function SettingsPage() {
       setBanner({ tone: "err", text: "Channel inbox is missing. Contact support." });
       return;
     }
-    const cleanConfig = Object.fromEntries(
-      Object.entries(config).filter(([, v]) => v !== "***" && v !== undefined),
-    );
     updateInbox(
-      { id: inbox.id, body: { channelConfig: cleanConfig, enabled: true } },
+      { id: inbox.id, body: { channelConfig: config, enabled: true } },
       {
         onSuccess: () => setBanner({ tone: "ok", text: "Saved" }),
         onError: (err) => setBanner({ tone: "err", text: err.message }),
@@ -290,10 +263,6 @@ export function SettingsPage() {
     );
   }
 
-  const waConnected = isSecretSet(waConfig.accessToken) && isSecretSet(waConfig.phoneNumberId);
-  const igConnected = isSecretSet(igConfig.accessToken);
-  const emailConnected = isSecretSet(emailConfig.refreshToken) || isSecretSet(emailConfig.accessToken);
-
   return (
     <div className="flex h-full flex-1 flex-col overflow-y-auto bg-background p-8">
       <div className="mx-auto w-full max-w-4xl space-y-8 pb-12">
@@ -331,7 +300,6 @@ export function SettingsPage() {
         <ChannelCard
           title="WhatsApp"
           description="Paste values from Meta WhatsApp → API Setup."
-          connected={waConnected}
           saving={isPending}
           onSave={() => handleSave("whatsapp", waConfig)}
         >
@@ -340,9 +308,9 @@ export function SettingsPage() {
             onChange={(key, value) => setWaConfig((prev) => ({ ...prev, [key]: value }))}
             fields={[
               { key: "phoneNumberId", label: "Phone Number ID" },
-              { key: "accessToken", label: "Access Token", password: true },
-              { key: "verifyToken", label: "Verify Token", placeholder: "Choose any secret phrase" },
-              { key: "appSecret", label: "App Secret", password: true },
+              { key: "accessToken", label: "Access Token" },
+              { key: "verifyToken", label: "Verify Token" },
+              { key: "appSecret", label: "App Secret" },
               { key: "businessAccountId", label: "Business Account ID" },
             ]}
           />
@@ -351,7 +319,6 @@ export function SettingsPage() {
         <ChannelCard
           title="Instagram"
           description="Save App ID and App Secret, then Connect."
-          connected={igConnected}
           saving={isPending}
           onSave={() => handleSave("instagram", igConfig)}
           footer={
@@ -375,9 +342,9 @@ export function SettingsPage() {
             onChange={(key, value) => setIgConfig((prev) => ({ ...prev, [key]: value }))}
             fields={[
               { key: "instagramAppId", label: "App ID" },
-              { key: "appSecret", label: "App Secret", password: true },
-              { key: "verifyToken", label: "Verify Token", placeholder: "Choose any secret phrase" },
-              { key: "accessToken", label: "Access Token", password: true, placeholder: "Filled after Connect" },
+              { key: "appSecret", label: "App Secret" },
+              { key: "verifyToken", label: "Verify Token" },
+              { key: "accessToken", label: "Access Token" },
               { key: "pageId", label: "Page / User ID" },
               { key: "instagramUsername", label: "Username" },
             ]}
@@ -387,7 +354,6 @@ export function SettingsPage() {
         <ChannelCard
           title="Gmail"
           description="Save Client ID, Client Secret, and Pub/Sub topic, then Connect."
-          connected={emailConnected}
           saving={isPending}
           onSave={() => handleSave("email", emailConfig)}
           footer={
@@ -408,7 +374,7 @@ export function SettingsPage() {
               <Button
                 type="button"
                 variant="outline"
-                disabled={watching || isPending || !emailConnected}
+                disabled={watching || isPending}
                 onClick={() => void handleStartWatch()}
               >
                 {watching ? (
@@ -426,20 +392,10 @@ export function SettingsPage() {
             onChange={(key, value) => setEmailConfig((prev) => ({ ...prev, [key]: value }))}
             fields={[
               { key: "clientId", label: "Client ID" },
-              { key: "clientSecret", label: "Client Secret", password: true },
+              { key: "clientSecret", label: "Client Secret" },
               { key: "pubsubTopic", label: "Pub/Sub Topic", placeholder: "projects/…/topics/…" },
-              {
-                key: "refreshToken",
-                label: "Refresh Token",
-                password: true,
-                placeholder: "Filled after Connect",
-              },
-              {
-                key: "accessToken",
-                label: "Access Token",
-                password: true,
-                placeholder: "Filled after Connect",
-              },
+              { key: "refreshToken", label: "Refresh Token" },
+              { key: "accessToken", label: "Access Token" },
             ]}
           />
         </ChannelCard>

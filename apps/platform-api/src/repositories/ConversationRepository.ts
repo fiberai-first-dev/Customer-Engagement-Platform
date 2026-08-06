@@ -2,6 +2,7 @@ import { prisma } from "../config/db.js";
 import {
   contactIdentifiersFromRow,
   contactToIdentities,
+  formatWhatsAppStorage,
 } from "../services/MessagingService.js";
 
 type ChannelStatus = "open" | "pending" | "resolved";
@@ -19,6 +20,10 @@ function shapeConversation<T extends {
 }>(conversation: T) {
   const { inbox, contact, ...rest } = conversation;
   const identities = contactToIdentities(contact);
+  const whatsappIds = asStringListOptional((contact as { whatsappIds?: unknown }).whatsappIds)
+    .map((id) => formatWhatsAppStorage(id) ?? id);
+  const whatsappId =
+    formatWhatsAppStorage(contact.whatsappId) ?? whatsappIds[0] ?? null;
   return {
     ...rest,
     channelType: inbox.channelType as "whatsapp" | "instagram" | "email",
@@ -27,14 +32,17 @@ function shapeConversation<T extends {
       id: contact.id,
       name: contact.name,
       email: contact.email,
-      whatsappId: contact.whatsappId,
-      whatsappIds: asStringListOptional((contact as { whatsappIds?: unknown }).whatsappIds),
+      whatsappId,
+      whatsappIds: whatsappIds.length ? whatsappIds : whatsappId ? [whatsappId] : [],
       emails: asStringListOptional((contact as { emails?: unknown }).emails),
       identifiers: contactIdentifiersFromRow(contact),
       identities: identities.map((identity) => ({
         id: identity.id,
         channel: identity.channel,
-        externalId: identity.externalId,
+        externalId:
+          identity.channel === "whatsapp"
+            ? formatWhatsAppStorage(identity.externalId) ?? identity.externalId
+            : identity.externalId,
         metadata: identity.metadata,
         enabled: identity.enabled,
       })),

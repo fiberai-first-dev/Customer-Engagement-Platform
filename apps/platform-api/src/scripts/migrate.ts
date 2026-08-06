@@ -1,10 +1,12 @@
 /**
  * Database bootstrap without `prisma migrate deploy` (hangs on Supabase pooler).
  *
- * Paths:
- * - Empty / incomplete DB → reset CEP objects, apply all SQL, baseline history
- * - Legacy account-centric DB → apply inbox SQL repair, baseline
- * - Current schema → baseline history if missing
+ * Called automatically on API boot (`server.ts`). Safe paths:
+ * - Empty / incomplete DB → create CEP tables (reset + apply migrations)
+ * - Incremental column migrations when missing
+ * - Already current → no-op
+ *
+ * Never wipe a populated unexpected schema (refuses with diagnostics).
  */
 import "../config/load-env.js";
 import { existsSync, readFileSync, readdirSync } from "node:fs";
@@ -401,9 +403,32 @@ export async function runDatabaseMigrations(): Promise<void> {
       return;
     }
 
-    console.log("[migrate] Unexpected schema — forcing clean recreate");
-    await resetCepSchema(prisma);
-    await applyAllMigrations(prisma);
+    // Never wipe a live DB here — that drops Gmail historyId / OAuth tokens / conversations.
+    // Incomplete/empty paths above already handle true greenfield recovery.
+    const diagnostics = {
+      hasInboxes: await tableExists(prisma, "inboxes"),
+      hasContacts: await tableExists(prisma, "contacts"),
+      hasWhatsappEnabled: await flag(
+        prisma,
+        `SELECT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='contacts' AND column_name='whatsapp_enabled') AS exists`,
+      ),
+      hasEmails: await flag(
+        prisma,
+        `SELECT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='contacts' AND column_name='emails') AS exists`,
+      ),
+      hasWhatsappIds: await flag(
+        prisma,
+        `SELECT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='contacts' AND column_name='whatsapp_ids') AS exists`,
+      ),
+      hasPhone: await flag(
+        prisma,
+        `SELECT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='contacts' AND column_name='phone') AS exists`,
+      ),
+      hasIdentityTable: await tableExists(prisma, "contact_identities"),
+    };
+    throw new Error(
+      `[migrate] Unexpected schema — refusing to wipe production data. Diagnostics: ${JSON.stringify(diagnostics)}. Fix with an incremental migration or run migrate reset only intentionally.`,
+    );
   } finally {
     await prisma.$disconnect();
   }

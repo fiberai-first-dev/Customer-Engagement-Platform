@@ -115,7 +115,7 @@ Agent UI → POST /api/v1/conversations/:id/messages
 
 ### 3.3 Vendor OAuth (no CLI)
 
-Developers historically ran `npm run gmail:oauth` / `npm run instagram:oauth` on localhost. **Vendors only have the hosted UI**, so OAuth is browser-native:
+Developers historically ran local OAuth CLIs. **Vendors only have the hosted UI**, so OAuth is browser-native:
 
 ```text
 Settings → Save App / Client credentials
@@ -198,15 +198,14 @@ API client: `apps/platform-web/src/api/index.ts` (React Query + Zustand auth tok
 | Concern | Notes |
 |---------|--------|
 | Schema | `apps/platform-api/prisma/schema.prisma` |
-| Migrations | `npm run db:deploy` (`src/scripts/migrate.ts`) |
-| Seed | `npm run seed` — ensures account + 3 channel inboxes from env |
-| Docker | `apps/docker-compose.yml` — API + web (and optional deps) |
-| Bootstrap | See `apps/platform-api/BOOTSTRAP.md` |
+| Migrations | Run automatically on API boot (`server.ts` → `migrate.ts`). Optional CLI: `npm run db:deploy` |
+| Workspace | Boot `ensureWorkspace()` creates account + 3 inboxes and merges non-empty `.env` channel creds into `channelConfig` |
+| Docker | `apps/docker-compose.yml` — API + web |
 
 Secrets:
 
-- Prefer inbox `channelConfig` from Settings for multi-tenant vendor credentials.  
-- Server `.env` supplies platform defaults and Meta/Google **app** secrets when inbox fields are empty.
+- Server `.env` channel vars are synced into inbox `channelConfig` on every boot (empty env keys do not wipe DB/OAuth values).  
+- Settings / OAuth Connect can also write tokens into the same `channelConfig`.
 
 ---
 

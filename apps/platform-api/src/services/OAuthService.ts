@@ -207,7 +207,9 @@ export async function startInstagramOAuth(
   return { url: authUrl.toString(), redirectUri };
 }
 
-async function subscribeInstagramMessages(accessToken: string) {
+export async function subscribeInstagramMessaging(
+  accessToken: string,
+): Promise<{ ok: boolean; error?: string; status?: number }> {
   const fields = [
     "messages",
     "messaging_postbacks",
@@ -216,16 +218,35 @@ async function subscribeInstagramMessages(accessToken: string) {
     "messaging_referral",
   ].join(",");
   try {
-    await fetch(
+    const res = await fetch(
       `https://graph.instagram.com/v21.0/me/subscribed_apps?subscribed_fields=${encodeURIComponent(fields)}`,
       {
         method: "POST",
         headers: { Authorization: `Bearer ${accessToken}` },
       },
     );
-  } catch {
-    /* best-effort */
+    const body = (await res.json().catch(() => ({}))) as {
+      success?: boolean;
+      error?: { message?: string };
+    };
+    if (!res.ok) {
+      return {
+        ok: false,
+        status: res.status,
+        error: body.error?.message || `HTTP ${res.status}`,
+      };
+    }
+    return { ok: true, status: res.status };
+  } catch (err) {
+    return {
+      ok: false,
+      error: err instanceof Error ? err.message : "subscribe failed",
+    };
   }
+}
+
+async function subscribeInstagramMessages(accessToken: string) {
+  await subscribeInstagramMessaging(accessToken);
 }
 
 export async function completeInstagramOAuth(input: {

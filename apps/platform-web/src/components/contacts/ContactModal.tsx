@@ -119,7 +119,13 @@ export function ContactModal({ isOpen, onClose, initialData, accountId }: Props)
     }
 
     const emails = cleanList(formData.emails);
-    const whatsappIds = cleanList(formData.whatsappIds);
+    const whatsappIds = cleanList(formData.whatsappIds).map((n) => {
+      const digits = n.replace(/[^\d]/g, "");
+      if (!digits) return n;
+      if (digits.length > 10) return `+${digits.slice(0, -10)} ${digits.slice(-10)}`;
+      if (digits.length === 10) return `+91 ${digits}`;
+      return `+${digits}`;
+    });
     const name = formData.name.trim();
     const instagramId = formData.instagramId.trim().replace(/^@+/, "");
 
@@ -195,7 +201,7 @@ export function ContactModal({ isOpen, onClose, initialData, accountId }: Props)
               label="WhatsApp"
               values={formData.whatsappIds}
               onChange={(whatsappIds) => setFormData({ ...formData, whatsappIds })}
-              placeholder="919876543210"
+              placeholder="+91 9876543210"
             />
 
             <div className="space-y-2">

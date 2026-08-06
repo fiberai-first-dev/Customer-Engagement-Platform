@@ -32,10 +32,11 @@ function asEmailConfig(raw: Prisma.JsonValue): EmailChannelConfig | null {
   return null;
 }
 
-/** Pick the enabled Email inbox (optional match on notification emailAddress). */
+/** Pick an Email inbox (optional match on notification emailAddress). Prefer enabled. */
 async function resolveEmailInbox(emailAddress?: string) {
   const candidates = await prisma.inbox.findMany({
-    where: { channelType: "email", enabled: true },
+    where: { channelType: "email" },
+    orderBy: [{ enabled: "desc" }, { createdAt: "asc" }],
   });
   const emailInboxes = candidates.filter((inbox) => asEmailConfig(inbox.channelConfig));
 
@@ -48,11 +49,16 @@ async function resolveEmailInbox(emailAddress?: string) {
     if (matched) return matched;
   }
 
-  if (emailInboxes.length === 1) return emailInboxes[0]!;
   if (emailInboxes.length === 0) {
-    throw new Error("No enabled Email inbox found — run seed with Gmail tokens");
+    throw new Error("No Email inbox found — connect Gmail in Settings or set .env tokens");
   }
-  throw new Error("Multiple Email inboxes enabled — keep a single email inbox");
+  // Prefer a single enabled inbox; otherwise first with credentials
+  const enabled = emailInboxes.filter((i) => i.enabled);
+  if (enabled.length === 1) return enabled[0]!;
+  if (enabled.length > 1) {
+    throw new Error("Multiple Email inboxes enabled — keep a single email inbox");
+  }
+  return emailInboxes[0]!;
 }
 
 export async function handlePubSubNotification(
@@ -74,56 +80,61 @@ export async function handlePubSubNotification(
   const inbox = await resolveEmailInbox(pubsubData.emailAddress);
   const inboxId = inbox.id;
 
-  const config = asEmailConfig(inbox.channelConfig);
+  let config = asEmailConfig(inbox.channelConfig);
   if (!config) throw new Error("Inbox is not configured for email");
 
   const startHistoryId = config.historyId ? String(config.historyId) : "";
+  let primed = false;
   if (!startHistoryId) {
     console.warn(
-      `[email] No historyId on inbox ${inboxId}; running users.watch now. ` +
-        `This notification is baseline-only (0 messages). Send another email after watch succeeds.`,
+      `[email] No historyId on inbox ${inboxId}; running users.watch and catching up recent INBOX mail.`,
     );
+    primed = true;
     try {
       await setupEmailWatch(inboxId);
+      const refreshed = await prisma.inbox.findUnique({ where: { id: inboxId } });
+      config = refreshed ? asEmailConfig(refreshed.channelConfig) : config;
     } catch (err) {
       console.error("[email] Auto watch setup failed:", err);
       await updateInboxConfig(inboxId, inbox.channelConfig, {
         historyId: notificationHistoryId,
       });
     }
-    return { processed: 0, skipped: 0, inboxId, primed: true };
   }
 
-  const gmail = getEmailClient(config);
+  const gmail = getEmailClient(config!);
   let messageIds: string[] = [];
 
-  try {
-    let pageToken: string | undefined;
-    do {
-      const historyRes = await gmail.users.history.list({
-        userId: "me",
-        startHistoryId,
-        historyTypes: ["messageAdded"],
-        labelId: "INBOX",
-        pageToken,
-      });
-      for (const h of historyRes.data.history ?? []) {
-        for (const a of h.messagesAdded ?? []) {
-          if (a.message?.id) messageIds.push(a.message.id);
+  // After a wipe/redeploy there is no prior cursor — skip history.list and catch up.
+  if (startHistoryId && !primed) {
+    try {
+      let pageToken: string | undefined;
+      do {
+        const historyRes = await gmail.users.history.list({
+          userId: "me",
+          startHistoryId,
+          historyTypes: ["messageAdded"],
+          labelId: "INBOX",
+          pageToken,
+        });
+        for (const h of historyRes.data.history ?? []) {
+          for (const a of h.messagesAdded ?? []) {
+            if (a.message?.id) messageIds.push(a.message.id);
+          }
         }
-      }
-      pageToken = historyRes.data.nextPageToken ?? undefined;
-    } while (pageToken);
-  } catch (err: unknown) {
-    const status = (err as { code?: number })?.code;
-    console.warn("[email] history.list failed:", status ?? err);
-    // Fall through to recent-inbox catch-up
+        pageToken = historyRes.data.nextPageToken ?? undefined;
+      } while (pageToken);
+    } catch (err: unknown) {
+      const status = (err as { code?: number })?.code;
+      console.warn("[email] history.list failed:", status ?? err);
+      // Fall through to recent-inbox catch-up
+    }
   }
 
-  // Catch-up: history cursor often skips the mail that primed historyId.
+  // Catch-up: history cursor often skips the mail that primed historyId (and after wipe).
   if (messageIds.length === 0) {
     console.warn(
-      `[email] history.list empty from ${startHistoryId}; fetching recent INBOX messages`,
+      `[email] history.list empty from ${startHistoryId || "(none)"}; fetching recent INBOX messages`,
     );
     const listRes = await gmail.users.messages.list({
       userId: "me",
@@ -141,7 +152,7 @@ export async function handlePubSubNotification(
     await updateInboxConfig(inboxId, inbox.channelConfig, {
       historyId: notificationHistoryId,
     });
-    return { processed: 0, skipped: 0, inboxId };
+    return { processed: 0, skipped: 0, inboxId, primed };
   }
 
   let processed = 0;
@@ -161,7 +172,7 @@ export async function handlePubSubNotification(
         continue;
       }
 
-      const normalized = emailAdapter.parseInbound(config, msgData);
+      const normalized = emailAdapter.parseInbound(config!, msgData);
       if (normalized.length === 0) {
         skipped++;
         continue;
@@ -180,12 +191,69 @@ export async function handlePubSubNotification(
     }
   }
 
-  await updateInboxConfig(inboxId, inbox.channelConfig, {
+  await updateInboxConfig(inboxId, (await prisma.inbox.findUnique({ where: { id: inboxId } }))?.channelConfig ?? inbox.channelConfig, {
     historyId: notificationHistoryId,
   });
 
   console.info(`[email] pubsub done inbox=${inboxId} processed=${processed} skipped=${skipped}`);
-  return { processed, skipped, inboxId };
+  return { processed, skipped, inboxId, primed };
+}
+
+/** After watch / redeploy: ingest recent INBOX so mail isn't stuck waiting for Pub/Sub. */
+export async function catchUpRecentEmailMessages(
+  inboxId: string,
+  maxResults = 15,
+): Promise<{ processed: number; skipped: number }> {
+  const inbox = await prisma.inbox.findUnique({ where: { id: inboxId } });
+  if (!inbox) return { processed: 0, skipped: 0 };
+  const config = asEmailConfig(inbox.channelConfig);
+  if (!config) return { processed: 0, skipped: 0 };
+
+  const gmail = getEmailClient(config);
+  const listRes = await gmail.users.messages.list({
+    userId: "me",
+    labelIds: ["INBOX"],
+    maxResults,
+  });
+  const messageIds = [...new Set(
+    (listRes.data.messages ?? [])
+      .map((m) => m.id)
+      .filter((id): id is string => !!id),
+  )];
+
+  let processed = 0;
+  let skipped = 0;
+  for (const msgId of messageIds) {
+    try {
+      const msgRes = await gmail.users.messages.get({
+        userId: "me",
+        id: msgId,
+        format: "full",
+      });
+      const msgData = msgRes.data;
+      const labels = msgData.labelIds ?? [];
+      if (labels.includes("SENT") && !labels.includes("INBOX")) {
+        skipped++;
+        continue;
+      }
+      const normalized = emailAdapter.parseInbound(config, msgData);
+      if (normalized.length === 0) {
+        skipped++;
+        continue;
+      }
+      const result = await ingestInboundMessages({
+        inboxId: inbox.id,
+        payload: msgData,
+        eventKey: `email:${normalized.map((m) => m.externalId).join(",")}`,
+      });
+      if (result.created > 0) processed += result.created;
+      else skipped++;
+    } catch (err) {
+      console.error(`[email] catch-up failed for ${msgId}:`, err);
+      skipped++;
+    }
+  }
+  return { processed, skipped };
 }
 
 export async function setupEmailWatch(inboxId?: string) {
@@ -197,6 +265,9 @@ export async function setupEmailWatch(inboxId?: string) {
   const config = asEmailConfig(inbox.channelConfig);
   if (!config) throw new Error("Inbox is not configured for email");
   if (!config.pubsubTopic) throw new Error("Email pubsubTopic missing");
+  if (!config.refreshToken && !config.accessToken) {
+    throw new Error("Email OAuth tokens missing (refreshToken/accessToken)");
+  }
 
   const gmail = getEmailClient(config);
   const watchRes = await gmail.users.watch({
@@ -229,16 +300,30 @@ export const setupGmailWatch = setupEmailWatch;
 export async function renewEmailWatch(inboxId?: string) {
   const where: Prisma.InboxWhereInput = {
     channelType: "email",
-    enabled: true,
   };
   if (inboxId) where.id = inboxId;
 
-  const inboxes = await prisma.inbox.findMany({ where });
+  const inboxes = await prisma.inbox.findMany({
+    where,
+    orderBy: [{ enabled: "desc" }, { createdAt: "asc" }],
+  });
   const results: Array<{ inboxId: string; ok: boolean; error?: string; expiresAt?: string }> = [];
 
   for (const inbox of inboxes) {
-    if (!asEmailConfig(inbox.channelConfig)) continue;
+    const config = asEmailConfig(inbox.channelConfig);
+    if (!config) continue;
+    if (!config.pubsubTopic || (!config.refreshToken && !config.accessToken)) {
+      results.push({
+        inboxId: inbox.id,
+        ok: false,
+        error: "missing pubsubTopic or OAuth tokens",
+      });
+      continue;
+    }
     try {
+      if (!inbox.enabled) {
+        await prisma.inbox.update({ where: { id: inbox.id }, data: { enabled: true } });
+      }
       const result = await setupEmailWatch(inbox.id);
       results.push({
         inboxId: inbox.id,

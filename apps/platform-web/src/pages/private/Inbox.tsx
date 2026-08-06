@@ -72,18 +72,23 @@ export function InboxPage() {
       const matches = channelConvs.some((conversation) => {
         const name = conversation.contact.name?.toLowerCase() ?? "";
         const email = conversation.contact.email?.toLowerCase() ?? "";
-        const whatsapp = (
-          conversation.contact.whatsappId ||
-          conversation.contact.identifiers?.whatsapp ||
-          conversation.contact.whatsappIds?.[0] ||
-          ""
-        ).toLowerCase();
+        const whatsappParts = [
+          conversation.contact.whatsappId,
+          conversation.contact.identifiers?.whatsapp,
+          ...(conversation.contact.whatsappIds ?? []),
+        ]
+          .filter(Boolean)
+          .join(" ")
+          .toLowerCase();
         const preview = conversation.messages?.[0]?.content?.toLowerCase() ?? "";
+        const digitsQuery = query.replace(/[^\d]/g, "");
+        const digitsWhatsapp = whatsappParts.replace(/[^\d]/g, "");
         return (
           name.includes(query) ||
           email.includes(query) ||
-          whatsapp.includes(query) ||
-          preview.includes(query)
+          whatsappParts.includes(query) ||
+          preview.includes(query) ||
+          (digitsQuery.length >= 4 && digitsWhatsapp.includes(digitsQuery))
         );
       });
       if (matches) items.push(primary);

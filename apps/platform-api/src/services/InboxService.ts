@@ -2,7 +2,7 @@ import { ulid } from "ulid";
 import { InboxRepository } from "../repositories/InboxRepository.js";
 import { AccountRepository } from "../repositories/AccountRepository.js";
 import { env } from "../config/env.js";
-import { redactConfig, mergeChannelConfig } from "./MessagingService.js";
+import { mergeChannelConfig } from "./MessagingService.js";
 import type { ChannelType, Prisma } from "../generated/client/index.js";
 
 const channelTypes: ChannelType[] = ["whatsapp", "instagram", "email"];
@@ -20,7 +20,7 @@ export class InboxService {
   }) {
     return {
       ...inbox,
-      channelConfig: redactConfig(inbox.channelConfig),
+      channelConfig: inbox.channelConfig,
       webhookUrl: `${env.publicBaseUrl.replace(/\/$/, "")}/webhooks/${inbox.channelType}`,
     };
   }

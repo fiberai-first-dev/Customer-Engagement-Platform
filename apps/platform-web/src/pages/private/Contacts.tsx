@@ -5,6 +5,7 @@ import { useState, useMemo } from "react";
 import { Search, MoreHorizontal, Plus, Edit2, Loader2 } from "lucide-react";
 import { useAccounts, useContacts } from "../../api";
 import { ContactModal, type ContactFormData } from "../../components/contacts/ContactModal";
+import { formatWhatsAppDisplay } from "../../components/inbox/utils";
 
 function joinList(primary: string | null | undefined, list?: string[] | null): string {
   const seen = new Set<string>();
@@ -12,12 +13,41 @@ function joinList(primary: string | null | undefined, list?: string[] | null): s
   for (const raw of [...(list ?? []), primary]) {
     const v = raw?.trim();
     if (!v) continue;
-    const key = v.toLowerCase();
+    const key = v.replace(/[^\d]/g, "") || v.toLowerCase();
     if (seen.has(key)) continue;
     seen.add(key);
     out.push(v);
   }
   return out.length ? out.join(", ") : "—";
+}
+
+function joinWhatsApp(primary: string | null | undefined, list?: string[] | null): string {
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const raw of [...(list ?? []), primary]) {
+    const v = raw?.trim();
+    if (!v) continue;
+    const formatted = formatWhatsAppDisplay(v);
+    const key = formatted.replace(/[^\d]/g, "");
+    if (!key || seen.has(key)) continue;
+    seen.add(key);
+    out.push(formatted);
+  }
+  return out.length ? out.join(", ") : "—";
+}
+
+function matchesSearch(
+  haystackParts: Array<string | null | undefined>,
+  query: string,
+): boolean {
+  const lowerQuery = query.toLowerCase().trim();
+  if (!lowerQuery) return true;
+  const text = haystackParts.filter(Boolean).join(" ").toLowerCase();
+  if (text.includes(lowerQuery)) return true;
+  const digitsQuery = lowerQuery.replace(/[^\d]/g, "");
+  if (digitsQuery.length < 4) return false;
+  const digitsHay = text.replace(/[^\d]/g, "");
+  return digitsHay.includes(digitsQuery);
 }
 
 export function ContactsPage() {
@@ -34,23 +64,21 @@ export function ContactsPage() {
   const filteredContacts = useMemo(() => {
     if (!contacts) return [];
     if (!searchQuery.trim()) return contacts;
-    const lowerQuery = searchQuery.toLowerCase();
-    return contacts.filter((c) => {
-      const haystack = [
-        c.id,
-        c.name,
-        c.email,
-        c.whatsappId,
-        ...(c.emails ?? []),
-        ...(c.whatsappIds ?? []),
-        c.identifiers?.instagram,
-        c.identifiers?.whatsapp,
-      ]
-        .filter(Boolean)
-        .join(" ")
-        .toLowerCase();
-      return haystack.includes(lowerQuery);
-    });
+    return contacts.filter((c) =>
+      matchesSearch(
+        [
+          c.id,
+          c.name,
+          c.email,
+          c.whatsappId,
+          ...(c.emails ?? []),
+          ...(c.whatsappIds ?? []),
+          c.identifiers?.instagram,
+          c.identifiers?.whatsapp,
+        ],
+        searchQuery,
+      ),
+    );
   }, [contacts, searchQuery]);
 
   const openCreate = () => {
@@ -102,7 +130,7 @@ export function ContactsPage() {
             <table className="w-full text-left text-sm">
               <thead className="bg-muted/50 text-muted-foreground">
                 <tr>
-                  <th className="border-b border-border px-6 py-4 font-medium">ID</th>
+                  <th className="border-b border-border px-6 py-4 font-medium">Customer ID</th>
                   <th className="border-b border-border px-6 py-4 font-medium">Name</th>
                   <th className="border-b border-border px-6 py-4 font-medium">Email</th>
                   <th className="border-b border-border px-6 py-4 font-medium">WhatsApp</th>
@@ -149,7 +177,7 @@ export function ContactsPage() {
                         {joinList(c.email, c.emails)}
                       </td>
                       <td className="max-w-[180px] break-words px-6 py-4 text-muted-foreground">
-                        {joinList(c.whatsappId ?? c.identifiers?.whatsapp, c.whatsappIds)}
+                        {joinWhatsApp(c.whatsappId ?? c.identifiers?.whatsapp, c.whatsappIds)}
                       </td>
                       <td className="px-6 py-4 text-muted-foreground">
                         {(() => {

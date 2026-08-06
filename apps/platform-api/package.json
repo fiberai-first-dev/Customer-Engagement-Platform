@@ -8,13 +8,7 @@
     "build": "tsc -p tsconfig.json",
     "start": "node dist/server.js",
     "db:generate": "prisma generate",
-    "db:migrate": "prisma migrate dev",
     "db:deploy": "tsx src/scripts/migrate.ts",
-    "seed": "tsx src/scripts/seed.ts",
-    "bootstrap": "tsx src/scripts/migrate.ts && tsx src/scripts/seed.ts",
-    "gmail:oauth": "tsx src/scripts/gmail-oauth.ts",
-    "instagram:oauth": "tsx src/scripts/instagram-oauth.ts",
-    "ig:subscribe": "tsx src/scripts/ig-subscribe-webhooks.ts",
     "test": "vitest run --passWithNoTests"
   },
   "dependencies": {

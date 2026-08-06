@@ -1,7 +1,7 @@
 import { ulid } from "ulid";
 import { AccountRepository } from "../repositories/AccountRepository.js";
 import { InboxRepository } from "../repositories/InboxRepository.js";
-import { mergeChannelConfig, redactConfig } from "./MessagingService.js";
+import { mergeChannelConfig } from "./MessagingService.js";
 import type { ChannelType, Prisma } from "../generated/client/index.js";
 import { env } from "../config/env.js";
 
@@ -51,7 +51,7 @@ export class AccountService {
 
     return {
       ...inbox,
-      channelConfig: redactConfig(inbox.channelConfig),
+      channelConfig: inbox.channelConfig,
       webhookUrl: `${env.publicBaseUrl.replace(/\/$/, "")}/webhooks/${inbox.channelType}`,
     };
   }
