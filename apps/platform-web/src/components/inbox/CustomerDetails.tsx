@@ -69,9 +69,9 @@ export function CustomerDetails({ contact, onClose }: Props) {
   const commerce = useMemo(
     () =>
       buildMockCustomerCommerce(
-        contact?.id || contact?.email || contact?.whatsappId || contact?.phone || "anon",
+        contact?.id || contact?.email || contact?.whatsappId || "anon",
       ),
-    [contact?.id, contact?.email, contact?.whatsappId, contact?.phone],
+    [contact?.id, contact?.email, contact?.whatsappId],
   );
 
   if (!contact) {

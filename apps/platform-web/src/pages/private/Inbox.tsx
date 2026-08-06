@@ -75,7 +75,7 @@ export function InboxPage() {
         const whatsapp = (
           conversation.contact.whatsappId ||
           conversation.contact.identifiers?.whatsapp ||
-          conversation.contact.phone ||
+          conversation.contact.whatsappIds?.[0] ||
           ""
         ).toLowerCase();
         const preview = conversation.messages?.[0]?.content?.toLowerCase() ?? "";

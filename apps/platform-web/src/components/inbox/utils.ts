@@ -125,7 +125,6 @@ export function channelAccent(channel: ChannelType, active: boolean): string {
 
 export function contactDisplayName(contact: {
   name?: string | null;
-  phone?: string | null;
   whatsappId?: string | null;
   email?: string | null;
   identifiers?: Record<string, string>;
@@ -134,7 +133,6 @@ export function contactDisplayName(contact: {
     contact.name ||
     contact.whatsappId ||
     contact.identifiers?.whatsapp ||
-    contact.phone ||
     contact.email ||
     "Unknown"
   );
