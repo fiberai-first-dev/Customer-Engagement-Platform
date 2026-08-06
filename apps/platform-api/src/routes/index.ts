@@ -1,0 +1,182 @@
+import type { FastifyInstance } from "fastify";
+import { accountRoutes } from "./v1/accounts.routes.js";
+import { inboxRoutes } from "./v1/inboxes.routes.js";
+import { conversationRoutes } from "./v1/conversations.routes.js";
+import { webhookRoutes } from "./v1/webhooks.routes.js";
+import { emailRoutes } from "./v1/email.routes.js";
+import { authRoutes } from "./v1/auth.routes.js";
+import { contactsRoutes } from "./v1/contacts.routes.js";
+import { dashboardRoutes } from "./v1/dashboard.routes.js";
+import { orderRoutes } from "./v1/orders.routes.js";
+import { instagramOAuthRoutes } from "./v1/oauth.routes.js";
+import { requireAuth } from "../middleware/auth.js";
+import { prisma } from "../config/db.js";
+import { ulid } from "ulid";
+import { ingestInboundMessages } from "../services/MessagingService.js";
+
+export async function registerRoutes(app: FastifyInstance) {
+  app.get("/health", async () => ({ ok: true, service: "platform-api" }));
+
+  app.get("/privacy", async (_request, reply) => {
+    return reply.type("text/html").send(PRIVACY_POLICY_HTML);
+  });
+
+  app.get("/", async () => ({
+    service: "platform-api",
+    message: "This is the CEP API. Open the agent UI at http://localhost:5173",
+    health: "/health",
+    privacy: "/privacy",
+    docs: "See docs/PLATFORM.md",
+  }));
+
+  // Instagram Business Login (public; also skip auth hook below)
+  app.register(instagramOAuthRoutes, { prefix: "/oauth" });
+
+  app.addHook("preHandler", async (request, reply) => {
+    const path = request.url.split("?")[0] ?? request.url;
+    if (
+      path === "/" ||
+      path === "/health" ||
+      path === "/privacy" ||
+      path.startsWith("/webhooks/") ||
+      path.startsWith("/oauth/") ||
+      path.startsWith("/api/v1/auth/")
+    ) {
+      return;
+    }
+    await requireAuth(request, reply);
+    if (reply.sent) return;
+  });
+
+  app.register(authRoutes, { prefix: "/api/v1/auth" });
+  app.register(accountRoutes, { prefix: "/api/v1/accounts" });
+  app.register(inboxRoutes, { prefix: "/api/v1/inboxes" });
+  app.register(conversationRoutes, { prefix: "/api/v1/conversations" });
+  app.register(contactsRoutes, { prefix: "/api/v1/contacts" });
+  app.register(dashboardRoutes, { prefix: "/api/v1/dashboard" });
+  app.register(orderRoutes, { prefix: "/api/v1/orders" });
+  app.register(emailRoutes, { prefix: "/api/v1/email" });
+  // Back-compat alias
+  app.register(emailRoutes, { prefix: "/api/v1/gmail" });
+  app.register(webhookRoutes, { prefix: "/webhooks" });
+
+  if (process.env.NODE_ENV !== "production") {
+    app.post<{
+      Body: {
+        inboxId?: string;
+        from?: string;
+        name?: string;
+        content?: string;
+        subject?: string;
+      };
+    }>("/api/v1/dev/simulate-inbound", async (request, reply) => {
+      const { inboxId, from, name, content, subject } = request.body ?? {};
+      if (!inboxId || !from || !content) {
+        return reply.code(400).send({ error: "inboxId, from, content required" });
+      }
+
+      const inbox = await prisma.inbox.findUnique({ where: { id: inboxId } });
+      if (!inbox) return reply.code(404).send({ error: "inbox not found" });
+
+      let payload: unknown;
+      if (inbox.channelType === "whatsapp") {
+        const waFrom = from.replace(/^\+/, "");
+        payload = {
+          entry: [
+            {
+              changes: [
+                {
+                  value: {
+                    contacts: [
+                      { wa_id: waFrom, profile: { name: name ?? "Simulated" } },
+                    ],
+                    messages: [
+                      {
+                        id: `wamid.sim.${ulid()}`,
+                        from: waFrom,
+                        timestamp: String(Math.floor(Date.now() / 1000)),
+                        type: "text",
+                        text: { body: content },
+                      },
+                    ],
+                  },
+                },
+              ],
+            },
+          ],
+        };
+      } else if (inbox.channelType === "instagram") {
+        payload = {
+          entry: [
+            {
+              messaging: [
+                {
+                  sender: { id: from },
+                  timestamp: Date.now(),
+                  message: { mid: `mid.sim.${ulid()}`, text: content },
+                },
+              ],
+            },
+          ],
+        };
+      } else {
+        payload = {
+          id: `email.sim.${ulid()}`,
+          from,
+          fromName: name,
+          subject: subject ?? "Simulated email",
+          text: content,
+        };
+      }
+
+      const result = await ingestInboundMessages({ inboxId, payload });
+      return reply.code(201).send(result);
+    });
+  }
+}
+
+const PRIVACY_POLICY_HTML = `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>FiberAI CEP — Privacy Policy</title>
+  <style>
+    body{font-family:Georgia,serif;max-width:42rem;margin:2rem auto;padding:0 1.25rem 3rem;line-height:1.55;color:#1a1a1a}
+    h1{font-size:1.75rem;margin-bottom:.25rem} h2{font-size:1.15rem;margin-top:1.75rem}
+    .meta{color:#555;font-size:.95rem;margin-bottom:1.5rem}
+  </style>
+</head>
+<body>
+  <h1>Privacy Policy</h1>
+  <p class="meta">FiberAI Customer Engagement Platform (CEP)<br/>Last updated: August 6, 2026</p>
+  <p>This Privacy Policy describes how FiberAI (“we”, “us”) collects, uses, and shares information when you use our Customer Engagement Platform and related messaging integrations (WhatsApp, Instagram, Email/Gmail).</p>
+  <h2>1. Information we collect</h2>
+  <ul>
+    <li>Account information you provide (such as admin credentials for our dashboard).</li>
+    <li>Customer communication data processed on your behalf, including message content, sender identifiers (phone numbers, Instagram IDs, email addresses), and related metadata needed for inbox functionality.</li>
+    <li>Technical logs used to operate and secure the service.</li>
+  </ul>
+  <h2>2. How we use information</h2>
+  <ul>
+    <li>To provide omnichannel inbox, reply, and customer-context features.</li>
+    <li>To connect to messaging providers you authorize (Meta, Google).</li>
+    <li>To maintain security, troubleshooting, and service reliability.</li>
+  </ul>
+  <h2>3. Sharing</h2>
+  <p>We process messages through the third-party platforms you connect (for example Meta WhatsApp/Instagram APIs and Google Gmail APIs). We do not sell personal information. Infrastructure providers may process data solely to run the service.</p>
+  <h2>4. Data retention</h2>
+  <p>Message and contact data are retained while needed to provide the service to the business customer, or until deleted by that administrator, subject to legal obligations.</p>
+  <h2>5. Security</h2>
+  <p>We use reasonable administrative and technical safeguards. No method of transmission over the Internet is 100% secure.</p>
+  <h2>6. Your choices</h2>
+  <p>Business administrators may disconnect integrations and request deletion of workspace data by contacting us. End customers should contact the business they messaged.</p>
+  <h2>7. Children’s privacy</h2>
+  <p>The service is not directed to children under 13, and we do not knowingly collect personal information from children.</p>
+  <h2>8. Contact</h2>
+  <p>Questions about this policy: <strong>fiberai.akesh@gmail.com</strong></p>
+  <h2>9. Changes</h2>
+  <p>We may update this Privacy Policy from time to time. The “Last updated” date above will change when we do.</p>
+</body>
+</html>`;
+
