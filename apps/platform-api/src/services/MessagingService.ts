@@ -16,7 +16,6 @@ async function resolveOutboundRecipient(input: {
   contactId: string;
   channelType: ChannelType;
   contact: {
-    phone: string | null;
     email: string | null;
     whatsappId?: string | null;
     instagramId?: string | null;
@@ -25,7 +24,7 @@ async function resolveOutboundRecipient(input: {
   externalThreadId: string | null;
 }): Promise<string> {
   if (input.channelType === "whatsapp") {
-    const to = input.contact.whatsappId ?? input.contact.phone ?? input.externalThreadId;
+    const to = input.contact.whatsappId ?? input.externalThreadId;
     if (!to) throw new Error("No WhatsApp recipient on contact");
     return to;
   }
@@ -56,9 +55,10 @@ type ContactChannelRow = {
   accountId: string;
   name: string | null;
   email: string | null;
-  phone: string | null;
+  emails?: Prisma.JsonValue;
   whatsappEnabled: boolean;
   whatsappId: string | null;
+  whatsappIds?: Prisma.JsonValue;
   whatsappDetails: Prisma.JsonValue;
   instagramEnabled: boolean;
   instagramId: string | null;
@@ -67,6 +67,90 @@ type ContactChannelRow = {
   emailId: string | null;
   emailDetails: Prisma.JsonValue;
 };
+
+export function asStringList(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  return value
+    .filter((v): v is string => typeof v === "string")
+    .map((v) => v.trim())
+    .filter(Boolean);
+}
+
+/** Normalize WhatsApp numbers for stable match/storage (digits only, no leading +). */
+export function normalizeWhatsAppId(raw: string | null | undefined): string | null {
+  if (!raw) return null;
+  const digits = raw.replace(/[^\d]/g, "");
+  return digits || null;
+}
+
+export function uniqStrings(values: Array<string | null | undefined>): string[] {
+  const out: string[] = [];
+  const seen = new Set<string>();
+  for (const raw of values) {
+    const v = raw?.trim();
+    if (!v) continue;
+    const key = v.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(v);
+  }
+  return out;
+}
+
+export function uniqWhatsAppIds(values: Array<string | null | undefined>): string[] {
+  const out: string[] = [];
+  const seen = new Set<string>();
+  for (const raw of values) {
+    const v = normalizeWhatsAppId(raw);
+    if (!v || seen.has(v)) continue;
+    seen.add(v);
+    out.push(v);
+  }
+  return out;
+}
+
+export function withPrimaryAndLists(input: {
+  emails?: string[] | null;
+  whatsappIds?: string[] | null;
+  email?: string | null;
+  whatsappId?: string | null;
+}): {
+  email: string | null;
+  whatsappId: string | null;
+  emails: string[];
+  whatsappIds: string[];
+} {
+  const emails = uniqStrings([...(input.emails ?? []), input.email]);
+  const whatsappIds = uniqWhatsAppIds([...(input.whatsappIds ?? []), input.whatsappId]);
+  return {
+    emails,
+    whatsappIds,
+    email: emails[0] ?? null,
+    whatsappId: whatsappIds[0] ?? null,
+  };
+}
+
+function appendToList(existing: unknown, ...extra: Array<string | null | undefined>): string[] {
+  return uniqStrings([...asStringList(existing), ...extra]);
+}
+
+function appendWhatsAppIds(existing: unknown, ...extra: Array<string | null | undefined>): string[] {
+  return uniqWhatsAppIds([...asStringList(existing), ...extra]);
+}
+
+function whatsappMatchOr(accountId: string, ...candidates: Array<string | null | undefined>) {
+  const ids = uniqWhatsAppIds(candidates);
+  if (!ids.length) return null;
+  return {
+    accountId,
+    OR: ids.flatMap((id) => [
+      { whatsappId: id },
+      { whatsappIds: { array_contains: id } },
+      { whatsappId: `+${id}` },
+      { whatsappIds: { array_contains: `+${id}` } },
+    ]),
+  };
+}
 
 /** API-compat identity rows derived from contact columns. */
 export function contactToIdentities(contact: ContactChannelRow): Array<{
@@ -83,15 +167,21 @@ export function contactToIdentities(contact: ContactChannelRow): Array<{
     metadata: Prisma.JsonValue;
     enabled: boolean;
   }> = [];
-  if (contact.whatsappId) {
+
+  const waIds = uniqWhatsAppIds([
+    ...asStringList(contact.whatsappIds),
+    contact.whatsappId,
+  ]);
+  for (const [idx, externalId] of waIds.entries()) {
     out.push({
-      id: `${contact.id}:whatsapp`,
+      id: `${contact.id}:whatsapp:${idx}`,
       channel: "whatsapp",
-      externalId: contact.whatsappId,
+      externalId,
       metadata: contact.whatsappDetails,
       enabled: contact.whatsappEnabled,
     });
   }
+
   if (contact.instagramId) {
     out.push({
       id: `${contact.id}:instagram`,
@@ -101,11 +191,17 @@ export function contactToIdentities(contact: ContactChannelRow): Array<{
       enabled: contact.instagramEnabled,
     });
   }
-  if (contact.emailId || contact.email) {
+
+  const emailIds = uniqStrings([
+    ...asStringList(contact.emails),
+    contact.emailId,
+    contact.email,
+  ]);
+  for (const [idx, externalId] of emailIds.entries()) {
     out.push({
-      id: `${contact.id}:email`,
+      id: `${contact.id}:email:${idx}`,
       channel: "email",
-      externalId: contact.emailId || contact.email!,
+      externalId,
       metadata: contact.emailDetails,
       enabled: contact.emailEnabled,
     });
@@ -123,52 +219,67 @@ export async function enableContactChannel(input: {
   email?: string | null;
   phone?: string | null;
 }) {
+  const existing = await prisma.contact.findUnique({ where: { id: input.contactId } });
+  if (!existing) throw new Error("Contact not found");
+
   const details = input.details ?? {};
   if (input.channelType === "whatsapp") {
+    const whatsappIds = appendWhatsAppIds(
+      existing.whatsappIds,
+      existing.whatsappId,
+      input.phone,
+      input.externalId,
+    );
     return prisma.contact.update({
       where: { id: input.contactId },
       data: {
         whatsappEnabled: true,
-        whatsappId: input.externalId,
+        whatsappId: whatsappIds[0] ?? normalizeWhatsAppId(input.externalId),
+        whatsappIds,
         whatsappDetails: details,
-        phone: input.phone ?? input.externalId,
         name: input.name ?? undefined,
         email: input.email ?? undefined,
+        emails: input.email
+          ? appendToList(existing.emails, existing.email, input.email)
+          : undefined,
       },
     });
   }
   if (input.channelType === "instagram") {
-    const existing = await prisma.contact.findUnique({
-      where: { id: input.contactId },
-      select: { name: true },
-    });
     const nameLooksLikeIgsid =
-      !!existing?.name && /^\d{10,}$/.test(existing.name.trim());
+      !!existing.name && /^\d{10,}$/.test(existing.name.trim());
     return prisma.contact.update({
       where: { id: input.contactId },
       data: {
         instagramEnabled: true,
         instagramId: input.externalId,
         instagramDetails: details,
-        // Replace numeric IGSID placeholder when we learn @username
         name:
-          input.name && (!existing?.name || nameLooksLikeIgsid)
+          input.name && (!existing.name || nameLooksLikeIgsid)
             ? input.name
             : input.name ?? undefined,
         email: input.email ?? undefined,
-        phone: input.phone ?? undefined,
+        emails: input.email
+          ? appendToList(existing.emails, existing.email, input.email)
+          : undefined,
       },
     });
   }
+  const emails = appendToList(
+    existing.emails,
+    existing.email,
+    input.email,
+    input.externalId,
+  );
   return prisma.contact.update({
     where: { id: input.contactId },
     data: {
       emailEnabled: true,
       emailId: input.externalId,
       emailDetails: details,
-      email: input.email ?? input.externalId,
+      emails,
+      email: emails[0] ?? input.externalId,
       name: input.name ?? undefined,
-      phone: input.phone ?? undefined,
     },
   });
 }
@@ -182,20 +293,33 @@ export async function findOrCreateContact(input: {
   const senderKey =
     channelType === "email"
       ? extractEmailAddress(inbound.senderId)
-      : inbound.senderId;
+      : channelType === "whatsapp"
+        ? normalizeWhatsAppId(inbound.senderId) ?? inbound.senderId
+        : inbound.senderId;
   const details = {
     senderName: inbound.senderName ?? null,
   } as Prisma.InputJsonValue;
 
+  const waLookup = whatsappMatchOr(
+    accountId,
+    senderKey,
+    inbound.senderId,
+    inbound.senderPhone,
+  );
+
   const byChannel =
-    channelType === "whatsapp"
-      ? await prisma.contact.findFirst({ where: { accountId, whatsappId: senderKey } })
+    channelType === "whatsapp" && waLookup
+      ? await prisma.contact.findFirst({ where: waLookup })
       : channelType === "instagram"
         ? await prisma.contact.findFirst({ where: { accountId, instagramId: senderKey } })
         : await prisma.contact.findFirst({
             where: {
               accountId,
-              OR: [{ emailId: senderKey }, { email: senderKey }],
+              OR: [
+                { emailId: senderKey },
+                { email: senderKey },
+                { emails: { array_contains: senderKey } },
+              ],
             },
           });
 
@@ -211,29 +335,32 @@ export async function findOrCreateContact(input: {
         ? inbound.senderName ?? byChannel.name
         : byChannel.name ?? inbound.senderName,
       email: byChannel.email ?? (inbound.senderEmail ? extractEmailAddress(inbound.senderEmail) : null),
-      phone: byChannel.phone ?? inbound.senderPhone,
+      phone: byChannel.whatsappId ?? inbound.senderPhone,
     });
   }
 
-  // Soft-merge: same email/phone on another channel within the account
-  let matched =
-    (inbound.senderEmail &&
+  // Soft-merge: same email/WhatsApp on another channel within the account
+  const inboundEmail = inbound.senderEmail
+    ? extractEmailAddress(inbound.senderEmail)
+    : channelType === "email"
+      ? senderKey
+      : null;
+
+  const matched =
+    (inboundEmail &&
       (await prisma.contact.findFirst({
         where: {
           accountId,
           OR: [
-            { email: extractEmailAddress(inbound.senderEmail) },
-            { emailId: extractEmailAddress(inbound.senderEmail) },
+            { email: inboundEmail },
+            { emailId: inboundEmail },
+            { emails: { array_contains: inboundEmail } },
           ],
         },
       }))) ||
-    (inbound.senderPhone &&
-      (await prisma.contact.findFirst({
-        where: {
-          accountId,
-          OR: [{ phone: inbound.senderPhone }, { whatsappId: inbound.senderPhone.replace(/^\+/, "") }],
-        },
-      })));
+    (channelType !== "whatsapp" && waLookup
+      ? await prisma.contact.findFirst({ where: waLookup })
+      : null);
 
   if (matched) {
     return enableContactChannel({
@@ -242,26 +369,37 @@ export async function findOrCreateContact(input: {
       externalId: senderKey,
       details,
       name: matched.name ?? inbound.senderName,
-      email: matched.email ?? (inbound.senderEmail ? extractEmailAddress(inbound.senderEmail) : null),
-      phone: matched.phone ?? inbound.senderPhone,
+      email: matched.email ?? inboundEmail,
+      phone: matched.whatsappId ?? inbound.senderPhone,
     });
   }
+
+  const baseEmail = inbound.senderEmail
+    ? extractEmailAddress(inbound.senderEmail)
+    : channelType === "email"
+      ? extractEmailAddress(senderKey)
+      : undefined;
+  const emails = uniqStrings([baseEmail]);
+  const whatsappIds =
+    channelType === "whatsapp"
+      ? uniqWhatsAppIds([inbound.senderPhone, inbound.senderId, senderKey])
+      : uniqWhatsAppIds([inbound.senderPhone]);
 
   const base = {
     id: ulid(),
     accountId,
     name: inbound.senderName ?? inbound.senderEmail ?? inbound.senderPhone ?? senderKey,
-    email: inbound.senderEmail ? extractEmailAddress(inbound.senderEmail) : undefined,
-    phone: inbound.senderPhone,
+    email: emails[0] ?? null,
+    emails,
   };
 
   if (channelType === "whatsapp") {
     return prisma.contact.create({
       data: {
         ...base,
-        phone: inbound.senderPhone ?? senderKey,
         whatsappEnabled: true,
-        whatsappId: senderKey,
+        whatsappId: whatsappIds[0] ?? senderKey,
+        whatsappIds,
         whatsappDetails: details,
       },
     });
@@ -279,7 +417,8 @@ export async function findOrCreateContact(input: {
   return prisma.contact.create({
     data: {
       ...base,
-      email: extractEmailAddress(senderKey),
+      email: emails[0] ?? extractEmailAddress(senderKey),
+      emails: uniqStrings([...emails, extractEmailAddress(senderKey)]),
       emailEnabled: true,
       emailId: senderKey,
       emailDetails: details,

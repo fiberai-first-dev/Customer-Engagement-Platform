@@ -85,12 +85,16 @@ model Contact {
   accountId String   @map("account_id")
   name      String?
 
-  /// Display / search helpers (usually mirror channel ids)
+  /// Primary / display email (first of `emails`)
   email String?
-  phone String?
+  /// All email addresses for this contact
+  emails Json @default("[]")
 
   whatsappEnabled Boolean @default(false) @map("whatsapp_enabled")
+  /// Primary WhatsApp id / number (first of `whatsappIds`)
   whatsappId      String?  @map("whatsapp_id")
+  /// All WhatsApp numbers for this contact
+  whatsappIds     Json     @default("[]") @map("whatsapp_ids")
   /// Extra WA profile fields (display name, wa_id raw, etc.)
   whatsappDetails Json     @default("{}") @map("whatsapp_details")
 
@@ -111,7 +115,6 @@ model Contact {
 
   @@index([accountId])
   @@index([email])
-  @@index([phone])
   @@index([accountId, whatsappId])
   @@index([accountId, instagramId])
   @@index([accountId, emailId])

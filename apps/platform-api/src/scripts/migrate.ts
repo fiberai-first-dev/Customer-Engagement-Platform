@@ -179,11 +179,32 @@ async function schemaLooksCurrent(prisma: PrismaClient): Promise<boolean> {
     prisma,
     `SELECT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='contacts' AND column_name='whatsapp_enabled') AS exists`,
   );
+  const hasEmailsArray = await flag(
+    prisma,
+    `SELECT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='contacts' AND column_name='emails') AS exists`,
+  );
+  const hasWhatsappIds = await flag(
+    prisma,
+    `SELECT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='contacts' AND column_name='whatsapp_ids') AS exists`,
+  );
+  const hasPhone = await flag(
+    prisma,
+    `SELECT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='contacts' AND column_name='phone') AS exists`,
+  );
   const hasIdentityTable = await flag(
     prisma,
     `SELECT EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema='public' AND table_name='contact_identities') AS exists`,
   );
-  return hasInboxes && hasInboxId && hasWebhook && hasContactChannels && !hasIdentityTable;
+  return (
+    hasInboxes &&
+    hasInboxId &&
+    hasWebhook &&
+    hasContactChannels &&
+    hasEmailsArray &&
+    hasWhatsappIds &&
+    !hasPhone &&
+    !hasIdentityTable
+  );
 }
 
 async function needsContactChannelMigration(prisma: PrismaClient): Promise<boolean> {
@@ -265,6 +286,41 @@ export async function runDatabaseMigrations(): Promise<void> {
       await baselineAllMigrations(prisma);
       console.log("[migrate] Contact channel columns ready");
       return;
+    }
+
+    const emailsPhonesMig =
+      folders.find((f) => f.includes("contact_emails_phones")) ?? null;
+    if (emailsPhonesMig) {
+      const hasEmailsArray = await flag(
+        prisma,
+        `SELECT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='contacts' AND column_name='emails') AS exists`,
+      );
+      if (!hasEmailsArray) {
+        console.log("[migrate] Adding contacts.emails / contacts.phones arrays");
+        await applySqlFile(prisma, migrationSqlPath(emailsPhonesMig));
+        await markApplied(prisma, emailsPhonesMig);
+        console.log("[migrate] emails/phones arrays ready");
+      }
+    }
+
+    const dropPhoneMig =
+      folders.find((f) => f.includes("drop_phone_use_whatsapp")) ?? null;
+    if (dropPhoneMig) {
+      const hasPhone = await flag(
+        prisma,
+        `SELECT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='contacts' AND column_name='phone') AS exists`,
+      );
+      const hasWhatsappIds = await flag(
+        prisma,
+        `SELECT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='contacts' AND column_name='whatsapp_ids') AS exists`,
+      );
+      if (hasPhone || !hasWhatsappIds) {
+        console.log("[migrate] Dropping phone; adding whatsapp_ids");
+        await applySqlFile(prisma, migrationSqlPath(dropPhoneMig));
+        await markApplied(prisma, dropPhoneMig);
+        console.log("[migrate] whatsapp_ids ready");
+        return;
+      }
     }
 
     if ((await schemaLooksCurrent(prisma)) && (await migrationHistoryMissing(prisma))) {

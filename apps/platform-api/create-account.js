@@ -9,22 +9,34 @@ async function main() {
       data: {
         id: 'acc_123',
         name: 'Default Account',
-        whatsappEnabled: true,
-        instagramEnabled: true,
-        emailEnabled: true,
+        inboxes: {
+          create: [
+            { id: 'inbox_wa', name: 'WhatsApp', channelType: 'whatsapp', enabled: true },
+            { id: 'inbox_ig', name: 'Instagram', channelType: 'instagram', enabled: true },
+            { id: 'inbox_em', name: 'Gmail', channelType: 'email', enabled: true },
+          ]
+        }
       }
     });
     console.log('Created account:', account);
   } else {
     console.log('Account already exists:', accounts[0]);
-    // ensure whatsapp is enabled
-    if (!accounts[0].whatsappEnabled) {
-      await prisma.account.update({
-        where: { id: accounts[0].id },
-        data: { whatsappEnabled: true, instagramEnabled: true }
+    // ensure inboxes exist
+    const channels = ['whatsapp', 'instagram', 'email'];
+    for (const ch of channels) {
+      await prisma.inbox.upsert({
+        where: { id: `inbox_${ch}` },
+        create: {
+          id: `inbox_${ch}`,
+          accountId: accounts[0].id,
+          name: ch.charAt(0).toUpperCase() + ch.slice(1),
+          channelType: ch,
+          enabled: true
+        },
+        update: {}
       });
-      console.log('Enabled channels on existing account.');
     }
+    console.log('Ensured all inboxes exist.');
   }
 }
 

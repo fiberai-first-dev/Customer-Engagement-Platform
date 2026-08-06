@@ -8,63 +8,6 @@ import type { ChannelType } from "../generated/client/index.js";
 const channelTypes = ["whatsapp", "instagram", "email"] as const;
 
 export class WebhookController {
-  /** GET /webhooks/:channel/:inboxId — Meta verify */
-  static async verifyWebhook(
-    request: FastifyRequest<{
-      Params: { channel: string; inboxId: string };
-      Querystring: Record<string, string>;
-    }>,
-    reply: FastifyReply,
-  ) {
-    if (!channelTypes.includes(request.params.channel as ChannelType)) {
-      return reply.code(404).send("not found");
-    }
-    const inbox = await prisma.inbox.findUnique({ where: { id: request.params.inboxId } });
-    if (!inbox || inbox.channelType !== request.params.channel) {
-      return reply.code(404).send("not found");
-    }
-    const adapter = getChannelAdapter(inbox.channelType);
-    if (!adapter.verifyWebhook) return reply.code(400).send("verification not supported");
-    const config = resolveChannelConfig(inbox.channelType, inbox.channelConfig);
-    const challenge = adapter.verifyWebhook(config as never, request.query);
-    if (challenge == null) return reply.code(403).send("forbidden");
-    return reply.type("text/plain").send(challenge);
-  }
-
-  /** POST /webhooks/:channel/:inboxId */
-  static async receiveWebhook(
-    request: FastifyRequest<{ Params: { channel: string; inboxId: string } }>,
-    reply: FastifyReply,
-  ) {
-    if (!channelTypes.includes(request.params.channel as ChannelType)) {
-      return reply.code(404).send({ error: "not found" });
-    }
-    const inbox = await prisma.inbox.findUnique({ where: { id: request.params.inboxId } });
-    if (!inbox || inbox.channelType !== request.params.channel) {
-      return reply.code(404).send({ error: "not found" });
-    }
-    try {
-      const result = await ingestInboundMessages({
-        inboxId: inbox.id,
-        payload: request.body,
-      });
-      if (!result.created && !result.duplicates) {
-        request.log.warn(
-          { channel: request.params.channel, inboxId: inbox.id, bodyKeys: request.body && typeof request.body === "object" ? Object.keys(request.body as object) : [] },
-          "webhook parsed 0 messages",
-        );
-      } else {
-        request.log.info(
-          { channel: request.params.channel, inboxId: inbox.id, created: result.created, duplicates: result.duplicates },
-          "webhook ingested",
-        );
-      }
-      return reply.code(200).send({ ok: true, ...result });
-    } catch (err: any) {
-      return reply.code(400).send({ ok: false, error: err.message });
-    }
-  }
-
   /** GET /webhooks/:channel — verify against first matching enabled inbox */
   static async unifiedVerifyWebhook(
     request: FastifyRequest<{ Params: { channel: string }; Querystring: Record<string, string> }>,
@@ -89,7 +32,7 @@ export class WebhookController {
     return reply.code(403).send("forbidden");
   }
 
-  /** POST /webhooks/:channel — route to first enabled inbox (single-tenant convenience) */
+  /** POST /webhooks/:channel — route to first enabled inbox for that channel */
   static async unifiedReceiveWebhook(
     request: FastifyRequest<{ Params: { channel: string } }>,
     reply: FastifyReply,

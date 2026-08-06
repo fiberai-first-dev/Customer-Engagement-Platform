@@ -37,8 +37,8 @@ export class DashboardController {
 
       const recentActivity = recentConversations.map((c) => ({
         id: c.id,
-        contactName: c.contact.name || c.contact.phone || c.contact.email || "Unknown",
-        initials: (c.contact.name || c.contact.phone || c.contact.email || "U")
+        contactName: c.contact.name || c.contact.whatsappId || c.contact.email || "Unknown",
+        initials: (c.contact.name || c.contact.whatsappId || c.contact.email || "U")
           .substring(0, 2)
           .toUpperCase(),
         preview: c.messages[0]?.content || "No messages",

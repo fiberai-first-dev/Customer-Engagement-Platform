@@ -5,7 +5,6 @@ import { ProtectedRoute } from "../components/layouts/ProtectedRoute";
 import { InboxPage } from "../pages/private/Inbox";
 import { ContactsPage } from "../pages/private/Contacts";
 import { SettingsPage } from "../pages/private/Settings";
-import { ProfilePage } from "../pages/private/Profile";
 import { LoginPage } from "../pages/public/Login";
 
 export function AppRoutes() {
@@ -20,7 +19,6 @@ export function AppRoutes() {
             <Route path="inbox" element={<InboxPage />} />
             <Route path="contacts" element={<ContactsPage />} />
             <Route path="settings" element={<SettingsPage />} />
-            <Route path="profile" element={<ProfilePage />} />
           </Route>
         </Route>
       </Routes>

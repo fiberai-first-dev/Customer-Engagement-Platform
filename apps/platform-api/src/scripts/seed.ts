@@ -138,14 +138,12 @@ async function main() {
             channel: "whatsapp",
             enabled: whatsapp.enabled,
             webhook: `${base}/webhooks/whatsapp`,
-            webhookInbox: `${base}/webhooks/whatsapp/${whatsapp.id}`,
           },
           {
             id: instagram.id,
             channel: "instagram",
             enabled: instagram.enabled,
             webhook: `${base}/webhooks/instagram`,
-            webhookInbox: `${base}/webhooks/instagram/${instagram.id}`,
             verifyTokenHint: "Must match INSTAGRAM_VERIFY_TOKEN in Meta app",
           },
           {

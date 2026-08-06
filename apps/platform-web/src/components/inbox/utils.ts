@@ -11,26 +11,85 @@ export function channelLabel(channel: ChannelType): string {
   return CHANNELS.find((c) => c.id === channel)?.label ?? channel;
 }
 
+function listField(primary: unknown, list: unknown, opts?: { digitsOnly?: boolean }): string[] {
+  const out: string[] = [];
+  const seen = new Set<string>();
+  const push = (raw: unknown) => {
+    if (typeof raw !== "string") return;
+    const v = raw.trim();
+    if (!v) return;
+    const key = opts?.digitsOnly
+      ? v.replace(/[^\d]/g, "")
+      : v.replace(/[^\d+a-zA-Z@._-]/g, "").toLowerCase();
+    if (!key || seen.has(key)) return;
+    seen.add(key);
+    out.push(opts?.digitsOnly ? key : v);
+  };
+  if (Array.isArray(list)) list.forEach(push);
+  push(primary);
+  return out;
+}
+
+/** All external IDs for a channel (WhatsApp / email can have multiple). */
+export function identitiesFor(contact: any, channel: ChannelType): string[] {
+  if (!contact) return [];
+
+  const fromIdentities = (contact.identities ?? [])
+    .filter((i: any) => i?.channel === channel && typeof i.externalId === "string")
+    .map((i: any) => i.externalId as string);
+
+  if (channel === "whatsapp") {
+    return listField(
+      null,
+      [
+        ...fromIdentities,
+        ...(Array.isArray(contact.whatsappIds) ? contact.whatsappIds : []),
+        contact.whatsappId,
+        contact.identifiers?.whatsapp,
+      ],
+      { digitsOnly: true },
+    );
+  }
+  if (channel === "email") {
+    return listField(null, [
+      ...fromIdentities,
+      ...(Array.isArray(contact.emails) ? contact.emails : []),
+      contact.emailId,
+      contact.email,
+      contact.identifiers?.email,
+    ]);
+  }
+  if (channel === "instagram") {
+    const ig =
+      fromIdentities[0] ??
+      contact.instagramId ??
+      contact.identifiers?.instagram ??
+      null;
+    return typeof ig === "string" && ig.trim() ? [ig.trim()] : [];
+  }
+  return [];
+}
+
 export function identityFor(contact: any, channel: ChannelType): string | null {
-  const fromIdentity = contact.identities?.find((i: any) => i.channel === channel)?.externalId;
-  if (fromIdentity) return fromIdentity;
-  if (contact.identifiers?.[channel]) return contact.identifiers[channel];
-  if (channel === "whatsapp") return contact.phone;
-  if (channel === "email") return contact.email;
-  return null;
+  return identitiesFor(contact, channel)[0] ?? null;
 }
 
 export function formatIdentity(identity: string, channel: ChannelType): string {
   if (!identity) return identity;
   if (channel === "whatsapp") {
-    if (/^91\d{10}$/.test(identity)) {
-      return `+91 ${identity.slice(2)}`;
+    const digits = identity.replace(/[^\d]/g, "");
+    if (/^91\d{10}$/.test(digits)) {
+      return `+91 ${digits.slice(2)}`;
     }
-    if (/^\d+$/.test(identity)) {
-      return `+${identity}`;
+    if (/^\d+$/.test(digits)) {
+      return `+${digits}`;
     }
   }
   return identity;
+}
+
+export function formatIdentities(ids: string[], channel: ChannelType): string {
+  return ids.map((id) => formatIdentity(id, channel)).join(", ");
 }
 
 export function formatMessageTime(dateString: string | null | undefined): string {
@@ -67,9 +126,18 @@ export function channelAccent(channel: ChannelType, active: boolean): string {
 export function contactDisplayName(contact: {
   name?: string | null;
   phone?: string | null;
+  whatsappId?: string | null;
   email?: string | null;
+  identifiers?: Record<string, string>;
 }): string {
-  return contact.name || contact.phone || contact.email || "Unknown";
+  return (
+    contact.name ||
+    contact.whatsappId ||
+    contact.identifiers?.whatsapp ||
+    contact.phone ||
+    contact.email ||
+    "Unknown"
+  );
 }
 
 export function initials(name: string): string {

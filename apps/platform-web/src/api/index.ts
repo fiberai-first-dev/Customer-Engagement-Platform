@@ -64,7 +64,12 @@ export interface Contact {
   id: string;
   name: string | null;
   email: string | null;
-  phone: string | null;
+  /** All emails for this person */
+  emails?: string[];
+  /** Primary WhatsApp number */
+  whatsappId?: string | null;
+  /** All WhatsApp numbers for this person */
+  whatsappIds?: string[];
   /** Flat channel flags/ids on contact (API may also synthesize identities) */
   whatsappEnabled?: boolean;
   instagramEnabled?: boolean;
@@ -219,6 +224,42 @@ export const useUpdateInbox = () => {
   });
 };
 
+export interface OAuthHints {
+  gmailRedirectUri: string;
+  instagramRedirectUri: string;
+  webBaseUrl: string;
+  publicBaseUrl: string;
+  webhooks: {
+    whatsapp: string;
+    instagram: string;
+    emailPubSub: string;
+  };
+}
+
+export const useOAuthHints = () =>
+  useQuery({
+    queryKey: ["oauth-hints"],
+    queryFn: () => request<OAuthHints>("/api/v1/oauth/hints"),
+  });
+
+/** Starts hosted OAuth; returns provider consent URL (no local CLI). */
+export async function startChannelOAuth(
+  provider: "gmail" | "instagram",
+  inboxId: string,
+): Promise<{ url: string; redirectUri: string }> {
+  return request<{ url: string; redirectUri: string }>(`/api/v1/oauth/${provider}/start`, {
+    method: "POST",
+    body: JSON.stringify({ inboxId }),
+  });
+}
+
+export async function startGmailWatch(inboxId: string): Promise<{ ok: boolean; error?: string }> {
+  return request(`/api/v1/gmail/watch`, {
+    method: "POST",
+    body: JSON.stringify({ inboxId }),
+  });
+}
+
 /** @deprecated Prefer useUpdateInbox — upserts an inbox for the channel */
 export const useUpdateAccountChannel = () => {
   const queryClient = useQueryClient();
@@ -253,6 +294,57 @@ export const useContacts = (accountId?: string) => useQuery({
     return request<Contact[]>(`/api/v1/contacts${q.toString() ? `?${q}` : ""}`);
   }
 });
+
+export const useCreateContact = () => {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (body: {
+      accountId: string;
+      name?: string;
+      email?: string;
+      emails?: string[];
+      whatsappId?: string;
+      whatsappIds?: string[];
+      instagramId?: string;
+      emailId?: string;
+    }) =>
+      request<Contact>("/api/v1/contacts", {
+        method: "POST",
+        body: JSON.stringify(body),
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["contacts"] });
+    },
+  });
+};
+
+export const useUpdateContact = () => {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({
+      id,
+      body,
+    }: {
+      id: string;
+      body: {
+        name?: string;
+        email?: string;
+        emails?: string[];
+        whatsappId?: string;
+        whatsappIds?: string[];
+        instagramId?: string;
+        emailId?: string;
+      };
+    }) =>
+      request<Contact>(`/api/v1/contacts/${id}`, {
+        method: "PATCH",
+        body: JSON.stringify(body),
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["contacts"] });
+    },
+  });
+};
 
 export interface DashboardMetrics {
   totalMessages: number;

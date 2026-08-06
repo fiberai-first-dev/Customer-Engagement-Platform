@@ -15,8 +15,8 @@ import {
   CHANNELS,
   channelLabel,
   cn,
-  formatIdentity,
-  identityFor,
+  formatIdentities,
+  identitiesFor,
   initials,
   isActiveStatus,
   nextUnresolvedConversation,
@@ -89,8 +89,10 @@ export function ConversationThread({
     setSubject("");
   };
 
-  const rawIdentity = contact ? identityFor(contact, activeTab) : null;
-  const identity = rawIdentity ? formatIdentity(rawIdentity, activeTab) : null;
+  const channelIds = contact ? identitiesFor(contact, activeTab) : [];
+  const identity = channelIds.length
+    ? formatIdentities(channelIds, activeTab)
+    : null;
 
   return (
     <div className="flex h-full min-w-0 flex-1 flex-col bg-background">

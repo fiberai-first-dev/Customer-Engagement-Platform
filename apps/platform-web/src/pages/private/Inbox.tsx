@@ -72,12 +72,17 @@ export function InboxPage() {
       const matches = channelConvs.some((conversation) => {
         const name = conversation.contact.name?.toLowerCase() ?? "";
         const email = conversation.contact.email?.toLowerCase() ?? "";
-        const phone = conversation.contact.phone?.toLowerCase() ?? "";
+        const whatsapp = (
+          conversation.contact.whatsappId ||
+          conversation.contact.identifiers?.whatsapp ||
+          conversation.contact.phone ||
+          ""
+        ).toLowerCase();
         const preview = conversation.messages?.[0]?.content?.toLowerCase() ?? "";
         return (
           name.includes(query) ||
           email.includes(query) ||
-          phone.includes(query) ||
+          whatsapp.includes(query) ||
           preview.includes(query)
         );
       });

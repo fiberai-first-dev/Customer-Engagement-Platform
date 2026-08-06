@@ -27,7 +27,9 @@ function shapeConversation<T extends {
       id: contact.id,
       name: contact.name,
       email: contact.email,
-      phone: contact.phone,
+      whatsappId: contact.whatsappId,
+      whatsappIds: asStringListOptional((contact as { whatsappIds?: unknown }).whatsappIds),
+      emails: asStringListOptional((contact as { emails?: unknown }).emails),
       identifiers: contactIdentifiersFromRow(contact),
       identities: identities.map((identity) => ({
         id: identity.id,
@@ -38,6 +40,14 @@ function shapeConversation<T extends {
       })),
     },
   };
+}
+
+function asStringListOptional(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  return value
+    .filter((v): v is string => typeof v === "string")
+    .map((v) => v.trim())
+    .filter(Boolean);
 }
 
 type ShapedConversation = ReturnType<typeof shapeConversation>;

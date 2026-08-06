@@ -52,7 +52,7 @@ export class AccountService {
     return {
       ...inbox,
       channelConfig: redactConfig(inbox.channelConfig),
-      webhookUrl: `${env.publicBaseUrl}/webhooks/${inbox.channelType}/${inbox.id}`,
+      webhookUrl: `${env.publicBaseUrl.replace(/\/$/, "")}/webhooks/${inbox.channelType}`,
     };
   }
 }

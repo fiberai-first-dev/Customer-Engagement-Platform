@@ -53,6 +53,12 @@ export const env = {
     process.env.PLATFORM_PUBLIC_BASE_URL ??
       `http://localhost:${process.env.PLATFORM_PORT ?? 4100}`,
   ),
+  /** Agent UI origin — OAuth success redirects here (Settings). Set in .env via PLATFORM_WEB_BASE_URL. */
+  webBaseUrl: stripQuotes(
+    process.env.PLATFORM_WEB_BASE_URL ??
+      process.env.WEB_PUBLIC_BASE_URL ??
+      "http://localhost:5173",
+  ),
 
   gmail: {
     clientId: stripQuotes(process.env.GMAIL_CLIENT_ID ?? ""),

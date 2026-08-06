@@ -1,73 +1,92 @@
 import type { FastifyInstance } from "fastify";
 import { env } from "../../config/env.js";
+import {
+  completeGmailOAuth,
+  completeInstagramOAuth,
+  settingsReturnUrl,
+} from "../../services/OAuthService.js";
 
-const PUBLIC_CALLBACK =
-  `${env.publicBaseUrl.replace(/\/$/, "")}/oauth/instagram/callback`;
+function htmlPage(title: string, body: string) {
+  return `<!doctype html>
+<html><head><meta charset="utf-8"/><title>${title}</title>
+<style>
+  body{font-family:system-ui,sans-serif;padding:2rem;max-width:720px;line-height:1.5;color:#111}
+  .ok{color:#047857}.err{color:#b91c1c}
+  a{color:#1d4ed8}
+  code,pre{background:#111;color:#eee;padding:.2rem .4rem;border-radius:4px}
+  pre{padding:1rem;overflow:auto}
+</style></head><body>${body}</body></html>`;
+}
 
 /**
- * Public Meta Business Login endpoints (no auth).
- * Prefer `npm run instagram:oauth` (localhost) for token capture;
- * these routes support Meta-required HTTPS redirect / policy URLs.
+ * Public OAuth callbacks (no JWT). Token exchange persists to the inbox
+ * identified by signed `state` from Settings → Connect.
  */
-export async function instagramOAuthRoutes(app: FastifyInstance) {
+export async function publicOAuthRoutes(app: FastifyInstance) {
+  app.get("/gmail/callback", async (request, reply) => {
+    const q = request.query as Record<string, string | undefined>;
+    if (q.error) {
+      const returnUrl = settingsReturnUrl({
+        oauth: "gmail",
+        status: "error",
+        message: q.error_description || q.error,
+      });
+      return reply.redirect(returnUrl);
+    }
+    if (!q.code || !q.state) {
+      return reply.code(400).type("text/html").send(
+        htmlPage("Gmail OAuth", `<h2 class="err">Missing code or state</h2>`),
+      );
+    }
+
+    try {
+      const result = await completeGmailOAuth({ code: q.code, state: q.state });
+      return reply.redirect(result.returnUrl);
+    } catch (err: any) {
+      request.log.error(err, "gmail oauth callback failed");
+      return reply.redirect(
+        settingsReturnUrl({
+          oauth: "gmail",
+          status: "error",
+          message: err?.message ?? "oauth failed",
+        }),
+      );
+    }
+  });
+
   app.get("/instagram/callback", async (request, reply) => {
     const q = request.query as Record<string, string | undefined>;
     if (q.error) {
-      return reply.code(400).type("text/html").send(
-        `<html><body><h2>Instagram OAuth error</h2><pre>${q.error}: ${q.error_description ?? ""}</pre></body></html>`,
+      return reply.redirect(
+        settingsReturnUrl({
+          oauth: "instagram",
+          status: "error",
+          message: q.error_description || q.error,
+        }),
       );
     }
     const code = q.code;
     if (!code) {
-      return reply.code(400).send({ error: "missing code" });
+      return reply.code(400).type("text/html").send(
+        htmlPage("Instagram OAuth", `<h2 class="err">Missing code</h2>`),
+      );
     }
 
     try {
-      const shortBody = new URLSearchParams({
-        client_id: env.instagram.appId,
-        client_secret: env.instagram.appSecret,
-        grant_type: "authorization_code",
-        redirect_uri: PUBLIC_CALLBACK,
-        code,
-      });
-      const shortRes = await fetch("https://api.instagram.com/oauth/access_token", {
-        method: "POST",
-        headers: { "Content-Type": "application/x-www-form-urlencoded" },
-        body: shortBody,
-      });
-      const shortJson = (await shortRes.json()) as {
-        access_token?: string;
-        error_message?: string;
-      };
-      if (!shortJson.access_token) {
-        throw new Error(shortJson.error_message || "short-lived exchange failed");
-      }
-
-      const longUrl = new URL("https://graph.instagram.com/access_token");
-      longUrl.searchParams.set("grant_type", "ig_exchange_token");
-      longUrl.searchParams.set("client_secret", env.instagram.appSecret);
-      longUrl.searchParams.set("access_token", shortJson.access_token);
-      const longRes = await fetch(longUrl);
-      const longJson = (await longRes.json()) as {
-        access_token?: string;
-        error?: { message?: string };
-      };
-      if (!longJson.access_token) {
-        throw new Error(longJson.error?.message || "long-lived exchange failed");
-      }
-
-      return reply.type("text/html").send(`<!doctype html>
-<html><body style="font-family:system-ui;padding:2rem;max-width:720px">
-  <h2>Instagram connected</h2>
-  <p>Copy into <code>apps/platform-api/.env</code>:</p>
-  <pre style="background:#111;color:#eee;padding:1rem;overflow:auto">INSTAGRAM_ACCESS_TOKEN="${longJson.access_token}"</pre>
-  <p>Then run <code>npm run seed</code>, <code>npm run ig:subscribe</code>, and recreate the API container.</p>
-</body></html>`);
+      const result = await completeInstagramOAuth({ code, state: q.state });
+      return reply.redirect(result.returnUrl);
     } catch (err: any) {
       request.log.error(err, "instagram oauth callback failed");
-      return reply.code(500).type("text/html").send(
-        `<html><body><h2>OAuth failed</h2><pre>${err?.message ?? err}</pre></body></html>`,
-      );
+      return reply
+        .code(500)
+        .type("text/html")
+        .send(
+          htmlPage(
+            "Instagram OAuth",
+            `<h2 class="err">OAuth failed</h2><pre>${err?.message ?? err}</pre>
+             <p>Ensure App ID / Secret are saved in Settings and the redirect URI matches Meta.</p>`,
+          ),
+        );
     }
   });
 
@@ -87,3 +106,6 @@ export async function instagramOAuthRoutes(app: FastifyInstance) {
     });
   });
 }
+
+/** @deprecated use publicOAuthRoutes */
+export const instagramOAuthRoutes = publicOAuthRoutes;

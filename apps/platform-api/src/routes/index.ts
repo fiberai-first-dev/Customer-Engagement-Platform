@@ -8,7 +8,8 @@ import { authRoutes } from "./v1/auth.routes.js";
 import { contactsRoutes } from "./v1/contacts.routes.js";
 import { dashboardRoutes } from "./v1/dashboard.routes.js";
 import { orderRoutes } from "./v1/orders.routes.js";
-import { instagramOAuthRoutes } from "./v1/oauth.routes.js";
+import { publicOAuthRoutes } from "./v1/oauth.routes.js";
+import { oauthConnectRoutes } from "./v1/oauth-connect.routes.js";
 import { requireAuth } from "../middleware/auth.js";
 import { prisma } from "../config/db.js";
 import { ulid } from "ulid";
@@ -29,8 +30,8 @@ export async function registerRoutes(app: FastifyInstance) {
     docs: "See docs/PLATFORM.md",
   }));
 
-  // Instagram Business Login (public; also skip auth hook below)
-  app.register(instagramOAuthRoutes, { prefix: "/oauth" });
+  // Public OAuth callbacks (Gmail + Instagram) — skip auth hook below
+  app.register(publicOAuthRoutes, { prefix: "/oauth" });
 
   app.addHook("preHandler", async (request, reply) => {
     const path = request.url.split("?")[0] ?? request.url;
@@ -58,6 +59,7 @@ export async function registerRoutes(app: FastifyInstance) {
   app.register(emailRoutes, { prefix: "/api/v1/email" });
   // Back-compat alias
   app.register(emailRoutes, { prefix: "/api/v1/gmail" });
+  app.register(oauthConnectRoutes, { prefix: "/api/v1/oauth" });
   app.register(webhookRoutes, { prefix: "/webhooks" });
 
   if (process.env.NODE_ENV !== "production") {
