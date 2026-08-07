@@ -1,5 +1,6 @@
 import type { ChannelType, ConversationStatus } from "../../api";
 import { cn } from "../../utils/utils";
+import { formatWhatsAppDisplay as formatWaDisplay } from "../../utils/phone";
 
 export const CHANNELS: { id: ChannelType; label: string }[] = [
   { id: "whatsapp", label: "WhatsApp" },
@@ -23,7 +24,7 @@ function listField(primary: unknown, list: unknown, opts?: { digitsOnly?: boolea
       : v.replace(/[^\d+a-zA-Z@._-]/g, "").toLowerCase();
     if (!key || seen.has(key)) return;
     seen.add(key);
-    // Keep original formatting for display (e.g. "+91 6303481401")
+    // Keep canonical WhatsApp formatting for display (e.g. "+91 6303481401")
     out.push(opts?.digitsOnly ? formatWhatsAppDisplay(v) : v);
   };
   if (Array.isArray(list)) list.forEach(push);
@@ -33,13 +34,7 @@ function listField(primary: unknown, list: unknown, opts?: { digitsOnly?: boolea
 
 /** Store/display: "+{country} {number}" e.g. "+91 6303481401" */
 export function formatWhatsAppDisplay(raw: string): string {
-  const digits = raw.replace(/[^\d]/g, "");
-  if (!digits) return raw.trim();
-  if (digits.length > 10) {
-    return `+${digits.slice(0, -10)} ${digits.slice(-10)}`;
-  }
-  if (digits.length === 10) return `+91 ${digits}`;
-  return `+${digits}`;
+  return formatWaDisplay(raw);
 }
 
 /** All external IDs for a channel (WhatsApp / email can have multiple). */

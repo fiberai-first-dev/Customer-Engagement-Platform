@@ -52,20 +52,33 @@ export async function findMatchingCustomers(input: {
     if (row) customerIds.add(row.customerId);
   }
   for (const phone of wa) {
-    const formatted = formatWhatsAppStorage(phone) ?? phone;
     const digits = normalizeWhatsAppId(phone) ?? phone.replace(/\D/g, "");
-    const rows = await prisma.whatsAppChannel.findMany({
+    const formatted = formatWhatsAppStorage(phone) ?? phone;
+    const exact = await prisma.whatsAppChannel.findMany({
       where: {
         OR: [
           { externalId: phone },
           { externalId: formatted },
-          ...(digits.length >= 10
-            ? [{ externalId: { endsWith: digits.slice(-10) } }]
-            : []),
+          { externalId: digits },
+          { externalId: `+${digits}` },
         ],
       },
     });
-    for (const r of rows) customerIds.add(r.customerId);
+    for (const r of exact) customerIds.add(r.customerId);
+
+    if (digits.length >= 10) {
+      const suffix = digits.slice(-10);
+      const candidates = await prisma.whatsAppChannel.findMany({
+        where: { externalId: { endsWith: suffix } },
+        take: 25,
+      });
+      for (const r of candidates) {
+        const rd = normalizeWhatsAppId(r.externalId);
+        if (rd && (rd === digits || rd.endsWith(digits) || digits.endsWith(rd))) {
+          customerIds.add(r.customerId);
+        }
+      }
+    }
   }
   if (ig) {
     const row = await prisma.instagramChannel.findFirst({
@@ -124,15 +137,26 @@ async function attachIdentities(
     const digits = normalizeWhatsAppId(raw);
     if (!digits) continue;
     const externalId = formatWhatsAppStorage(digits) ?? digits;
-    const existing = await prisma.whatsAppChannel.findFirst({
+    let existing = await prisma.whatsAppChannel.findFirst({
       where: {
         OR: [
           { externalId },
           { externalId: digits },
-          { externalId: { endsWith: digits.slice(-10) } },
+          { externalId: `+${digits}` },
         ],
       },
     });
+    if (!existing && digits.length >= 10) {
+      const candidates = await prisma.whatsAppChannel.findMany({
+        where: { externalId: { endsWith: digits.slice(-10) } },
+        take: 25,
+      });
+      existing =
+        candidates.find((c) => {
+          const rd = normalizeWhatsAppId(c.externalId);
+          return rd === digits;
+        }) ?? null;
+    }
     if (existing) {
       if (existing.customerId !== customerId) {
         await prisma.message.updateMany({
@@ -141,9 +165,15 @@ async function attachIdentities(
         });
         await prisma.whatsAppChannel.update({
           where: { id: existing.id },
-          data: { customerId },
+          data: { customerId, externalId },
         });
         await recomputeCustomerResolved(existing.customerId);
+      } else if (existing.externalId !== externalId) {
+        // Normalize legacy storage to "+dial national"
+        await prisma.whatsAppChannel.update({
+          where: { id: existing.id },
+          data: { externalId },
+        });
       }
       continue;
     }

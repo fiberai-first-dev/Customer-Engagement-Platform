@@ -10,6 +10,13 @@ import {
   type ContactMatch,
   type ChannelType,
 } from "../../api";
+import {
+  COUNTRY_DIAL_OPTIONS,
+  composeWhatsApp,
+  formatWhatsAppStorage,
+  parseWhatsAppParts,
+  type WhatsAppParts,
+} from "../../utils/phone";
 
 export type ContactFormData = {
   id?: string;
@@ -92,6 +99,83 @@ function MultiStringField({
   );
 }
 
+function WhatsAppMultiField({
+  values,
+  onChange,
+}: {
+  values: string[];
+  onChange: (next: string[]) => void;
+}) {
+  const rows = (values.length ? values : [""]).map(parseWhatsAppParts);
+  const knownDials = new Set(COUNTRY_DIAL_OPTIONS.map((c) => c.dial));
+
+  const updateRow = (idx: number, patch: Partial<WhatsAppParts>) => {
+    const next = rows.map((row, i) => (i === idx ? { ...row, ...patch } : row));
+    onChange(next.map(composeWhatsApp));
+  };
+
+  return (
+    <div className="space-y-2">
+      <div className="flex items-center justify-between gap-2">
+        <label className="text-sm font-medium">WhatsApp</label>
+        <button
+          type="button"
+          className="inline-flex items-center gap-1 text-xs text-primary hover:underline"
+          onClick={() => onChange([...(values.length ? values : [""]), ""])}
+        >
+          <Plus className="h-3 w-3" /> Add
+        </button>
+      </div>
+      <div className="space-y-2">
+        {rows.map((row, idx) => {
+          const dialOptions = knownDials.has(row.dial)
+            ? COUNTRY_DIAL_OPTIONS
+            : [{ dial: row.dial, label: `+${row.dial}` }, ...COUNTRY_DIAL_OPTIONS];
+          return (
+            <div key={`wa-${idx}`} className="flex gap-2">
+              <select
+                aria-label={`Country code ${idx + 1}`}
+                value={row.dial}
+                onChange={(e) => updateRow(idx, { dial: e.target.value })}
+                className="h-10 min-w-[8.5rem] shrink-0 rounded-md border border-input bg-background px-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+              >
+                {dialOptions.map((c) => (
+                  <option key={c.dial} value={c.dial}>
+                    {c.label}
+                  </option>
+                ))}
+              </select>
+              <Input
+                inputMode="numeric"
+                autoComplete="tel-national"
+                value={row.national}
+                onChange={(e) =>
+                  updateRow(idx, { national: e.target.value.replace(/[^\d\s-]/g, "") })
+                }
+                placeholder="9876543210"
+              />
+              {rows.length > 1 && (
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  className="shrink-0"
+                  onClick={() => {
+                    const next = values.filter((_, i) => i !== idx);
+                    onChange(next.length ? next : [""]);
+                  }}
+                >
+                  <X className="h-4 w-4" />
+                </Button>
+              )}
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 export function ContactModal({
   isOpen,
   onClose,
@@ -144,13 +228,9 @@ export function ContactModal({
   const buildBody = () => {
     const emails = showEmail ? cleanList(formData.emails) : [];
     const whatsappIds = showWa
-      ? cleanList(formData.whatsappIds).map((n) => {
-          const digits = n.replace(/[^\d]/g, "");
-          if (!digits) return n;
-          if (digits.length > 10) return `+${digits.slice(0, -10)} ${digits.slice(-10)}`;
-          if (digits.length === 10) return `+91 ${digits}`;
-          return `+${digits}`;
-        })
+      ? cleanList(formData.whatsappIds)
+          .map((n) => formatWhatsAppStorage(n))
+          .filter((n): n is string => Boolean(n))
       : [];
     const name = formData.name.trim();
     const instagramId = showIg
@@ -403,11 +483,9 @@ export function ContactModal({
               )}
 
               {showWa && (
-                <MultiStringField
-                  label="WhatsApp"
+                <WhatsAppMultiField
                   values={formData.whatsappIds}
                   onChange={(whatsappIds) => setFormData({ ...formData, whatsappIds })}
-                  placeholder="+91 9876543210"
                 />
               )}
 

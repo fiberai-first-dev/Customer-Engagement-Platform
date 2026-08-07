@@ -1,4 +1,5 @@
 import { prisma } from "../../config/db.js";
+import { normalizeWhatsAppDigits, parseWhatsAppParts } from "../../utils/phone.js";
 
 type ShopifyCreds = {
   shop: string;
@@ -21,18 +22,15 @@ function normalizeShop(shop: string): string {
 }
 
 export function normalizePhoneDigits(value?: string | null): string | null {
-  if (!value) return null;
-  const digits = value.replace(/\D/g, "");
-  return digits || null;
+  return normalizeWhatsAppDigits(value);
 }
 
-/** Prefer E.164-ish +digits for Shopify search */
+/** Prefer E.164 for Shopify search (`+916303481401`). */
 export function toE164Phone(value?: string | null): string | null {
-  const digits = normalizePhoneDigits(value);
+  const digits = normalizeWhatsAppDigits(value);
   if (!digits) return null;
-  if (value?.trim().startsWith("+")) return `+${digits}`;
-  if (digits.length === 10) return `+91${digits}`;
-  return `+${digits}`;
+  const { dial, national } = parseWhatsAppParts(digits);
+  return national ? `+${dial}${national}` : `+${digits}`;
 }
 
 /** DB / Settings only — never falls back to .env. */

@@ -89,13 +89,15 @@ export function CustomerDetails({ contact, onClose }: Props) {
   const [tab, setTab] = useState<TabId>("profile");
 
   const emails = listValues(contact?.email, contact?.emails);
-  const whatsappIds = listValues(
+  const whatsappRaw = listValues(
     contact?.whatsappId ?? contact?.identifiers?.whatsapp,
     contact?.whatsappIds,
-  ).map(formatWhatsAppDisplay);
+  );
+  const whatsappIds = whatsappRaw.map(formatWhatsAppDisplay);
 
+  // Prefer raw identifiers for Shopify lookup (display formatting can confuse matchers)
   const lookupEmail = emails[0] ?? null;
-  const lookupPhone = whatsappIds[0] ?? contact?.whatsappId ?? null;
+  const lookupPhone = whatsappRaw[0] ?? contact?.whatsappId ?? null;
   const canLookup = Boolean(lookupEmail || lookupPhone);
 
   const {
@@ -144,9 +146,10 @@ export function CustomerDetails({ contact, onClose }: Props) {
     );
   }
 
-  const name = contactDisplayName(contact);
+  const name = commerce.customer?.name?.trim() || contactDisplayName(contact);
   const ltv = commerce.stats.lifetimeValue;
   const orderCount = commerce.stats.totalOrders;
+  const shopifyCustomerId = commerce.customer?.id ?? null;
 
   return (
     <aside className="flex w-[400px] shrink-0 flex-col border-l border-border bg-card">
@@ -163,7 +166,9 @@ export function CustomerDetails({ contact, onClose }: Props) {
           <div className="min-w-0 flex-1">
             <h4 className="truncate text-sm font-semibold tracking-tight text-foreground">{name}</h4>
             <p className="truncate text-[11px] text-muted-foreground">
-              {emails[0] || whatsappIds[0] || "No contact identifiers"}
+              {shopifyCustomerId
+                ? `Shopify #${shopifyCustomerId}`
+                : emails[0] || whatsappIds[0] || "No contact identifiers"}
             </p>
             <p className="mt-1 text-[10px] font-medium uppercase tracking-[0.14em] text-muted-foreground">
               {`LTV ${formatInr(ltv, commerce.stats.currency)} · ${orderCount} orders`}
@@ -272,26 +277,32 @@ function ProfileTab({
   provider: CustomerCommerceResponse["provider"];
 }) {
   const rows = [
-    { label: "Name", value: shopify?.name || contact.name || "—" },
-    { label: "Emails", value: emails.length ? emails.join(", ") : shopify?.email || "—" },
     {
-      label: "WhatsApp",
-      value: whatsappIds.length ? whatsappIds.join(", ") : shopify?.phone || "—",
+      label: "Shopify customer ID",
+      value: shopify?.id || (provider === "shopify" ? "Not found in Shopify" : "n/a"),
     },
-    { label: "Shopify ID", value: shopify?.id || (provider === "shopify" ? "—" : "n/a") },
+    { label: "Name", value: shopify?.name || contact.name || "—" },
+    {
+      label: "Email",
+      value: shopify?.email || (emails.length ? emails.join(", ") : "—"),
+    },
+    {
+      label: "Phone",
+      value: shopify?.phone || (whatsappIds.length ? whatsappIds.join(", ") : "—"),
+    },
     { label: "Location", value: shopify?.location || "—" },
-    { label: "Contact ID", value: contact.id },
+    { label: "CEP contact ID", value: contact.id },
   ];
 
   return (
     <div className="space-y-4">
-      <SectionTitle icon={<UserRound className="h-3.5 w-3.5" />} title="Profile details" />
+      <SectionTitle icon={<UserRound className="h-3.5 w-3.5" />} title="Shopify profile" />
       <div className="overflow-hidden rounded-xl border border-border bg-card">
         <table className="w-full text-left text-xs">
           <tbody>
             {rows.map((row, idx) => (
               <tr key={row.label} className={cn(idx !== rows.length - 1 && "border-b border-border")}>
-                <th className="w-[38%] px-3 py-2.5 font-medium text-muted-foreground">{row.label}</th>
+                <th className="w-[42%] px-3 py-2.5 font-medium text-muted-foreground">{row.label}</th>
                 <td className="break-all px-3 py-2.5 font-medium text-foreground">{row.value}</td>
               </tr>
             ))}

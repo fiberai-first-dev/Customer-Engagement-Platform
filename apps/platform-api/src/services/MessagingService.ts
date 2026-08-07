@@ -11,6 +11,12 @@ import {
 import { extractEmailAddress } from "../adapters/email/index.js";
 import { recomputeCustomerResolved, setChannelResolved } from "./ResolveService.js";
 import { enrichCustomerFromShopify } from "./orders/shopify-contact.service.js";
+import {
+  formatWhatsAppStorage as formatWa,
+  normalizeWhatsAppDigits,
+  whatsappApiRecipient,
+  whatsappDigitsEqual,
+} from "../utils/phone.js";
 
 export function mergeChannelConfig(
   existing: Prisma.JsonValue,
@@ -32,17 +38,11 @@ export function mergeChannelConfig(
 }
 
 export function normalizeWhatsAppId(raw: string | null | undefined): string | null {
-  if (!raw) return null;
-  const digits = raw.replace(/[^\d]/g, "");
-  return digits || null;
+  return normalizeWhatsAppDigits(raw);
 }
 
 export function formatWhatsAppStorage(raw: string | null | undefined): string | null {
-  const digits = normalizeWhatsAppId(raw);
-  if (!digits) return null;
-  if (digits.length > 10) return `+${digits.slice(0, -10)} ${digits.slice(-10)}`;
-  if (digits.length === 10) return `+91 ${digits}`;
-  return `+${digits}`;
+  return formatWa(raw);
 }
 
 function mapContentType(value: NormalizedInboundMessage["contentType"]): ContentType {
@@ -81,16 +81,27 @@ export async function findIdentityByExternalId(
   externalId: string,
 ) {
   if (channelType === "whatsapp") {
-    const digits = normalizeWhatsAppId(externalId) ?? externalId;
-    return prisma.whatsAppChannel.findFirst({
+    const digits = normalizeWhatsAppId(externalId);
+    if (!digits) return null;
+    const formatted = formatWhatsAppStorage(digits) ?? digits;
+    const exact = await prisma.whatsAppChannel.findFirst({
       where: {
         OR: [
           { externalId: digits },
           { externalId: `+${digits}` },
-          { externalId: formatWhatsAppStorage(digits) ?? digits },
+          { externalId: formatted },
         ],
       },
     });
+    if (exact) return exact;
+
+    // Suffix scan then full digit compare (handles "+91 …" vs "91…" legacy rows)
+    const suffix = digits.length > 10 ? digits.slice(-10) : digits;
+    const candidates = await prisma.whatsAppChannel.findMany({
+      where: { externalId: { endsWith: suffix } },
+      take: 25,
+    });
+    return candidates.find((c) => whatsappDigitsEqual(c.externalId, digits)) ?? null;
   }
   if (channelType === "instagram") {
     return prisma.instagramChannel.findUnique({ where: { externalId } });
@@ -449,7 +460,7 @@ export async function sendCustomerChannelMessage(input: {
 
   const to =
     input.channelType === "whatsapp"
-      ? normalizeWhatsAppId(identity.externalId) ?? identity.externalId
+      ? whatsappApiRecipient(identity.externalId) ?? identity.externalId.replace(/\D/g, "")
       : identity.externalId;
 
   const lastInbound = await prisma.message.findFirst({
