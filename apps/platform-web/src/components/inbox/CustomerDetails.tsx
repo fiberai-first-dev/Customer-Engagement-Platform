@@ -1,25 +1,26 @@
-import { useMemo, useState, type ReactNode } from "react";
+import { useState, type ReactNode } from "react";
+import { useQuery } from "@tanstack/react-query";
 import {
   CheckCircle2,
+  Loader2,
   Mail,
   MapPin,
   Package,
-  RefreshCcw,
-  RotateCcw,
   Truck,
   UserRound,
   X,
   XCircle,
 } from "lucide-react";
 import type { ChannelType, Contact, Conversation } from "../../api";
+import {
+  orderService,
+  type CustomerCommerceResponse,
+  type CustomerOrder,
+  type OrderStats,
+} from "../../services/order.service";
+import { OrderWidget } from "../customer/OrderWidget";
 import { Badge } from "../ui/badge";
 import { Button } from "../ui/button";
-import {
-  buildMockCustomerCommerce,
-  formatInr,
-  formatOrderDate,
-  type OrderStatusKey,
-} from "../customer/mockCustomerCommerce";
 import {
   CHANNELS,
   channelLabel,
@@ -45,18 +46,21 @@ const TABS: { id: TabId; label: string }[] = [
   { id: "orders", label: "Recent orders" },
 ];
 
-function orderStatusClass(key: OrderStatusKey): string {
-  if (key === "delivered")
-    return "bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border-emerald-500/30";
-  if (key === "in_transit" || key === "placed")
-    return "bg-sky-500/15 text-sky-700 dark:text-sky-300 border-sky-500/30";
-  if (key === "rto")
-    return "bg-orange-500/15 text-orange-700 dark:text-orange-300 border-orange-500/30";
-  if (key === "cancelled")
-    return "bg-rose-500/15 text-rose-700 dark:text-rose-300 border-rose-500/30";
-  if (key === "exchanged")
-    return "bg-violet-500/15 text-violet-700 dark:text-violet-300 border-violet-500/30";
-  return "bg-muted text-muted-foreground border-border";
+function formatInr(amount: number, currency = "INR"): string {
+  if (currency === "INR") return `₹${amount.toLocaleString("en-IN")}`;
+  return `${currency} ${amount.toLocaleString()}`;
+}
+
+function formatOrderDate(date: string): string {
+  try {
+    return new Date(`${date}T00:00:00`).toLocaleDateString("en-IN", {
+      day: "2-digit",
+      month: "short",
+      year: "numeric",
+    });
+  } catch {
+    return date;
+  }
 }
 
 function listValues(primary: string | null | undefined, list?: string[] | null): string[] {
@@ -64,16 +68,47 @@ function listValues(primary: string | null | undefined, list?: string[] | null):
   return primary?.trim() ? [primary.trim()] : [];
 }
 
+function emptyCommerce(): CustomerCommerceResponse {
+  return {
+    provider: "none",
+    customer: null,
+    stats: {
+      totalOrders: 0,
+      lifetimeValue: 0,
+      averageOrderValue: 0,
+      delivered: 0,
+      shipped: 0,
+      cancelled: 0,
+      placed: 0,
+      currency: "INR",
+    },
+    orders: [],
+  };
+}
+
 export function CustomerDetails({ contact, onClose }: Props) {
   const [tab, setTab] = useState<TabId>("profile");
 
-  const commerce = useMemo(
-    () =>
-      buildMockCustomerCommerce(
-        contact?.id || contact?.email || contact?.whatsappId || "anon",
-      ),
-    [contact?.id, contact?.email, contact?.whatsappId],
-  );
+  const emails = listValues(contact?.email, contact?.emails);
+  const whatsappIds = listValues(
+    contact?.whatsappId ?? contact?.identifiers?.whatsapp,
+    contact?.whatsappIds,
+  ).map(formatWhatsAppDisplay);
+
+  const lookupEmail = emails[0] ?? null;
+  const lookupPhone = whatsappIds[0] ?? contact?.whatsappId ?? null;
+  const canLookup = Boolean(lookupEmail || lookupPhone);
+
+  const { data: commerce = emptyCommerce(), isLoading, isError, error } = useQuery({
+    queryKey: ["customer-commerce", contact?.id, lookupEmail, lookupPhone],
+    queryFn: () =>
+      orderService.getCustomerCommerce({
+        email: lookupEmail,
+        phone: lookupPhone,
+      }),
+    enabled: Boolean(contact && canLookup),
+    staleTime: 30_000,
+  });
 
   if (!contact) {
     return (
@@ -85,9 +120,6 @@ export function CustomerDetails({ contact, onClose }: Props) {
               <UserRound className="h-5 w-5 text-muted-foreground" />
             </div>
             <p className="text-sm font-medium text-foreground">No customer selected</p>
-            <p className="mt-1 text-xs text-muted-foreground">
-              Open a conversation to view profile and order context.
-            </p>
           </div>
         </div>
       </aside>
@@ -95,11 +127,8 @@ export function CustomerDetails({ contact, onClose }: Props) {
   }
 
   const name = contactDisplayName(contact);
-  const emails = listValues(contact.email, contact.emails);
-  const whatsappIds = listValues(
-    contact.whatsappId ?? contact.identifiers?.whatsapp,
-    contact.whatsappIds,
-  ).map(formatWhatsAppDisplay);
+  const ltv = commerce.stats.lifetimeValue;
+  const orderCount = commerce.stats.totalOrders;
 
   return (
     <aside className="flex w-[400px] shrink-0 flex-col border-l border-border bg-card">
@@ -119,7 +148,9 @@ export function CustomerDetails({ contact, onClose }: Props) {
               {emails[0] || whatsappIds[0] || "No contact identifiers"}
             </p>
             <p className="mt-1 text-[10px] font-medium uppercase tracking-[0.14em] text-muted-foreground">
-              LTV {formatInr(commerce.stats.lifetimeValue)} · {commerce.stats.totalOrders} orders
+              {isLoading
+                ? "Loading commerce…"
+                : `LTV ${formatInr(ltv, commerce.stats.currency)} · ${orderCount} orders`}
             </p>
           </div>
         </div>
@@ -144,15 +175,50 @@ export function CustomerDetails({ contact, onClose }: Props) {
       </div>
 
       <div className="flex-1 overflow-y-auto bg-background px-4 py-4">
+        {!canLookup && (
+          <p className="mb-3 rounded-lg border border-dashed border-border px-3 py-3 text-xs text-muted-foreground">
+            Add an email or WhatsApp number to look up Shopify orders.
+          </p>
+        )}
+        {canLookup && isError && (
+          <p className="mb-3 rounded-lg border border-border px-3 py-3 text-xs text-red-600">
+            {(error as Error)?.message || "Failed to load Shopify data"}
+          </p>
+        )}
+        {canLookup && isLoading && (
+          <div className="mb-3 flex items-center justify-center py-8">
+            <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+          </div>
+        )}
+
         {tab === "profile" && (
-          <ProfileTab contact={contact} emails={emails} whatsappIds={whatsappIds} />
+          <ProfileTab
+            contact={contact}
+            emails={emails}
+            whatsappIds={whatsappIds}
+            shopify={commerce.customer}
+            provider={commerce.provider}
+          />
         )}
         {tab === "stats" && <StatsTab stats={commerce.stats} />}
-        {tab === "orders" && <OrdersTab orders={commerce.orders} />}
+        {tab === "orders" && (
+          <div className="space-y-3">
+            <OrderWidget email={lookupEmail} phone={lookupPhone} />
+            {!isLoading && commerce.orders.length > 0 && (
+              <OrdersTable orders={commerce.orders} currency={commerce.stats.currency} />
+            )}
+          </div>
+        )}
       </div>
 
-      <div className="border-t border-border px-4 py-2.5 bg-card">
-        <p className="text-center text-[10px] text-muted-foreground">Order data is demo mock</p>
+      <div className="border-t border-border bg-card px-4 py-2.5">
+        <p className="text-center text-[10px] text-muted-foreground">
+          {commerce.provider === "shopify"
+            ? "Order data from Shopify"
+            : commerce.provider === "mock"
+              ? "Demo mock orders (configure SHOPIFY_* in API .env)"
+              : "No commerce provider"}
+        </p>
       </div>
     </aside>
   );
@@ -160,7 +226,7 @@ export function CustomerDetails({ contact, onClose }: Props) {
 
 function Header({ onClose }: { onClose: () => void }) {
   return (
-    <div className="flex items-center justify-between border-b border-border px-4 py-3.5 bg-card">
+    <div className="flex items-center justify-between border-b border-border bg-card px-4 py-3.5">
       <div>
         <h3 className="text-sm font-semibold tracking-tight text-foreground">Customer context</h3>
         <p className="text-[11px] text-muted-foreground">Profile & order intelligence</p>
@@ -182,16 +248,25 @@ function ProfileTab({
   contact,
   emails,
   whatsappIds,
+  shopify,
+  provider,
 }: {
   contact: Contact;
   emails: string[];
   whatsappIds: string[];
+  shopify: CustomerCommerceResponse["customer"];
+  provider: CustomerCommerceResponse["provider"];
 }) {
   const rows = [
-    { label: "Name", value: contact.name || "—" },
-    { label: "Emails", value: emails.length ? emails.join(", ") : "—" },
-    { label: "WhatsApp", value: whatsappIds.length ? whatsappIds.join(", ") : "—" },
-    { label: "Customer ID", value: contact.id },
+    { label: "Name", value: shopify?.name || contact.name || "—" },
+    { label: "Emails", value: emails.length ? emails.join(", ") : shopify?.email || "—" },
+    {
+      label: "WhatsApp",
+      value: whatsappIds.length ? whatsappIds.join(", ") : shopify?.phone || "—",
+    },
+    { label: "Shopify ID", value: shopify?.id || (provider === "shopify" ? "—" : "n/a") },
+    { label: "Location", value: shopify?.location || "—" },
+    { label: "Contact ID", value: contact.id },
   ];
 
   return (
@@ -203,7 +278,7 @@ function ProfileTab({
             {rows.map((row, idx) => (
               <tr key={row.label} className={cn(idx !== rows.length - 1 && "border-b border-border")}>
                 <th className="w-[38%] px-3 py-2.5 font-medium text-muted-foreground">{row.label}</th>
-                <td className="px-3 py-2.5 font-medium text-foreground break-all">{row.value}</td>
+                <td className="break-all px-3 py-2.5 font-medium text-foreground">{row.value}</td>
               </tr>
             ))}
           </tbody>
@@ -238,41 +313,31 @@ function ProfileTab({
   );
 }
 
-function StatsTab({
-  stats,
-}: {
-  stats: ReturnType<typeof buildMockCustomerCommerce>["stats"];
-}) {
+function StatsTab({ stats }: { stats: OrderStats }) {
   const metrics = [
     {
       label: "Delivered",
       value: stats.delivered,
-      hint: "Successful",
-      icon: <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600 dark:text-emerald-400" />,
+      hint: "Fulfilled",
+      icon: <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600" />,
     },
     {
-      label: "RTO",
-      value: stats.rto,
-      hint: `${stats.rtoRate}% rate`,
-      icon: <RotateCcw className="h-3.5 w-3.5 text-orange-600 dark:text-orange-400" />,
+      label: "Shipped",
+      value: stats.shipped,
+      hint: "In transit",
+      icon: <Truck className="h-3.5 w-3.5 text-sky-600" />,
     },
     {
       label: "Cancelled",
       value: stats.cancelled,
-      hint: "Buyer / ops",
-      icon: <XCircle className="h-3.5 w-3.5 text-rose-600 dark:text-rose-400" />,
+      hint: "Refunded / void",
+      icon: <XCircle className="h-3.5 w-3.5 text-rose-600" />,
     },
     {
-      label: "In transit",
-      value: stats.inTransit,
-      hint: "Live Shipments",
-      icon: <Truck className="h-3.5 w-3.5 text-sky-600 dark:text-sky-400" />,
-    },
-    {
-      label: "Exchanged",
-      value: stats.exchanged,
-      hint: "Post-delivery",
-      icon: <RefreshCcw className="h-3.5 w-3.5 text-violet-600 dark:text-violet-400" />,
+      label: "Placed",
+      value: stats.placed,
+      hint: "Open / confirmed",
+      icon: <Package className="h-3.5 w-3.5 text-amber-600" />,
     },
     {
       label: "Total",
@@ -283,10 +348,8 @@ function StatsTab({
   ];
 
   const summaryRows = [
-    { label: "Lifetime value", value: formatInr(stats.lifetimeValue) },
-    { label: "Avg order value", value: formatInr(stats.avgOrderValue) },
-    { label: "RTO rate", value: `${stats.rtoRate}%` },
-    { label: "Last order", value: `${stats.lastOrderDaysAgo}d ago` },
+    { label: "Lifetime value", value: formatInr(stats.lifetimeValue, stats.currency) },
+    { label: "Avg order value", value: formatInr(stats.averageOrderValue, stats.currency) },
   ];
 
   return (
@@ -310,18 +373,9 @@ function StatsTab({
       <SectionTitle icon={<MapPin className="h-3.5 w-3.5" />} title="Commerce summary" />
       <div className="overflow-hidden rounded-xl border border-border bg-card">
         <table className="w-full text-left text-xs">
-          <thead>
-            <tr className="border-b border-border bg-muted/60">
-              <th className="px-3 py-2 font-semibold text-muted-foreground">Metric</th>
-              <th className="px-3 py-2 text-right font-semibold text-muted-foreground">Value</th>
-            </tr>
-          </thead>
           <tbody>
             {summaryRows.map((row, idx) => (
-              <tr
-                key={row.label}
-                className={cn(idx !== summaryRows.length - 1 && "border-b border-border")}
-              >
+              <tr key={row.label} className={cn(idx !== summaryRows.length - 1 && "border-b border-border")}>
                 <td className="px-3 py-2.5 text-muted-foreground">{row.label}</td>
                 <td className="px-3 py-2.5 text-right font-semibold text-foreground">{row.value}</td>
               </tr>
@@ -333,69 +387,48 @@ function StatsTab({
   );
 }
 
-function OrdersTab({
+function OrdersTable({
   orders,
+  currency,
 }: {
-  orders: ReturnType<typeof buildMockCustomerCommerce>["orders"];
+  orders: CustomerOrder[];
+  currency: string;
 }) {
   return (
-    <div className="space-y-4">
-      <SectionTitle icon={<Package className="h-3.5 w-3.5" />} title="Recent orders" />
-      <div className="overflow-hidden rounded-xl border border-border bg-card">
-        <div className="overflow-x-auto">
-          <table className="w-full min-w-[340px] text-left text-[11px]">
-            <thead>
-              <tr className="border-b border-border bg-muted/60">
-                <th className="px-3 py-2 font-semibold text-muted-foreground">Order</th>
-                <th className="px-3 py-2 font-semibold text-muted-foreground">Status</th>
-                <th className="px-3 py-2 text-right font-semibold text-muted-foreground">Amount</th>
-              </tr>
-            </thead>
-            <tbody>
-              {orders.map((order, idx) => (
-                <tr
-                  key={order.orderId}
-                  className={cn(idx !== orders.length - 1 && "border-b border-border")}
-                >
-                  <td className="px-3 py-2.5 align-top">
-                    <p className="font-semibold text-foreground">{order.orderId}</p>
-                    <p className="text-[10px] text-muted-foreground">
-                      {formatOrderDate(order.placedOn)} · {order.payment}
-                    </p>
-                    <p className="mt-0.5 line-clamp-1 text-[10px] text-muted-foreground">
-                      {order.items}
-                    </p>
-                  </td>
-                  <td className="px-3 py-2.5 align-top">
-                    <Badge
-                      variant="outline"
-                      className={cn(
-                        "h-5 rounded-md px-1.5 text-[10px]",
-                        orderStatusClass(order.statusKey),
-                      )}
-                    >
-                      {order.status}
-                    </Badge>
-                    <p className="mt-1 text-[10px] text-muted-foreground">{order.city}</p>
-                  </td>
-                  <td className="px-3 py-2.5 align-top text-right font-semibold text-foreground">
-                    {formatInr(order.amount)}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </div>
-
-      <div className="rounded-xl border border-dashed border-border bg-muted/40 px-3 py-3">
-        <p className="text-[11px] font-medium text-foreground">Agent tips</p>
-        <ul className="mt-1.5 list-disc space-y-1 pl-4 text-[11px] text-muted-foreground">
-          <li>Check RTO rate before approving COD replacements.</li>
-          <li>Prefer prepaid discounts for repeat RTO customers.</li>
-          <li>Quote last order ID when talking shipping delays.</li>
-        </ul>
-      </div>
+    <div className="overflow-hidden rounded-xl border border-border bg-card">
+      <table className="w-full text-left text-[11px]">
+        <thead>
+          <tr className="border-b border-border bg-muted/60">
+            <th className="px-3 py-2 font-semibold text-muted-foreground">Order</th>
+            <th className="px-3 py-2 font-semibold text-muted-foreground">Status</th>
+            <th className="px-3 py-2 text-right font-semibold text-muted-foreground">Amount</th>
+          </tr>
+        </thead>
+        <tbody>
+          {orders.map((order, idx) => (
+            <tr
+              key={order.orderId}
+              className={cn(idx !== orders.length - 1 && "border-b border-border")}
+            >
+              <td className="px-3 py-2.5 align-top">
+                <p className="font-semibold text-foreground">#{order.orderId}</p>
+                <p className="text-[10px] text-muted-foreground">{formatOrderDate(order.date)}</p>
+                <p className="mt-0.5 line-clamp-1 text-[10px] text-muted-foreground">
+                  {order.items.map((i) => i.name).join(", ") || "—"}
+                </p>
+              </td>
+              <td className="px-3 py-2.5 align-top">
+                <Badge variant="outline" className="h-5 rounded-md px-1.5 text-[10px]">
+                  {order.status}
+                </Badge>
+              </td>
+              <td className="px-3 py-2.5 align-top text-right font-semibold text-foreground">
+                {formatInr(order.amount, order.currency || currency)}
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
     </div>
   );
 }

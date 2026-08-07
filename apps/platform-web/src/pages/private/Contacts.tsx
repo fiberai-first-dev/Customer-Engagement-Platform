@@ -3,7 +3,7 @@ import { Button } from "../../components/ui/button";
 import { Input } from "../../components/ui/input";
 import { useState, useMemo } from "react";
 import { Search, MoreHorizontal, Plus, Edit2, Loader2 } from "lucide-react";
-import { useAccounts, useContacts } from "../../api";
+import { useAccounts, useContacts, useEnabledChannelTypes } from "../../api";
 import { ContactModal, type ContactFormData } from "../../components/contacts/ContactModal";
 import { formatWhatsAppDisplay } from "../../components/inbox/utils";
 
@@ -54,6 +54,10 @@ export function ContactsPage() {
   const { data: accounts, isLoading: accountsLoading } = useAccounts();
   const accountId = accounts?.[0]?.id || "";
   const { data: contacts, isLoading: contactsLoading } = useContacts(accountId);
+  const { enabledChannels, channelsReady } = useEnabledChannelTypes();
+  const showEmail = !channelsReady || enabledChannels.includes("email");
+  const showWa = !channelsReady || enabledChannels.includes("whatsapp");
+  const showIg = !channelsReady || enabledChannels.includes("instagram");
   const [searchQuery, setSearchQuery] = useState("");
   const [openDropdownId, setOpenDropdownId] = useState<string | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -132,9 +136,15 @@ export function ContactsPage() {
                 <tr>
                   <th className="border-b border-border px-6 py-4 font-medium">Customer ID</th>
                   <th className="border-b border-border px-6 py-4 font-medium">Name</th>
-                  <th className="border-b border-border px-6 py-4 font-medium">Email</th>
-                  <th className="border-b border-border px-6 py-4 font-medium">WhatsApp</th>
-                  <th className="border-b border-border px-6 py-4 font-medium">Instagram</th>
+                  {showEmail && (
+                    <th className="border-b border-border px-6 py-4 font-medium">Email</th>
+                  )}
+                  {showWa && (
+                    <th className="border-b border-border px-6 py-4 font-medium">WhatsApp</th>
+                  )}
+                  {showIg && (
+                    <th className="border-b border-border px-6 py-4 font-medium">Instagram</th>
+                  )}
                   <th className="w-16 border-b border-border px-6 py-4 font-medium" />
                 </tr>
               </thead>
@@ -173,23 +183,31 @@ export function ContactsPage() {
                           <span className="font-medium">{c.name || "—"}</span>
                         </div>
                       </td>
-                      <td className="max-w-[220px] break-words px-6 py-4 text-muted-foreground">
-                        {joinList(c.email, c.emails)}
-                      </td>
-                      <td className="max-w-[180px] break-words px-6 py-4 text-muted-foreground">
-                        {joinWhatsApp(c.whatsappId ?? c.identifiers?.whatsapp, c.whatsappIds)}
-                      </td>
-                      <td className="px-6 py-4 text-muted-foreground">
-                        {(() => {
-                          const igIdentity = c.identities?.find((i) => i.channel === "instagram");
-                          const igName = (igIdentity?.metadata as { senderName?: string } | undefined)
-                            ?.senderName;
-                          const ig =
-                            (igName?.startsWith("@") ? igName : igName ? `@${igName}` : null) ||
-                            (c.identifiers?.instagram ? `@${c.identifiers.instagram.replace(/^@/, "")}` : null);
-                          return ig || "—";
-                        })()}
-                      </td>
+                      {showEmail && (
+                        <td className="max-w-[220px] break-words px-6 py-4 text-muted-foreground">
+                          {joinList(c.email, c.emails)}
+                        </td>
+                      )}
+                      {showWa && (
+                        <td className="max-w-[180px] break-words px-6 py-4 text-muted-foreground">
+                          {joinWhatsApp(c.whatsappId ?? c.identifiers?.whatsapp, c.whatsappIds)}
+                        </td>
+                      )}
+                      {showIg && (
+                        <td className="px-6 py-4 text-muted-foreground">
+                          {(() => {
+                            const igIdentity = c.identities?.find((i) => i.channel === "instagram");
+                            const igName = (igIdentity?.metadata as { senderName?: string } | undefined)
+                              ?.senderName;
+                            const ig =
+                              (igName?.startsWith("@") ? igName : igName ? `@${igName}` : null) ||
+                              (c.identifiers?.instagram
+                                ? `@${c.identifiers.instagram.replace(/^@/, "")}`
+                                : null);
+                            return ig || "—";
+                          })()}
+                        </td>
+                      )}
                       <td className="px-6 py-4">
                         <div className="relative">
                           <Button
@@ -237,6 +255,7 @@ export function ContactsPage() {
         }}
         initialData={editingContact}
         accountId={accountId}
+        enabledChannels={enabledChannels}
       />
     </div>
   );

@@ -50,7 +50,7 @@ export function LoginPage() {
       <Card className="w-full max-w-sm shadow-xl">
         <CardHeader className="space-y-3 text-center pb-8">
           <CardTitle className="text-2xl font-bold">Welcome back</CardTitle>
-          <CardDescription>Enter your credentials to access the inbox</CardDescription>
+          <CardDescription>Sign in with your username and password</CardDescription>
         </CardHeader>
         <CardContent>
           <form onSubmit={handleLogin} className="space-y-4">

@@ -10,7 +10,7 @@ export class InboxController {
     reply: FastifyReply,
   ) {
     try {
-      const inbox = await InboxService.updateInbox(request.params.inboxId, request.body ?? {});
+      const inbox = await InboxService.update(request.params.inboxId, request.body ?? {});
       return reply.send(inbox);
     } catch (err: any) {
       return reply.code(404).send({ error: err.message });

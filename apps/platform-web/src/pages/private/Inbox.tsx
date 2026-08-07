@@ -3,6 +3,7 @@ import { toast } from "sonner";
 import { Loader2, Search } from "lucide-react";
 import {
   useConversations,
+  useEnabledChannelTypes,
   useMessages,
   useSendMessage,
   useUpdateConversation,
@@ -40,6 +41,8 @@ export function InboxPage() {
 
   const sendMessage = useSendMessage();
   const updateStatus = useUpdateConversation();
+  const { enabledChannels, channelsReady } = useEnabledChannelTypes();
+  const enabledSet = useMemo(() => new Set(enabledChannels), [enabledChannels]);
 
   const showInitialListLoader = conversationsPending && conversations === undefined;
 
@@ -47,10 +50,11 @@ export function InboxPage() {
   const conversationsByContact = useMemo(() => {
     const map: Record<string, Conversation[]> = {};
     for (const conversation of conversations ?? []) {
+      if (channelsReady && !enabledSet.has(conversation.channelType)) continue;
       (map[conversation.contactId] ??= []).push(conversation);
     }
     return map;
-  }, [conversations]);
+  }, [conversations, enabledSet, channelsReady]);
 
   const listConversations = useMemo(() => {
     const query = searchQuery.trim().toLowerCase();
@@ -112,12 +116,13 @@ export function InboxPage() {
     if (!selectedContactId) return map;
     for (const conversation of conversations ?? []) {
       if (conversation.contactId !== selectedContactId) continue;
+      if (channelsReady && !enabledSet.has(conversation.channelType)) continue;
       if (!map[conversation.channelType]) {
         map[conversation.channelType] = conversation;
       }
     }
     return map;
-  }, [conversations, selectedContactId]);
+  }, [conversations, selectedContactId, enabledSet, channelsReady]);
 
   const selectedConversation = selectedContactId
     ? contactConversations[activeTab] ?? null
@@ -133,6 +138,14 @@ export function InboxPage() {
     isPending: messagesPending,
   } = useMessages(selectedConversation?.id);
   const showInitialMessagesLoader = messagesPending && messages === undefined;
+
+  useEffect(() => {
+    if (!channelsReady) return;
+    if (!enabledChannels.length) return;
+    if (!enabledChannels.includes(activeTab)) {
+      setActiveTab(enabledChannels[0]!);
+    }
+  }, [enabledChannels, activeTab, channelsReady]);
 
   /**
    * Once per contact open (including after data arrives), focus unresolved channel.
@@ -297,6 +310,7 @@ export function InboxPage() {
           sending={sendMessage.isPending}
           customerContextOpen={customerContextOpen}
           onToggleCustomerContext={() => setCustomerContextOpen((open) => !open)}
+          enabledChannels={enabledChannels}
         />
       )}
 

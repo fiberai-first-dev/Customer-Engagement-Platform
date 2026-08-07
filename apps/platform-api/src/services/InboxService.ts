@@ -1,85 +1,73 @@
-import { ulid } from "ulid";
-import { InboxRepository } from "../repositories/InboxRepository.js";
-import { AccountRepository } from "../repositories/AccountRepository.js";
+import { prisma } from "../config/db.js";
 import { env } from "../config/env.js";
 import { mergeChannelConfig } from "./MessagingService.js";
 import type { ChannelType, Prisma } from "../generated/client/index.js";
 
-const channelTypes: ChannelType[] = ["whatsapp", "instagram", "email"];
+function shapeChannelConfig(row: {
+  id: string;
+  name: string;
+  channelType: ChannelType;
+  channelConfig: Prisma.JsonValue;
+  enabled: boolean;
+}) {
+  const base = env.publicBaseUrl.replace(/\/$/, "");
+  return {
+    id: row.id,
+    accountId: "workspace",
+    name: row.name,
+    channelType: row.channelType,
+    channelConfig: row.channelConfig,
+    enabled: row.enabled,
+    webhookUrl: `${base}/webhooks/${row.channelType}`,
+  };
+}
 
 export class InboxService {
-  static toPublic(inbox: {
-    id: string;
-    accountId: string;
-    name: string;
-    channelType: ChannelType;
-    channelConfig: Prisma.JsonValue;
-    enabled: boolean;
-    createdAt: Date;
-    updatedAt: Date;
-  }) {
-    return {
-      ...inbox,
-      channelConfig: inbox.channelConfig,
-      webhookUrl: `${env.publicBaseUrl.replace(/\/$/, "")}/webhooks/${inbox.channelType}`,
-    };
+  static async listByAccount(_accountId?: string) {
+    const rows = await prisma.channelConfig.findMany({ orderBy: { createdAt: "asc" } });
+    return rows.map(shapeChannelConfig);
   }
 
-  static async listInboxes(accountId: string) {
-    const inboxes = await InboxRepository.findByAccountId(accountId);
-    return inboxes.map((inbox) => InboxService.toPublic(inbox));
+  static async getById(id: string) {
+    const row = await prisma.channelConfig.findUnique({ where: { id } });
+    return row ? shapeChannelConfig(row) : null;
   }
 
-  static async createInbox(
-    accountId: string,
+  static async update(
+    id: string,
     data: {
       name?: string;
-      channelType?: string;
       channelConfig?: Record<string, unknown>;
       enabled?: boolean;
     },
   ) {
-    const { name, channelType, channelConfig, enabled } = data;
-    if (!channelType || !channelTypes.includes(channelType as ChannelType)) {
-      throw new Error("channelType must be whatsapp|instagram|email");
-    }
-    const account = await AccountRepository.findById(accountId);
-    if (!account) throw new Error("account not found");
-
-    const inbox = await InboxRepository.create({
-      id: ulid(),
-      accountId: account.id,
-      name: name?.trim() || `${channelType} inbox`,
-      channelType: channelType as ChannelType,
-      channelConfig: (channelConfig ?? {}) as Prisma.InputJsonValue,
-      enabled: enabled ?? true,
-    });
-
-    return InboxService.toPublic(inbox);
-  }
-
-  static async updateInbox(
-    inboxId: string,
-    data: {
-      name?: string;
-      enabled?: boolean;
-      channelConfig?: Record<string, unknown>;
-    },
-  ) {
-    const existing = await InboxRepository.findById(inboxId);
-    if (!existing) throw new Error("inbox not found");
-
+    const existing = await prisma.channelConfig.findUnique({ where: { id } });
+    if (!existing) throw new Error("not found");
     const nextConfig =
       data.channelConfig !== undefined
         ? mergeChannelConfig(existing.channelConfig, data.channelConfig)
         : undefined;
-
-    const inbox = await InboxRepository.update(inboxId, {
-      ...(data.name !== undefined ? { name: data.name.trim() } : {}),
-      ...(data.enabled !== undefined ? { enabled: data.enabled } : {}),
-      ...(nextConfig !== undefined ? { channelConfig: nextConfig } : {}),
+    const row = await prisma.channelConfig.update({
+      where: { id },
+      data: {
+        ...(data.name !== undefined ? { name: data.name } : {}),
+        ...(nextConfig !== undefined ? { channelConfig: nextConfig } : {}),
+        ...(data.enabled !== undefined ? { enabled: data.enabled } : {}),
+      },
     });
+    return shapeChannelConfig(row);
+  }
 
-    return InboxService.toPublic(inbox);
+  static async updateByChannelType(
+    channelType: ChannelType,
+    data: {
+      name?: string;
+      channelConfig?: Record<string, unknown>;
+      enabled?: boolean;
+    },
+  ) {
+    const existing = await prisma.channelConfig.findFirst({ where: { channelType } });
+    if (!existing) throw new Error("not found");
+    return this.update(existing.id, data);
   }
 }

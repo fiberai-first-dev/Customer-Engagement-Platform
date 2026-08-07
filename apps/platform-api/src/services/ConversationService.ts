@@ -1,48 +1,205 @@
-import { ConversationRepository } from "../repositories/ConversationRepository.js";
-import { MessageRepository } from "../repositories/MessageRepository.js";
-import { sendConversationMessage } from "./MessagingService.js";
+import type { ChannelType } from "../generated/client/index.js";
+import { prisma } from "../config/db.js";
+import {
+  sendCustomerChannelMessage,
+  shapeCustomer,
+} from "./MessagingService.js";
+import {
+  recomputeCustomerResolved,
+  resolveAllIdentitiesForCustomerChannel,
+} from "./ResolveService.js";
 
+function previewMessage(content: string) {
+  return content.length > 120 ? `${content.slice(0, 117)}…` : content;
+}
+
+/**
+ * Synthesize conversation-like rows for the existing Inbox UI.
+ * One "conversation" per (customer, channelType) using the most recent identity.
+ */
 export class ConversationService {
-  static async listConversations(query: {
-    accountId?: string;
-    inboxId?: string;
-    status?: string;
-  }) {
-    const { accountId, inboxId, status } = query;
-    return ConversationRepository.findMany({
-      accountId: accountId || undefined,
-      inboxId: inboxId || undefined,
-      status:
-        status === "open" || status === "pending" || status === "resolved"
-          ? status
-          : undefined,
+  static async list(status?: "active" | "resolved" | "all") {
+    const enabledConfigs = await prisma.channelConfig.findMany({
+      where: { enabled: true },
     });
+    const enabledTypes = new Set(enabledConfigs.map((c) => c.channelType));
+
+    const customers = await prisma.customer.findMany({
+      include: {
+        whatsappIdentities: true,
+        instagramIdentities: true,
+        emailIdentities: true,
+      },
+      orderBy: { updatedAt: "desc" },
+    });
+
+    const rows = [];
+    for (const customer of customers) {
+      const shaped = shapeCustomer(customer);
+      const channelStatuses: Partial<Record<ChannelType, "open" | "resolved">> = {};
+
+      // Pre-compute statuses for all enabled channels that have identities
+      for (const type of ["whatsapp", "instagram", "email"] as ChannelType[]) {
+        if (!enabledTypes.has(type)) continue;
+        const identities =
+          type === "whatsapp"
+            ? customer.whatsappIdentities
+            : type === "instagram"
+              ? customer.instagramIdentities
+              : customer.emailIdentities;
+        if (!identities.length) continue;
+        const unresolved = identities.some((i) => !i.resolved);
+        channelStatuses[type] = unresolved ? "open" : "resolved";
+      }
+
+      for (const type of ["whatsapp", "instagram", "email"] as ChannelType[]) {
+        if (!enabledTypes.has(type)) continue;
+        const identities =
+          type === "whatsapp"
+            ? customer.whatsappIdentities
+            : type === "instagram"
+              ? customer.instagramIdentities
+              : customer.emailIdentities;
+        if (!identities.length) continue;
+
+        const unresolved = identities.some((i) => !i.resolved);
+        // Filter by per-channel status (not only global customer.resolved)
+        if (status === "active" && !unresolved) continue;
+        if (status === "resolved" && unresolved) continue;
+
+        const latest = [...identities].sort((a, b) => {
+          const at = a.lastMessageAt?.getTime() ?? 0;
+          const bt = b.lastMessageAt?.getTime() ?? 0;
+          return bt - at;
+        })[0]!;
+
+        const lastMsg = await prisma.message.findFirst({
+          where: { customerId: customer.id, channelType: type },
+          orderBy: { createdAt: "desc" },
+        });
+
+        rows.push({
+          id: `${customer.id}:${type}`,
+          contactId: customer.id,
+          accountId: "workspace",
+          status: unresolved ? ("open" as const) : ("resolved" as const),
+          lastMessageAt: latest.lastMessageAt ?? lastMsg?.createdAt ?? null,
+          channelType: type,
+          inbox: {
+            id: `channel_${type}`,
+            name: type === "whatsapp" ? "WhatsApp" : type === "instagram" ? "Instagram" : "Email",
+            channelType: type,
+          },
+          contact: {
+            ...shaped,
+            channelStatuses,
+            globalStatus: customer.resolved ? ("resolved" as const) : ("active" as const),
+          },
+          messages: lastMsg
+            ? [
+                {
+                  id: lastMsg.id,
+                  conversationId: `${customer.id}:${type}`,
+                  direction: lastMsg.direction,
+                  content: previewMessage(lastMsg.content),
+                  contentType: lastMsg.contentType,
+                  subject: lastMsg.subject,
+                  status: lastMsg.status,
+                  createdAt: lastMsg.createdAt.toISOString(),
+                },
+              ]
+            : [],
+        });
+      }
+    }
+
+    rows.sort((a, b) => {
+      const at = a.lastMessageAt ? new Date(a.lastMessageAt).getTime() : 0;
+      const bt = b.lastMessageAt ? new Date(b.lastMessageAt).getTime() : 0;
+      return bt - at;
+    });
+
+    return rows;
   }
 
-  static async getConversation(id: string) {
-    const conversation = await ConversationRepository.findById(id);
-    if (!conversation) throw new Error("not found");
-    return conversation;
+  static parseConversationId(id: string): { customerId: string; channelType: ChannelType } {
+    const [customerId, channelType] = id.split(":");
+    if (!customerId || !["whatsapp", "instagram", "email"].includes(channelType ?? "")) {
+      throw new Error("invalid conversation id");
+    }
+    return { customerId, channelType: channelType as ChannelType };
   }
 
-  static async getMessages(conversationId: string) {
-    const conversation = await ConversationRepository.findById(conversationId);
-    if (!conversation) throw new Error("not found");
-    return MessageRepository.findByConversationId(conversationId);
+  static async listMessages(conversationId: string) {
+    const { customerId, channelType } = this.parseConversationId(conversationId);
+    const messages = await prisma.message.findMany({
+      where: { customerId, channelType },
+      orderBy: { createdAt: "asc" },
+      take: 500,
+    });
+    return messages.map((m) => ({
+      id: m.id,
+      conversationId,
+      direction: m.direction,
+      content: m.content,
+      contentType: m.contentType,
+      subject: m.subject,
+      status: m.status,
+      createdAt: m.createdAt.toISOString(),
+    }));
   }
 
   static async sendMessage(conversationId: string, content: string, subject?: string) {
-    return sendConversationMessage({ conversationId, content, subject });
+    const { customerId, channelType } = this.parseConversationId(conversationId);
+    const result = await sendCustomerChannelMessage({
+      customerId,
+      channelType,
+      content,
+      subject,
+    });
+    return {
+      message: {
+        id: result.message.id,
+        conversationId,
+        direction: result.message.direction,
+        content: result.message.content,
+        contentType: result.message.contentType,
+        subject: result.message.subject,
+        status: result.message.status,
+        createdAt: result.message.createdAt.toISOString(),
+      },
+      result: result.result,
+    };
   }
 
-  static async updateStatus(id: string, status: string) {
-    if (status !== "open" && status !== "pending" && status !== "resolved") {
-      throw new Error("invalid status");
+  static async updateStatus(conversationId: string, status: "open" | "pending" | "resolved") {
+    const { customerId, channelType } = this.parseConversationId(conversationId);
+    if (status === "resolved") {
+      await resolveAllIdentitiesForCustomerChannel({ customerId, channelType });
+    } else {
+      // Mark every identity of this channel type unresolved
+      if (channelType === "whatsapp") {
+        await prisma.whatsAppChannel.updateMany({
+          where: { customerId },
+          data: { resolved: false },
+        });
+      } else if (channelType === "instagram") {
+        await prisma.instagramChannel.updateMany({
+          where: { customerId },
+          data: { resolved: false },
+        });
+      } else {
+        await prisma.emailChannel.updateMany({
+          where: { customerId },
+          data: { resolved: false },
+        });
+      }
+      await recomputeCustomerResolved(customerId);
     }
-    try {
-      return await ConversationRepository.updateStatus(id, status);
-    } catch {
-      throw new Error("not found");
-    }
+
+    const list = await this.list("all");
+    const found = list.find((r) => r.id === conversationId);
+    if (!found) throw new Error("Conversation not found");
+    return found;
   }
 }

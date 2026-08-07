@@ -14,12 +14,6 @@ enum ChannelType {
   email
 }
 
-enum ConversationStatus {
-  open
-  pending
-  resolved
-}
-
 enum MessageDirection {
   incoming
   outgoing
@@ -43,142 +37,161 @@ enum ContentType {
   unknown
 }
 
-/// Workspace / tenant
-model Account {
+/// Login users (password stored as bcrypt hash)
+model User {
+  id           String   @id
+  username     String   @unique
+  passwordHash String   @map("password_hash")
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  @@map("users")
+}
+
+/// Unified customer (person) across channels
+model Customer {
   id        String   @id
-  name      String
+  name      String?
+  /// True only when EVERY channel identity for this customer is resolved
+  resolved  Boolean  @default(false)
+  metadata  Json     @default("{}")
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
-  inboxes       Inbox[]
-  contacts      Contact[]
-  conversations Conversation[]
+  whatsappIdentities  WhatsAppChannel[]
+  instagramIdentities InstagramChannel[]
+  emailIdentities     EmailChannel[]
 
-  @@map("accounts")
+  @@index([resolved])
+  @@map("customers")
 }
 
-/// Channel connection (one WhatsApp number / IG page / mailbox per inbox)
-model Inbox {
+/// Provider connection settings (was inboxes)
+model ChannelConfig {
   id            String      @id
-  accountId     String      @map("account_id")
   name          String
   channelType   ChannelType @map("channel_type")
-  /// Provider credentials + webhook secrets (WhatsApp / Instagram / Email / Gmail)
   channelConfig Json        @default("{}") @map("channel_config")
   enabled       Boolean     @default(true)
   createdAt     DateTime    @default(now()) @map("created_at")
   updatedAt     DateTime    @updatedAt @map("updated_at")
 
-  account       Account        @relation(fields: [accountId], references: [id], onDelete: Cascade)
-  conversations Conversation[]
   webhookEvents WebhookEvent[]
 
-  @@index([accountId])
-  @@index([channelType])
-  @@index([accountId, channelType])
-  @@map("inboxes")
+  @@unique([channelType])
+  @@index([enabled])
+  @@map("channels_config")
 }
 
-/// Unified person across channels (one row; enable/update channel cols when linking same user)
-model Contact {
-  id        String   @id
-  accountId String   @map("account_id")
-  name      String?
+/// Singleton Shopify vendor credentials (also editable in Settings)
+model ShopifyConfig {
+  id           String   @id @default("shopify_default")
+  shop         String   @default("")
+  clientId     String   @default("") @map("client_id")
+  clientSecret String   @default("") @map("client_secret")
+  apiVersion   String   @default("2024-10") @map("api_version")
+  metadata     Json     @default("{}")
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
 
-  /// Primary / display email (first of `emails`)
-  email String?
-  /// All email addresses for this contact
-  emails Json @default("[]")
-
-  whatsappEnabled Boolean @default(false) @map("whatsapp_enabled")
-  /// Primary WhatsApp id / number (first of `whatsappIds`)
-  whatsappId      String?  @map("whatsapp_id")
-  /// All WhatsApp numbers for this contact
-  whatsappIds     Json     @default("[]") @map("whatsapp_ids")
-  /// Extra WA profile fields (display name, wa_id raw, etc.)
-  whatsappDetails Json     @default("{}") @map("whatsapp_details")
-
-  instagramEnabled Boolean @default(false) @map("instagram_enabled")
-  instagramId      String?  @map("instagram_id")
-  instagramDetails Json     @default("{}") @map("instagram_details")
-
-  emailEnabled Boolean @default(false) @map("email_enabled")
-  /// Channel external id for email (may match `email`)
-  emailId      String?  @map("email_id")
-  emailDetails Json     @default("{}") @map("email_details")
-
-  createdAt DateTime @default(now()) @map("created_at")
-  updatedAt DateTime @updatedAt @map("updated_at")
-
-  account       Account        @relation(fields: [accountId], references: [id], onDelete: Cascade)
-  conversations Conversation[]
-
-  @@index([accountId])
-  @@index([email])
-  @@index([accountId, whatsappId])
-  @@index([accountId, instagramId])
-  @@index([accountId, emailId])
-  @@map("contacts")
+  @@map("shopify_config")
 }
 
-/// Thread in one inbox with one contact
-model Conversation {
-  id               String             @id
-  accountId        String             @map("account_id")
-  inboxId          String             @map("inbox_id")
-  contactId        String             @map("contact_id")
-  status           ConversationStatus @default(open)
-  /// Provider thread key (WA sender id, IG sender id, Gmail threadId, etc.)
-  externalThreadId String?            @map("external_thread_id")
-  lastMessageAt    DateTime?          @map("last_message_at")
-  createdAt        DateTime           @default(now()) @map("created_at")
-  updatedAt        DateTime           @updatedAt @map("updated_at")
+/// One WhatsApp number / WA id for a customer
+model WhatsAppChannel {
+  id            String    @id
+  customerId    String    @map("customer_id")
+  externalId    String    @map("external_id")
+  resolved      Boolean   @default(false)
+  lastMessageAt DateTime? @map("last_message_at")
+  metadata      Json      @default("{}")
+  createdAt     DateTime  @default(now()) @map("created_at")
+  updatedAt     DateTime  @updatedAt @map("updated_at")
 
-  account  Account  @relation(fields: [accountId], references: [id], onDelete: Cascade)
-  inbox    Inbox    @relation(fields: [inboxId], references: [id], onDelete: Cascade)
-  contact  Contact  @relation(fields: [contactId], references: [id], onDelete: Cascade)
-  messages Message[]
+  customer Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
 
-  @@unique([inboxId, externalThreadId])
-  @@index([accountId, status])
-  @@index([accountId, lastMessageAt])
-  @@index([inboxId])
-  @@index([contactId])
+  @@unique([externalId])
+  @@index([customerId])
+  @@index([customerId, resolved])
   @@index([lastMessageAt])
-  @@map("conversations")
+  @@map("whatsapp_channel")
 }
 
+/// One Instagram scoped id for a customer
+model InstagramChannel {
+  id            String    @id
+  customerId    String    @map("customer_id")
+  externalId    String    @map("external_id")
+  resolved      Boolean   @default(false)
+  lastMessageAt DateTime? @map("last_message_at")
+  metadata      Json      @default("{}")
+  createdAt     DateTime  @default(now()) @map("created_at")
+  updatedAt     DateTime  @updatedAt @map("updated_at")
+
+  customer Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+
+  @@unique([externalId])
+  @@index([customerId])
+  @@index([customerId, resolved])
+  @@index([lastMessageAt])
+  @@map("instagram_channel")
+}
+
+/// One email address for a customer
+model EmailChannel {
+  id            String    @id
+  customerId    String    @map("customer_id")
+  externalId    String    @map("external_id")
+  resolved      Boolean   @default(false)
+  lastMessageAt DateTime? @map("last_message_at")
+  metadata      Json      @default("{}")
+  createdAt     DateTime  @default(now()) @map("created_at")
+  updatedAt     DateTime  @updatedAt @map("updated_at")
+
+  customer Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+
+  @@unique([externalId])
+  @@index([customerId])
+  @@index([customerId, resolved])
+  @@index([lastMessageAt])
+  @@map("email_channel")
+}
+
+/// Messages hang off a channel identity (channelType + channelId)
 model Message {
-  id             String           @id
-  conversationId String           @map("conversation_id")
-  direction      MessageDirection
-  content        String
-  contentType    ContentType      @default(text) @map("content_type")
-  subject        String?
-  externalId     String?          @map("external_id")
-  status         MessageStatus    @default(received)
-  rawPayload     Json?            @map("raw_payload")
-  createdAt      DateTime         @default(now()) @map("created_at")
+  id          String           @id
+  channelType ChannelType      @map("channel_type")
+  /// Id of whatsapp_channel / instagram_channel / email_channel row
+  channelId   String           @map("channel_id")
+  customerId  String           @map("customer_id")
+  direction   MessageDirection
+  content     String
+  contentType ContentType      @default(text) @map("content_type")
+  subject     String?
+  externalId  String?          @map("external_id")
+  status      MessageStatus    @default(received)
+  rawPayload  Json?            @map("raw_payload")
+  createdAt   DateTime         @default(now()) @map("created_at")
 
-  conversation Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
-
-  @@unique([conversationId, externalId])
-  @@index([conversationId, createdAt])
+  @@unique([channelType, channelId, externalId])
+  @@index([customerId, createdAt])
+  @@index([channelType, channelId, createdAt])
+  @@index([customerId, channelType])
   @@map("messages")
 }
 
 model WebhookEvent {
-  id        String      @id
-  inboxId   String      @map("inbox_id")
-  channel   ChannelType
-  eventKey  String      @map("event_key")
-  payload   Json
-  processed Boolean     @default(false)
-  createdAt DateTime    @default(now()) @map("created_at")
+  id              String      @id
+  channelConfigId String      @map("channel_config_id")
+  channel         ChannelType
+  eventKey        String      @map("event_key")
+  payload         Json
+  processed       Boolean     @default(false)
+  createdAt       DateTime    @default(now()) @map("created_at")
 
-  inbox Inbox @relation(fields: [inboxId], references: [id], onDelete: Cascade)
+  channelConfig ChannelConfig @relation(fields: [channelConfigId], references: [id], onDelete: Cascade)
 
-  @@unique([inboxId, eventKey])
+  @@unique([channelConfigId, eventKey])
   @@index([channel, createdAt])
   @@map("webhook_events")
 }

@@ -26,4 +26,30 @@ export class OrderController {
       });
     }
   }
+
+  /** Full commerce payload for the inbox customer widget (profile + stats + orders). */
+  static async getCommerce(
+    request: FastifyRequest<{
+      Querystring: { email?: string; phone?: string };
+    }>,
+    reply: FastifyReply,
+  ) {
+    const email = request.query.email?.trim();
+    const phone = request.query.phone?.trim();
+
+    if (!email && !phone) {
+      return reply.code(400).send({
+        error: "Provide email and/or phone to look up customer commerce",
+      });
+    }
+
+    try {
+      const result = await orderService.getCustomerCommerce({ email, phone });
+      return reply.send(result);
+    } catch (err: any) {
+      return reply.code(502).send({
+        error: err.message || "Failed to fetch customer commerce",
+      });
+    }
+  }
 }

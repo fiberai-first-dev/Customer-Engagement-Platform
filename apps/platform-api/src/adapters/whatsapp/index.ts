@@ -106,8 +106,17 @@ export const whatsappAdapter: ChannelAdapter<WhatsAppChannelConfig> = {
   },
 
   async sendMessage(config: WhatsAppChannelConfig, message: OutboundTextMessage): Promise<SendResult> {
-    if (!config.phoneNumberId || !config.accessToken) {
-      return { ok: false, status: "failed", error: "WhatsApp phoneNumberId/accessToken missing" };
+    const phoneNumberId = String(config.phoneNumberId ?? "").trim();
+    let accessToken = String(config.accessToken ?? "").trim();
+    if (/^bearer\s+/i.test(accessToken)) {
+      accessToken = accessToken.replace(/^bearer\s+/i, "").trim();
+    }
+    if (!phoneNumberId || !accessToken) {
+      return {
+        ok: false,
+        status: "failed",
+        error: "WhatsApp phoneNumberId/accessToken missing — set WHATSAPP_* in .env and restart",
+      };
     }
 
     const to = message.to.replace(/[^\d]/g, "");
@@ -122,10 +131,10 @@ export const whatsappAdapter: ChannelAdapter<WhatsAppChannelConfig> = {
     };
 
     try {
-      const res = await fetch(`${GRAPH}/${config.phoneNumberId}/messages`, {
+      const res = await fetch(`${GRAPH}/${phoneNumberId}/messages`, {
         method: "POST",
         headers: {
-          Authorization: `Bearer ${config.accessToken}`,
+          Authorization: `Bearer ${accessToken}`,
           "Content-Type": "application/json",
         },
         body: JSON.stringify(body),
@@ -138,10 +147,17 @@ export const whatsappAdapter: ChannelAdapter<WhatsAppChannelConfig> = {
           typeof err?.message === "string" && err.message
             ? err.message
             : `WhatsApp API ${res.status}`;
+        const code = typeof err?.code === "number" ? err.code : undefined;
+        const isAuth =
+          code === 190 ||
+          code === 102 ||
+          /auth|oauth|access token|session has expired|permission/i.test(detail);
         return {
           ok: false,
           status: "failed",
-          error: detail,
+          error: isAuth
+            ? `${detail} — WhatsApp access token is invalid/expired. Put a permanent System User token in WHATSAPP_ACCESS_TOKEN and restart the API.`
+            : detail,
           raw,
         };
       }

@@ -34,7 +34,7 @@ function asEmailConfig(raw: Prisma.JsonValue): EmailChannelConfig | null {
 
 /** Pick an Email inbox (optional match on notification emailAddress). Prefer enabled. */
 async function resolveEmailInbox(emailAddress?: string) {
-  const candidates = await prisma.inbox.findMany({
+  const candidates = await prisma.channelConfig.findMany({
     where: { channelType: "email" },
     orderBy: [{ enabled: "desc" }, { createdAt: "asc" }],
   });
@@ -92,7 +92,7 @@ export async function handlePubSubNotification(
     primed = true;
     try {
       await setupEmailWatch(inboxId);
-      const refreshed = await prisma.inbox.findUnique({ where: { id: inboxId } });
+      const refreshed = await prisma.channelConfig.findUnique({ where: { id: inboxId } });
       config = refreshed ? asEmailConfig(refreshed.channelConfig) : config;
     } catch (err) {
       console.error("[email] Auto watch setup failed:", err);
@@ -179,7 +179,7 @@ export async function handlePubSubNotification(
       }
 
       const result = await ingestInboundMessages({
-        inboxId: inbox.id,
+        channelConfigId: inbox.id,
         payload: msgData,
         eventKey: `email:${normalized.map((m) => m.externalId).join(",")}`,
       });
@@ -191,7 +191,7 @@ export async function handlePubSubNotification(
     }
   }
 
-  await updateInboxConfig(inboxId, (await prisma.inbox.findUnique({ where: { id: inboxId } }))?.channelConfig ?? inbox.channelConfig, {
+  await updateInboxConfig(inboxId, (await prisma.channelConfig.findUnique({ where: { id: inboxId } }))?.channelConfig ?? inbox.channelConfig, {
     historyId: notificationHistoryId,
   });
 
@@ -204,7 +204,7 @@ export async function catchUpRecentEmailMessages(
   inboxId: string,
   maxResults = 15,
 ): Promise<{ processed: number; skipped: number }> {
-  const inbox = await prisma.inbox.findUnique({ where: { id: inboxId } });
+  const inbox = await prisma.channelConfig.findUnique({ where: { id: inboxId } });
   if (!inbox) return { processed: 0, skipped: 0 };
   const config = asEmailConfig(inbox.channelConfig);
   if (!config) return { processed: 0, skipped: 0 };
@@ -242,7 +242,7 @@ export async function catchUpRecentEmailMessages(
         continue;
       }
       const result = await ingestInboundMessages({
-        inboxId: inbox.id,
+        channelConfigId: inbox.id,
         payload: msgData,
         eventKey: `email:${normalized.map((m) => m.externalId).join(",")}`,
       });
@@ -258,7 +258,7 @@ export async function catchUpRecentEmailMessages(
 
 export async function setupEmailWatch(inboxId?: string) {
   const inbox = inboxId
-    ? await prisma.inbox.findUnique({ where: { id: inboxId } })
+    ? await prisma.channelConfig.findUnique({ where: { id: inboxId } })
     : await resolveEmailInbox();
   if (!inbox) throw new Error("Email inbox not found");
 
@@ -298,12 +298,12 @@ export async function setupEmailWatch(inboxId?: string) {
 export const setupGmailWatch = setupEmailWatch;
 
 export async function renewEmailWatch(inboxId?: string) {
-  const where: Prisma.InboxWhereInput = {
+  const where: import("../generated/client/index.js").Prisma.ChannelConfigWhereInput = {
     channelType: "email",
   };
   if (inboxId) where.id = inboxId;
 
-  const inboxes = await prisma.inbox.findMany({
+  const inboxes = await prisma.channelConfig.findMany({
     where,
     orderBy: [{ enabled: "desc" }, { createdAt: "asc" }],
   });
@@ -322,7 +322,7 @@ export async function renewEmailWatch(inboxId?: string) {
     }
     try {
       if (!inbox.enabled) {
-        await prisma.inbox.update({ where: { id: inbox.id }, data: { enabled: true } });
+        await prisma.channelConfig.update({ where: { id: inbox.id }, data: { enabled: true } });
       }
       const result = await setupEmailWatch(inbox.id);
       results.push({
@@ -366,7 +366,7 @@ async function updateInboxConfig(
   delete base.fromAddress;
   delete base.fromName;
 
-  await prisma.inbox.update({
+  await prisma.channelConfig.update({
     where: { id: inboxId },
     data: { channelConfig: base as Prisma.InputJsonValue },
   });

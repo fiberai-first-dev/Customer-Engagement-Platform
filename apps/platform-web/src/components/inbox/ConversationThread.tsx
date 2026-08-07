@@ -37,6 +37,7 @@ type Props = {
   sending: boolean;
   customerContextOpen: boolean;
   onToggleCustomerContext: () => void;
+  enabledChannels?: ChannelType[];
 };
 
 export function ConversationThread({
@@ -54,6 +55,7 @@ export function ConversationThread({
   sending,
   customerContextOpen,
   onToggleCustomerContext,
+  enabledChannels,
 }: Props) {
   const [draft, setDraft] = useState("");
   const [subject, setSubject] = useState("");
@@ -136,7 +138,10 @@ export function ConversationThread({
       </div>
 
       <div className="flex shrink-0 gap-1 border-b border-border bg-card px-2">
-        {CHANNELS.map((channel) => {
+        {(enabledChannels?.length
+          ? CHANNELS.filter((c) => enabledChannels.includes(c.id))
+          : CHANNELS
+        ).map((channel) => {
           const conversation = conversationsByChannel[channel.id];
           const hasConversation = Boolean(conversation);
           const channelNeedsAttention = conversation

@@ -35,6 +35,15 @@ export function assertChannelConfig(
   return config as ChannelConfig;
 }
 
+/** Trim secrets; strip accidental "Bearer " prefix; drop placeholders. */
+export function normalizeSecret(value: unknown): string | undefined {
+  if (typeof value !== "string") return undefined;
+  let v = value.trim();
+  if (!v || v === "***" || v.startsWith("your_")) return undefined;
+  if (/^bearer\s+/i.test(v)) v = v.replace(/^bearer\s+/i, "").trim();
+  return v || undefined;
+}
+
 function mergeConfig<T extends Record<string, unknown>>(
   defaults: T,
   override: Record<string, unknown>,
@@ -43,7 +52,15 @@ function mergeConfig<T extends Record<string, unknown>>(
   for (const [key, value] of Object.entries(override)) {
     if (key === "mock") continue;
     if (value === undefined || value === null) continue;
-    if (typeof value === "string" && value.trim() === "") continue;
+    if (typeof value === "string") {
+      const normalized =
+        key.toLowerCase().includes("token") || key.toLowerCase().includes("secret")
+          ? normalizeSecret(value)
+          : value.trim();
+      if (!normalized) continue;
+      merged[key] = normalized;
+      continue;
+    }
     if (key === "provider" || key.startsWith("smtp") || key.startsWith("imap")) continue;
     merged[key] = value;
   }
@@ -53,7 +70,8 @@ function mergeConfig<T extends Record<string, unknown>>(
 }
 
 /**
- * Resolve effective channel config: per-account settings win, env defaults fill gaps.
+ * Resolve effective channel config from DB/Settings only.
+ * Never overlays .env — vendors configure via UI or `npm run seed:config`.
  */
 export function resolveChannelConfig(
   channelType: ChannelType,
@@ -65,22 +83,12 @@ export function resolveChannelConfig(
       : {};
 
   if (channelType === "whatsapp") {
-    return mergeConfig(
-      { ...whatsappConfig } as Record<string, unknown>,
-      raw,
-    ) as unknown as ChannelConfig;
+    return mergeConfig({ ...whatsappConfig } as Record<string, unknown>, raw) as unknown as ChannelConfig;
   }
   if (channelType === "instagram") {
-    return mergeConfig(
-      { ...instagramConfig } as Record<string, unknown>,
-      raw,
-    ) as unknown as ChannelConfig;
+    return mergeConfig({ ...instagramConfig } as Record<string, unknown>, raw) as unknown as ChannelConfig;
   }
-
-  return mergeConfig(
-    { ...emailConfig } as Record<string, unknown>,
-    raw,
-  ) as unknown as ChannelConfig;
+  return mergeConfig({ ...emailConfig } as Record<string, unknown>, raw) as unknown as ChannelConfig;
 }
 
 export * from "./types.js";

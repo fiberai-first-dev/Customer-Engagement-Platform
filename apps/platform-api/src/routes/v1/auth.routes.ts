@@ -3,4 +3,6 @@ import { AuthController } from "../../controllers/AuthController.js";
 
 export async function authRoutes(app: FastifyInstance) {
   app.post("/login", AuthController.login);
+  app.get("/users", AuthController.listUsers);
+  app.post("/users", AuthController.createUser);
 }

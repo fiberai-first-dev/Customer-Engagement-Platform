@@ -68,7 +68,7 @@ function verifyState(token: string, provider: OAuthProvider): OAuthState {
 }
 
 async function loadInbox(inboxId: string, channelType: "email" | "instagram") {
-  const inbox = await prisma.inbox.findUnique({ where: { id: inboxId } });
+  const inbox = await prisma.channelConfig.findUnique({ where: { id: inboxId } });
   if (!inbox) throw new Error("inbox not found");
   if (inbox.channelType !== channelType) {
     throw new Error(`inbox is ${inbox.channelType}, expected ${channelType}`);
@@ -83,7 +83,7 @@ async function patchInboxConfig(
   enabled = true,
 ) {
   const channelConfig = mergeChannelConfig(existing, patch);
-  return prisma.inbox.update({
+  return prisma.channelConfig.update({
     where: { id: inboxId },
     data: { channelConfig, enabled },
   });
@@ -107,8 +107,8 @@ export function oauthRedirectHints() {
 export async function startGmailOAuth(inboxId: string): Promise<{ url: string; redirectUri: string }> {
   const inbox = await loadInbox(inboxId, "email");
   const cfg = asConfig(inbox.channelConfig);
-  const clientId = nonEmpty(cfg.clientId) ?? env.gmail.clientId;
-  const clientSecret = nonEmpty(cfg.clientSecret) ?? env.gmail.clientSecret;
+  const clientId = nonEmpty(cfg.clientId);
+  const clientSecret = nonEmpty(cfg.clientSecret);
   if (!clientId || !clientSecret) {
     throw new Error(
       "Save Gmail Client ID and Client Secret in Settings first, then click Connect Gmail.",
@@ -134,10 +134,10 @@ export async function completeGmailOAuth(input: {
   const { inboxId } = verifyState(input.state, "gmail");
   const inbox = await loadInbox(inboxId, "email");
   const cfg = asConfig(inbox.channelConfig);
-  const clientId = nonEmpty(cfg.clientId) ?? env.gmail.clientId;
-  const clientSecret = nonEmpty(cfg.clientSecret) ?? env.gmail.clientSecret;
+  const clientId = nonEmpty(cfg.clientId);
+  const clientSecret = nonEmpty(cfg.clientSecret);
   if (!clientId || !clientSecret) {
-    throw new Error("Gmail Client ID / Secret missing on inbox");
+    throw new Error("Gmail Client ID / Secret missing on channel config");
   }
 
   const redirectUri = gmailRedirectUri();
@@ -182,8 +182,8 @@ export async function startInstagramOAuth(
 ): Promise<{ url: string; redirectUri: string }> {
   const inbox = await loadInbox(inboxId, "instagram");
   const cfg = asConfig(inbox.channelConfig);
-  const appId = nonEmpty(cfg.instagramAppId) ?? env.instagram.appId;
-  const appSecret = nonEmpty(cfg.appSecret) ?? env.instagram.appSecret;
+  const appId = nonEmpty(cfg.instagramAppId);
+  const appSecret = nonEmpty(cfg.appSecret);
   if (!appId || !appSecret) {
     throw new Error(
       "Save Instagram App ID and App Secret in Settings first, then click Connect Instagram.",
@@ -260,17 +260,17 @@ export async function completeInstagramOAuth(input: {
 
   const inbox = inboxId
     ? await loadInbox(inboxId, "instagram")
-    : await prisma.inbox.findFirst({
+    : await prisma.channelConfig.findFirst({
         where: { channelType: "instagram" },
         orderBy: { createdAt: "asc" },
       });
   if (!inbox) throw new Error("No Instagram inbox found to save token");
 
   const cfg = asConfig(inbox.channelConfig);
-  const appId = nonEmpty(cfg.instagramAppId) ?? env.instagram.appId;
-  const appSecret = nonEmpty(cfg.appSecret) ?? env.instagram.appSecret;
+  const appId = nonEmpty(cfg.instagramAppId);
+  const appSecret = nonEmpty(cfg.appSecret);
   if (!appId || !appSecret) {
-    throw new Error("Instagram App ID / Secret missing on inbox");
+    throw new Error("Instagram App ID / Secret missing on channel config");
   }
 
   const redirectUri = instagramRedirectUri();

@@ -48,7 +48,18 @@ export function identitiesFor(contact: any, channel: ChannelType): string[] {
 
   const fromIdentities = (contact.identities ?? [])
     .filter((i: any) => i?.channel === channel && typeof i.externalId === "string")
-    .map((i: any) => i.externalId as string);
+    .map((i: any) => {
+      // Prefer API displayId (@username) for Instagram UI
+      if (channel === "instagram" && typeof i.displayId === "string" && i.displayId.trim()) {
+        return i.displayId.trim();
+      }
+      if (channel === "instagram") {
+        const username =
+          typeof i.metadata?.username === "string" ? i.metadata.username.replace(/^@/, "").trim() : "";
+        if (username) return `@${username}`;
+      }
+      return i.externalId as string;
+    });
 
   if (channel === "whatsapp") {
     return listField(
@@ -72,12 +83,30 @@ export function identitiesFor(contact: any, channel: ChannelType): string[] {
     ]);
   }
   if (channel === "instagram") {
-    const ig =
-      fromIdentities[0] ??
-      contact.instagramId ??
-      contact.identifiers?.instagram ??
-      null;
-    return typeof ig === "string" && ig.trim() ? [ig.trim()] : [];
+    const fromDetails =
+      typeof contact.instagramDetails?.username === "string"
+        ? contact.instagramDetails.username.replace(/^@/, "").trim()
+        : "";
+    const rawName = typeof contact.name === "string" ? contact.name.trim() : "";
+    const fromName =
+      rawName.startsWith("@")
+        ? rawName
+        : rawName && !/^\d{5,}$/.test(rawName)
+          ? `@${rawName.replace(/^@/, "")}`
+          : "";
+
+    const candidates = [
+      ...fromIdentities,
+      fromDetails ? `@${fromDetails}` : "",
+      fromName,
+    ].filter((v) => typeof v === "string" && v.trim());
+
+    // Prefer @username over bare IGSID
+    const handle = candidates.find((v) => v.startsWith("@") || !/^\d{5,}$/.test(v));
+    if (handle) return [handle];
+
+    const fallback = contact.instagramId ?? contact.identifiers?.instagram ?? null;
+    return typeof fallback === "string" && fallback.trim() ? [fallback.trim()] : [];
   }
   return [];
 }
@@ -90,6 +119,11 @@ export function formatIdentity(identity: string, channel: ChannelType): string {
   if (!identity) return identity;
   if (channel === "whatsapp") {
     return formatWhatsAppDisplay(identity);
+  }
+  if (channel === "instagram") {
+    if (identity.startsWith("@")) return identity;
+    if (/^\d{5,}$/.test(identity)) return identity; // unresolved IGSID
+    return `@${identity.replace(/^@/, "")}`;
   }
   return identity;
 }
@@ -134,9 +168,31 @@ export function contactDisplayName(contact: {
   whatsappId?: string | null;
   whatsappIds?: string[] | null;
   email?: string | null;
+  instagramId?: string | null;
+  instagramDetails?: { username?: string | null } | null;
   identifiers?: Record<string, string>;
+  identities?: Array<{ channel?: string; displayId?: string; metadata?: { username?: string } }>;
 }): string {
-  if (contact.name?.trim()) return contact.name.trim();
+  const name = contact.name?.trim();
+  if (name && !/^\d{5,}$/.test(name)) {
+    return name.startsWith("@") || !name.includes("@") ? name : name;
+  }
+
+  const igIdentity = (contact.identities ?? []).find((i) => i.channel === "instagram");
+  const igUser =
+    (typeof igIdentity?.displayId === "string" && igIdentity.displayId.startsWith("@")
+      ? igIdentity.displayId
+      : null) ||
+    (typeof igIdentity?.metadata?.username === "string"
+      ? `@${igIdentity.metadata.username.replace(/^@/, "")}`
+      : null) ||
+    (typeof contact.instagramDetails?.username === "string"
+      ? `@${contact.instagramDetails.username.replace(/^@/, "")}`
+      : null);
+  if (igUser) return igUser;
+
+  if (name) return name; // last resort: IGSID-as-name
+
   const whatsapp =
     contact.whatsappId ||
     contact.identifiers?.whatsapp ||

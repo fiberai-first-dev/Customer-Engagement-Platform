@@ -1,0 +1,30 @@
+{
+  "whatsapp": {
+    "phoneNumberId": "",
+    "accessToken": "",
+    "verifyToken": "",
+    "appSecret": "",
+    "businessAccountId": ""
+  },
+  "instagram": {
+    "pageId": "",
+    "accessToken": "",
+    "verifyToken": "",
+    "appSecret": "",
+    "instagramAppId": "",
+    "instagramUsername": ""
+  },
+  "email": {
+    "clientId": "",
+    "clientSecret": "",
+    "refreshToken": "",
+    "accessToken": "",
+    "pubsubTopic": ""
+  },
+  "shopify": {
+    "shop": "",
+    "clientId": "",
+    "clientSecret": "",
+    "apiVersion": "2024-10"
+  }
+}

@@ -20,7 +20,7 @@ function isInstagramUserToken(token: string): boolean {
   return token.startsWith("IGAA") || token.startsWith("IGAAT");
 }
 
-/** Prefer @username for UI; fall back to display name. */
+/** Prefer @username for UI — IG Messaging rarely sends a real display name. */
 export function formatInstagramDisplayName(profile: {
   username?: string | null;
   name?: string | null;
@@ -28,56 +28,75 @@ export function formatInstagramDisplayName(profile: {
   const username = profile.username?.replace(/^@/, "").trim();
   if (username) return `@${username}`;
   const name = profile.name?.trim();
-  return name || undefined;
+  // Ignore numeric "names" (scoped IDs accidentally stored as name)
+  if (name && !/^\d+$/.test(name)) return name;
+  return undefined;
 }
 
 /**
- * Resolve IG messaging participant profile (IGSID → username/name).
- * Works with Instagram Login user tokens via graph.instagram.com.
+ * Resolve IG messaging participant profile (IGSID → username).
+ * Tries Instagram Graph then Facebook Graph (Page tokens).
  */
 export async function resolveInstagramSenderProfile(
   config: InstagramChannelConfig,
   igsid: string,
 ): Promise<{ username?: string; name?: string; profilePic?: string } | null> {
   if (!config.accessToken || !igsid) return null;
-  const base = isInstagramUserToken(config.accessToken) ? IG_GRAPH : FB_GRAPH;
-  try {
-    const res = await fetch(
-      `${base}/${encodeURIComponent(igsid)}?fields=name,username,profile_pic`,
-      { headers: { Authorization: `Bearer ${config.accessToken}` } },
-    );
-    const raw = (await res.json().catch(() => null)) as Record<string, unknown> | null;
-    if (!res.ok || !raw) return null;
-    return {
-      name: typeof raw.name === "string" ? raw.name : undefined,
-      username: typeof raw.username === "string" ? raw.username : undefined,
-      profilePic: typeof raw.profile_pic === "string" ? raw.profile_pic : undefined,
-    };
-  } catch {
-    return null;
+  const bases = isInstagramUserToken(config.accessToken)
+    ? [IG_GRAPH, FB_GRAPH]
+    : [FB_GRAPH, IG_GRAPH];
+
+  for (const base of bases) {
+    try {
+      const res = await fetch(
+        `${base}/${encodeURIComponent(igsid)}?fields=username,name,profile_pic`,
+        { headers: { Authorization: `Bearer ${config.accessToken}` } },
+      );
+      const raw = (await res.json().catch(() => null)) as Record<string, unknown> | null;
+      if (!res.ok || !raw || raw.error) continue;
+      const username = typeof raw.username === "string" ? raw.username : undefined;
+      const name = typeof raw.name === "string" ? raw.name : undefined;
+      if (!username && !name) continue;
+      return {
+        name,
+        username,
+        profilePic: typeof raw.profile_pic === "string" ? raw.profile_pic : undefined,
+      };
+    } catch {
+      /* try next host */
+    }
   }
+  return null;
 }
 
 export async function enrichInstagramInboundNames(
   config: InstagramChannelConfig,
   messages: NormalizedInboundMessage[],
 ): Promise<NormalizedInboundMessage[]> {
-  const cache = new Map<string, string | undefined>();
+  const cache = new Map<
+    string,
+    { username?: string; name?: string; profilePic?: string } | null
+  >();
   for (const message of messages) {
-    if (message.senderName) continue;
     const id = message.senderId;
     if (!cache.has(id)) {
-      const profile = await resolveInstagramSenderProfile(config, id);
-      cache.set(id, profile ? formatInstagramDisplayName(profile) : undefined);
-      if (profile) {
-        (message as { raw: unknown }).raw = {
-          ...(asRecord(message.raw) ?? {}),
-          _profile: profile,
-        };
-      }
+      cache.set(id, await resolveInstagramSenderProfile(config, id));
     }
-    const display = cache.get(id);
+    const profile = cache.get(id) ?? null;
+    if (!profile) continue;
+
+    const display = formatInstagramDisplayName(profile);
     if (display) message.senderName = display;
+
+    (message as { raw: unknown }).raw = {
+      ...(asRecord(message.raw) ?? {}),
+      _profile: {
+        username: profile.username?.replace(/^@/, "") ?? null,
+        name: profile.name ?? null,
+        profilePic: profile.profilePic ?? null,
+        displayName: display ?? null,
+      },
+    };
   }
   return messages;
 }

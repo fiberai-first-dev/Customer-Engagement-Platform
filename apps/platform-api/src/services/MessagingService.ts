@@ -9,38 +9,40 @@ import {
   type ChannelConfig,
 } from "../adapters/shared/index.js";
 import { extractEmailAddress } from "../adapters/email/index.js";
+import { recomputeCustomerResolved, setChannelResolved } from "./ResolveService.js";
+import { enrichCustomerFromShopify } from "./orders/shopify-contact.service.js";
 
-/** Resolve outbound recipient from flattened contact channel columns. */
-async function resolveOutboundRecipient(input: {
-  accountId: string;
-  contactId: string;
-  channelType: ChannelType;
-  contact: {
-    email: string | null;
-    whatsappId?: string | null;
-    whatsappIds?: unknown;
-    instagramId?: string | null;
-    emailId?: string | null;
-  };
-  externalThreadId: string | null;
-}): Promise<string> {
-  if (input.channelType === "whatsapp") {
-    const fromList = asStringList(input.contact.whatsappIds)[0];
-    const to = input.contact.whatsappId ?? fromList ?? input.externalThreadId;
-    if (!to) throw new Error("No WhatsApp recipient on contact");
-    // Graph API expects digits only (no + / spaces)
-    return normalizeWhatsAppId(to) ?? to;
+export function mergeChannelConfig(
+  existing: Prisma.JsonValue,
+  patch: Record<string, unknown>,
+): Prisma.InputJsonValue {
+  const base =
+    existing && typeof existing === "object" && !Array.isArray(existing)
+      ? { ...(existing as Record<string, unknown>) }
+      : {};
+  for (const [key, value] of Object.entries(patch)) {
+    if (key === "mock") continue;
+    if (value === "***") continue;
+    if (value === undefined || value === null) continue;
+    if (typeof value === "string" && !value.trim()) continue;
+    base[key] = value;
   }
+  delete base.mock;
+  return base as Prisma.InputJsonValue;
+}
 
-  if (input.channelType === "instagram") {
-    const to = input.contact.instagramId ?? input.externalThreadId;
-    if (!to) throw new Error("No Instagram recipient on contact");
-    return to;
-  }
+export function normalizeWhatsAppId(raw: string | null | undefined): string | null {
+  if (!raw) return null;
+  const digits = raw.replace(/[^\d]/g, "");
+  return digits || null;
+}
 
-  const raw = input.contact.emailId ?? input.contact.email ?? input.externalThreadId;
-  if (!raw) throw new Error("No email recipient on contact");
-  return extractEmailAddress(raw);
+export function formatWhatsAppStorage(raw: string | null | undefined): string | null {
+  const digits = normalizeWhatsAppId(raw);
+  if (!digits) return null;
+  if (digits.length > 10) return `+${digits.slice(0, -10)} ${digits.slice(-10)}`;
+  if (digits.length === 10) return `+91 ${digits}`;
+  return `+${digits}`;
 }
 
 function mapContentType(value: NormalizedInboundMessage["contentType"]): ContentType {
@@ -53,490 +55,308 @@ function mapSendStatus(status: string): MessageStatus {
   return "sent";
 }
 
-type ContactChannelRow = {
-  id: string;
-  accountId: string;
-  name: string | null;
-  email: string | null;
-  emails?: Prisma.JsonValue;
-  whatsappEnabled: boolean;
-  whatsappId: string | null;
-  whatsappIds?: Prisma.JsonValue;
-  whatsappDetails: Prisma.JsonValue;
-  instagramEnabled: boolean;
-  instagramId: string | null;
-  instagramDetails: Prisma.JsonValue;
-  emailEnabled: boolean;
-  emailId: string | null;
-  emailDetails: Prisma.JsonValue;
-};
-
-export function asStringList(value: unknown): string[] {
-  if (!Array.isArray(value)) return [];
-  return value
-    .filter((v): v is string => typeof v === "string")
-    .map((v) => v.trim())
-    .filter(Boolean);
-}
-
-/** Normalize WhatsApp numbers for matching (digits only, no leading +). */
-export function normalizeWhatsAppId(raw: string | null | undefined): string | null {
+function normalizeEmail(raw: string | null | undefined): string | null {
   if (!raw) return null;
-  const digits = raw.replace(/[^\d]/g, "");
-  return digits || null;
+  const v = extractEmailAddress(raw).trim().toLowerCase();
+  return v || null;
 }
 
-/**
- * Canonical storage / display: "+{countryCode} {nationalNumber}".
- * Example: 916303481401 → "+91 6303481401"
- */
-export function formatWhatsAppStorage(raw: string | null | undefined): string | null {
-  const digits = normalizeWhatsAppId(raw);
-  if (!digits) return null;
-
-  // Prefer last 10 digits as national number when longer (common WA cloud format)
-  if (digits.length > 10) {
-    const national = digits.slice(-10);
-    const country = digits.slice(0, -10);
-    return `+${country} ${national}`;
+function asMeta(value: Prisma.JsonValue | null | undefined): Record<string, unknown> {
+  if (value && typeof value === "object" && !Array.isArray(value)) {
+    return value as Record<string, unknown>;
   }
-  // Bare 10-digit mobile → default India (product market)
-  if (digits.length === 10) {
-    return `+91 ${digits}`;
-  }
-  return `+${digits}`;
+  return {};
 }
 
-export function uniqStrings(values: Array<string | null | undefined>): string[] {
-  const out: string[] = [];
-  const seen = new Set<string>();
-  for (const raw of values) {
-    const v = raw?.trim();
-    if (!v) continue;
-    const key = v.toLowerCase();
-    if (seen.has(key)) continue;
-    seen.add(key);
-    out.push(v);
-  }
-  return out;
-}
-
-/** Dedupe by digits; store as "+CC NNNNNNNN". */
-export function uniqWhatsAppIds(values: Array<string | null | undefined>): string[] {
-  const out: string[] = [];
-  const seen = new Set<string>();
-  for (const raw of values) {
-    const digits = normalizeWhatsAppId(raw);
-    const formatted = formatWhatsAppStorage(raw);
-    if (!digits || !formatted || seen.has(digits)) continue;
-    seen.add(digits);
-    out.push(formatted);
-  }
-  return out;
-}
-
-export function withPrimaryAndLists(input: {
-  emails?: string[] | null;
-  whatsappIds?: string[] | null;
-  email?: string | null;
-  whatsappId?: string | null;
-}): {
-  email: string | null;
-  whatsappId: string | null;
-  emails: string[];
-  whatsappIds: string[];
-} {
-  const emails = uniqStrings([...(input.emails ?? []), input.email]);
-  const whatsappIds = uniqWhatsAppIds([...(input.whatsappIds ?? []), input.whatsappId]);
-  return {
-    emails,
-    whatsappIds,
-    email: emails[0] ?? null,
-    whatsappId: whatsappIds[0] ?? null,
-  };
-}
-
-function appendToList(existing: unknown, ...extra: Array<string | null | undefined>): string[] {
-  return uniqStrings([...asStringList(existing), ...extra]);
-}
-
-function appendWhatsAppIds(existing: unknown, ...extra: Array<string | null | undefined>): string[] {
-  return uniqWhatsAppIds([...asStringList(existing), ...extra]);
-}
-
-function whatsappLookupVariants(digits: string): string[] {
-  // Match both full E.164-style and national (last 10) forms used by Meta / Contacts UI.
-  const forms = new Set<string>([digits]);
-  if (digits.length > 10) forms.add(digits.slice(-10));
-  if (digits.length === 10) forms.add(`91${digits}`);
-
-  const out: string[] = [];
-  for (const form of forms) {
-    const formatted = formatWhatsAppStorage(form);
-    out.push(form, `+${form}`);
-    if (formatted) {
-      out.push(formatted, formatted.replace(/\s+/g, ""));
-    }
-  }
-  return uniqStrings(out);
-}
-
-function whatsappMatchOr(accountId: string, ...candidates: Array<string | null | undefined>) {
-  const ids = [
-    ...new Set(
-      candidates
-        .map((c) => normalizeWhatsAppId(c))
-        .filter((c): c is string => Boolean(c)),
-    ),
-  ];
-  if (!ids.length) return null;
-  return {
-    accountId,
-    OR: ids.flatMap((id) =>
-      whatsappLookupVariants(id).flatMap((variant) => [
-        { whatsappId: variant },
-        { whatsappIds: { array_contains: variant } },
-      ]),
-    ),
-  };
-}
-
-/** API-compat identity rows derived from contact columns. */
-export function contactToIdentities(contact: ContactChannelRow): Array<{
-  id: string;
-  channel: ChannelType;
-  externalId: string;
-  metadata: Prisma.JsonValue;
-  enabled: boolean;
-}> {
-  const out: Array<{
-    id: string;
-    channel: ChannelType;
-    externalId: string;
-    metadata: Prisma.JsonValue;
-    enabled: boolean;
-  }> = [];
-
-  const waIds = uniqWhatsAppIds([
-    ...asStringList(contact.whatsappIds),
-    contact.whatsappId,
-  ]);
-  for (const [idx, externalId] of waIds.entries()) {
-    out.push({
-      id: `${contact.id}:whatsapp:${idx}`,
-      channel: "whatsapp",
-      externalId,
-      metadata: contact.whatsappDetails,
-      enabled: contact.whatsappEnabled,
-    });
-  }
-
-  if (contact.instagramId) {
-    out.push({
-      id: `${contact.id}:instagram`,
-      channel: "instagram",
-      externalId: contact.instagramId,
-      metadata: contact.instagramDetails,
-      enabled: contact.instagramEnabled,
-    });
-  }
-
-  const emailIds = uniqStrings([
-    ...asStringList(contact.emails),
-    contact.emailId,
-    contact.email,
-  ]);
-  for (const [idx, externalId] of emailIds.entries()) {
-    out.push({
-      id: `${contact.id}:email:${idx}`,
-      channel: "email",
-      externalId,
-      metadata: contact.emailDetails,
-      enabled: contact.emailEnabled,
-    });
-  }
-  return out;
-}
-
-/** Enable/update a channel on an existing contact (same-user merge). */
-export async function enableContactChannel(input: {
-  contactId: string;
-  channelType: ChannelType;
-  externalId: string;
-  details?: Prisma.InputJsonValue;
-  name?: string | null;
-  email?: string | null;
-  phone?: string | null;
-}) {
-  const existing = await prisma.contact.findUnique({ where: { id: input.contactId } });
-  if (!existing) throw new Error("Contact not found");
-
-  const details = input.details ?? {};
-  if (input.channelType === "whatsapp") {
-    const whatsappIds = appendWhatsAppIds(
-      existing.whatsappIds,
-      existing.whatsappId,
-      input.phone,
-      input.externalId,
-    );
-    return prisma.contact.update({
-      where: { id: input.contactId },
-      data: {
-        whatsappEnabled: true,
-        whatsappId: whatsappIds[0] ?? formatWhatsAppStorage(input.externalId),
-        whatsappIds,
-        whatsappDetails: details,
-        name: input.name ?? undefined,
-        email: input.email ?? undefined,
-        emails: input.email
-          ? appendToList(existing.emails, existing.email, input.email)
-          : undefined,
-      },
-    });
-  }
-  if (input.channelType === "instagram") {
-    const nameLooksLikeIgsid =
-      !!existing.name && /^\d{10,}$/.test(existing.name.trim());
-    return prisma.contact.update({
-      where: { id: input.contactId },
-      data: {
-        instagramEnabled: true,
-        instagramId: input.externalId,
-        instagramDetails: details,
-        name:
-          input.name && (!existing.name || nameLooksLikeIgsid)
-            ? input.name
-            : input.name ?? undefined,
-        email: input.email ?? undefined,
-        emails: input.email
-          ? appendToList(existing.emails, existing.email, input.email)
-          : undefined,
-      },
-    });
-  }
-  const emails = appendToList(
-    existing.emails,
-    existing.email,
-    input.email,
-    input.externalId,
-  );
-  return prisma.contact.update({
-    where: { id: input.contactId },
-    data: {
-      emailEnabled: true,
-      emailId: input.externalId,
-      emailDetails: details,
-      emails,
-      email: emails[0] ?? input.externalId,
-      name: input.name ?? undefined,
-    },
+async function getEnabledChannelConfig(channelType: ChannelType) {
+  return prisma.channelConfig.findFirst({
+    where: { channelType },
+    orderBy: { createdAt: "asc" },
   });
 }
 
-export async function findOrCreateContact(input: {
-  accountId: string;
-  channelType: ChannelType;
-  inbound: NormalizedInboundMessage;
-}) {
-  const { accountId, channelType, inbound } = input;
-  const senderKey =
-    channelType === "email"
-      ? extractEmailAddress(inbound.senderId)
-      : channelType === "whatsapp"
-        ? normalizeWhatsAppId(inbound.senderId) ?? inbound.senderId
-        : inbound.senderId;
-  const details = {
-    senderName: inbound.senderName ?? null,
-  } as Prisma.InputJsonValue;
-
-  const waLookup = whatsappMatchOr(
-    accountId,
-    senderKey,
-    inbound.senderId,
-    inbound.senderPhone,
-  );
-
-  const byChannel =
-    channelType === "whatsapp" && waLookup
-      ? await prisma.contact.findFirst({ where: waLookup })
-      : channelType === "instagram"
-        ? await prisma.contact.findFirst({ where: { accountId, instagramId: senderKey } })
-        : await prisma.contact.findFirst({
-            where: {
-              accountId,
-              OR: [
-                { emailId: senderKey },
-                { email: senderKey },
-                { emails: { array_contains: senderKey } },
-              ],
-            },
-          });
-
-  if (byChannel) {
-    const nameLooksLikeIgsid =
-      !!byChannel.name && /^\d{10,}$/.test(byChannel.name.trim());
-    return enableContactChannel({
-      contactId: byChannel.id,
-      channelType,
-      externalId: senderKey,
-      details,
-      name: nameLooksLikeIgsid
-        ? inbound.senderName ?? byChannel.name
-        : byChannel.name ?? inbound.senderName,
-      email: byChannel.email ?? (inbound.senderEmail ? extractEmailAddress(inbound.senderEmail) : null),
-      phone: byChannel.whatsappId ?? inbound.senderPhone,
-    });
-  }
-
-  // Soft-merge: same email/WhatsApp on another channel within the account
-  const inboundEmail = inbound.senderEmail
-    ? extractEmailAddress(inbound.senderEmail)
-    : channelType === "email"
-      ? senderKey
-      : null;
-
-  const matched =
-    (inboundEmail &&
-      (await prisma.contact.findFirst({
-        where: {
-          accountId,
-          OR: [
-            { email: inboundEmail },
-            { emailId: inboundEmail },
-            { emails: { array_contains: inboundEmail } },
-          ],
-        },
-      }))) ||
-    (channelType !== "whatsapp" && waLookup
-      ? await prisma.contact.findFirst({ where: waLookup })
-      : null);
-
-  if (matched) {
-    return enableContactChannel({
-      contactId: matched.id,
-      channelType,
-      externalId: senderKey,
-      details,
-      name: matched.name ?? inbound.senderName,
-      email: matched.email ?? inboundEmail,
-      phone: matched.whatsappId ?? inbound.senderPhone,
-    });
-  }
-
-  const baseEmail = inbound.senderEmail
-    ? extractEmailAddress(inbound.senderEmail)
-    : channelType === "email"
-      ? extractEmailAddress(senderKey)
-      : undefined;
-  const emails = uniqStrings([baseEmail]);
-  const whatsappIds =
-    channelType === "whatsapp"
-      ? uniqWhatsAppIds([inbound.senderPhone, inbound.senderId, senderKey])
-      : uniqWhatsAppIds([inbound.senderPhone]);
-
-  const base = {
-    id: ulid(),
-    accountId,
-    name: inbound.senderName ?? inbound.senderEmail ?? inbound.senderPhone ?? senderKey,
-    email: emails[0] ?? null,
-    emails,
-  };
-
+/** Find channel identity by external id across tables. */
+export async function findIdentityByExternalId(
+  channelType: ChannelType,
+  externalId: string,
+) {
   if (channelType === "whatsapp") {
-    return prisma.contact.create({
-      data: {
-        ...base,
-        whatsappEnabled: true,
-        whatsappId: whatsappIds[0] ?? formatWhatsAppStorage(senderKey),
-        whatsappIds,
-        whatsappDetails: details,
+    const digits = normalizeWhatsAppId(externalId) ?? externalId;
+    return prisma.whatsAppChannel.findFirst({
+      where: {
+        OR: [
+          { externalId: digits },
+          { externalId: `+${digits}` },
+          { externalId: formatWhatsAppStorage(digits) ?? digits },
+        ],
       },
     });
   }
   if (channelType === "instagram") {
-    return prisma.contact.create({
+    return prisma.instagramChannel.findUnique({ where: { externalId } });
+  }
+  const email = normalizeEmail(externalId) ?? externalId;
+  return prisma.emailChannel.findUnique({ where: { externalId: email } });
+}
+
+export async function getMostRecentIdentity(
+  customerId: string,
+  channelType: ChannelType,
+) {
+  if (channelType === "whatsapp") {
+    return prisma.whatsAppChannel.findFirst({
+      where: { customerId },
+      orderBy: [{ lastMessageAt: "desc" }, { updatedAt: "desc" }],
+    });
+  }
+  if (channelType === "instagram") {
+    return prisma.instagramChannel.findFirst({
+      where: { customerId },
+      orderBy: [{ lastMessageAt: "desc" }, { updatedAt: "desc" }],
+    });
+  }
+  return prisma.emailChannel.findFirst({
+    where: { customerId },
+    orderBy: [{ lastMessageAt: "desc" }, { updatedAt: "desc" }],
+  });
+}
+
+async function createIdentity(input: {
+  customerId: string;
+  channelType: ChannelType;
+  externalId: string;
+  metadata?: Record<string, unknown>;
+  resolved?: boolean;
+}) {
+  const id = ulid();
+  const metadata = (input.metadata ?? {}) as Prisma.InputJsonValue;
+  if (input.channelType === "whatsapp") {
+    const externalId =
+      formatWhatsAppStorage(input.externalId) ??
+      normalizeWhatsAppId(input.externalId) ??
+      input.externalId;
+    return prisma.whatsAppChannel.create({
       data: {
-        ...base,
-        instagramEnabled: true,
-        instagramId: senderKey,
-        instagramDetails: details,
+        id,
+        customerId: input.customerId,
+        externalId,
+        resolved: input.resolved ?? false,
+        metadata,
       },
     });
   }
-  return prisma.contact.create({
+  if (input.channelType === "instagram") {
+    return prisma.instagramChannel.create({
+      data: {
+        id,
+        customerId: input.customerId,
+        externalId: input.externalId,
+        resolved: input.resolved ?? false,
+        metadata,
+      },
+    });
+  }
+  const email = normalizeEmail(input.externalId) ?? input.externalId;
+  return prisma.emailChannel.create({
     data: {
-      ...base,
-      email: emails[0] ?? extractEmailAddress(senderKey),
-      emails: uniqStrings([...emails, extractEmailAddress(senderKey)]),
-      emailEnabled: true,
-      emailId: senderKey,
-      emailDetails: details,
+      id,
+      customerId: input.customerId,
+      externalId: email,
+      resolved: input.resolved ?? false,
+      metadata,
     },
   });
 }
 
-export async function findOrCreateConversation(input: {
-  accountId: string;
-  inboxId: string;
-  contactId: string;
-  externalThreadId: string;
+/**
+ * Resolve customer for inbound:
+ * 1) identity exists → use that customer, mark unresolved
+ * 2) else Shopify read-only lookup → attach to matched CEP customer (or create local from Shopify data)
+ * 3) else new customer + identity
+ */
+export async function findOrCreateCustomerForInbound(input: {
+  channelType: ChannelType;
+  inbound: NormalizedInboundMessage;
 }) {
-  const existing = await prisma.conversation.findUnique({
-    where: {
-      inboxId_externalThreadId: {
-        inboxId: input.inboxId,
-        externalThreadId: input.externalThreadId,
-      },
-    },
-  });
-  if (existing) {
-    if (existing.status === "resolved") {
-      return prisma.conversation.update({
-        where: { id: existing.id },
-        data: { status: "open" },
-      });
-    }
-    return existing;
+  const { channelType, inbound } = input;
+  const senderKey =
+    channelType === "email"
+      ? normalizeEmail(inbound.senderId) ?? inbound.senderId
+      : channelType === "whatsapp"
+        ? normalizeWhatsAppId(inbound.senderId) ?? inbound.senderId
+        : inbound.senderId;
+
+  const displayName =
+    channelType === "instagram"
+      ? inbound.senderName?.trim() || "Unknown"
+      : inbound.senderName?.trim() ||
+        inbound.senderEmail?.trim() ||
+        inbound.senderPhone?.trim() ||
+        null;
+
+  const metadata: Record<string, unknown> = {
+    senderName: inbound.senderName ?? null,
+  };
+  if (channelType === "instagram" && inbound.senderName?.startsWith("@")) {
+    metadata.username = inbound.senderName.slice(1);
   }
 
-  return prisma.conversation.create({
-    data: {
-      id: ulid(),
-      accountId: input.accountId,
-      inboxId: input.inboxId,
-      contactId: input.contactId,
-      externalThreadId: input.externalThreadId,
-      status: "open",
-    },
+  const existing = await findIdentityByExternalId(channelType, senderKey);
+  if (existing) {
+    const customerId = existing.customerId;
+    if (channelType === "whatsapp") {
+      await prisma.whatsAppChannel.update({
+        where: { id: existing.id },
+        data: { resolved: false, lastMessageAt: new Date(), metadata: metadata as Prisma.InputJsonValue },
+      });
+    } else if (channelType === "instagram") {
+      await prisma.instagramChannel.update({
+        where: { id: existing.id },
+        data: { resolved: false, lastMessageAt: new Date(), metadata: metadata as Prisma.InputJsonValue },
+      });
+    } else {
+      await prisma.emailChannel.update({
+        where: { id: existing.id },
+        data: { resolved: false, lastMessageAt: new Date(), metadata: metadata as Prisma.InputJsonValue },
+      });
+    }
+    const customer = await prisma.customer.findUniqueOrThrow({ where: { id: customerId } });
+    if (
+      displayName &&
+      displayName !== "Unknown" &&
+      (!customer.name || customer.name === "Unknown" || /^\d{5,}$/.test(customer.name))
+    ) {
+      await prisma.customer.update({
+        where: { id: customerId },
+        data: { name: displayName },
+      });
+    }
+    await recomputeCustomerResolved(customerId);
+    return {
+      customerId,
+      channelId: existing.id,
+      channelType,
+      externalId: existing.externalId,
+    };
+  }
+
+  // Shopify enrichment path (phone/email)
+  const phone =
+    channelType === "whatsapp"
+      ? senderKey
+      : inbound.senderPhone
+        ? normalizeWhatsAppId(inbound.senderPhone)
+        : null;
+  const email =
+    channelType === "email"
+      ? senderKey
+      : inbound.senderEmail
+        ? normalizeEmail(inbound.senderEmail)
+        : null;
+
+  let customerId: string | null = null;
+  try {
+    const shopifyHit = await enrichCustomerFromShopify({
+      name: displayName,
+      email,
+      phone,
+    });
+    if (shopifyHit?.customerId) customerId = shopifyHit.customerId;
+  } catch (err) {
+    console.warn("[inbound] shopify enrich skipped:", err instanceof Error ? err.message : err);
+  }
+
+  if (!customerId) {
+    const customer = await prisma.customer.create({
+      data: {
+        id: ulid(),
+        name: displayName || (channelType === "instagram" ? "Unknown" : null),
+        resolved: false,
+        metadata: {},
+      },
+    });
+    customerId = customer.id;
+  } else if (displayName && displayName !== "Unknown") {
+    const customer = await prisma.customer.findUnique({ where: { id: customerId } });
+    if (customer && (!customer.name || customer.name === "Unknown")) {
+      await prisma.customer.update({
+        where: { id: customerId },
+        data: { name: displayName },
+      });
+    }
+  }
+
+  // Identity may already exist on shopify-matched customer for another field — recheck
+  const again = await findIdentityByExternalId(channelType, senderKey);
+  if (again) {
+    await recomputeCustomerResolved(again.customerId);
+    return {
+      customerId: again.customerId,
+      channelId: again.id,
+      channelType,
+      externalId: again.externalId,
+    };
+  }
+
+  const identity = await createIdentity({
+    customerId,
+    channelType,
+    externalId: senderKey,
+    metadata,
+    resolved: false,
   });
+  if (channelType === "whatsapp") {
+    await prisma.whatsAppChannel.update({
+      where: { id: identity.id },
+      data: { lastMessageAt: new Date() },
+    });
+  } else if (channelType === "instagram") {
+    await prisma.instagramChannel.update({
+      where: { id: identity.id },
+      data: { lastMessageAt: new Date() },
+    });
+  } else {
+    await prisma.emailChannel.update({
+      where: { id: identity.id },
+      data: { lastMessageAt: new Date() },
+    });
+  }
+  await recomputeCustomerResolved(customerId);
+  return {
+    customerId,
+    channelId: identity.id,
+    channelType,
+    externalId: identity.externalId,
+  };
 }
 
 export async function ingestInboundMessages(input: {
-  inboxId: string;
+  channelConfigId: string;
   payload: unknown;
   eventKey?: string;
 }) {
-  const inbox = await prisma.inbox.findUnique({ where: { id: input.inboxId } });
-  if (!inbox || !inbox.enabled) {
-    throw new Error("Inbox not found or disabled");
-  }
+  const channelCfg = await prisma.channelConfig.findUnique({
+    where: { id: input.channelConfigId },
+  });
+  if (!channelCfg) throw new Error("Channel config not found");
+  if (!channelCfg.enabled) throw new Error("Channel is disabled");
 
   const adapter =
-    inbox.channelType === "email"
-      ? getEmailAdapter(inbox.channelConfig)
-      : getChannelAdapter(inbox.channelType);
-  const config = resolveChannelConfig(inbox.channelType, inbox.channelConfig);
+    channelCfg.channelType === "email"
+      ? getEmailAdapter(channelCfg.channelConfig)
+      : getChannelAdapter(channelCfg.channelType);
+  const config = resolveChannelConfig(channelCfg.channelType, channelCfg.channelConfig);
   let inboundMessages = adapter.parseInbound(config, input.payload);
 
-  // Instagram webhooks only send IGSID — resolve @username for contact.name
-  if (inbox.channelType === "instagram" && inboundMessages.length) {
-    const { enrichInstagramInboundNames } = await import(
-      "../adapters/instagram/index.js"
-    );
+  if (channelCfg.channelType === "instagram" && inboundMessages.length) {
+    const { enrichInstagramInboundNames } = await import("../adapters/instagram/index.js");
     inboundMessages = await enrichInstagramInboundNames(
       config as import("../adapters/shared/types.js").InstagramChannelConfig,
       inboundMessages,
     );
+    for (const m of inboundMessages) {
+      if (!m.senderName?.trim()) m.senderName = "Unknown";
+    }
   }
 
   const eventKey =
@@ -549,8 +369,8 @@ export async function ingestInboundMessages(input: {
     await prisma.webhookEvent.create({
       data: {
         id: ulid(),
-        inboxId: inbox.id,
-        channel: inbox.channelType,
+        channelConfigId: channelCfg.id,
+        channel: channelCfg.channelType,
         eventKey,
         payload: input.payload as Prisma.InputJsonValue,
         processed: false,
@@ -562,25 +382,18 @@ export async function ingestInboundMessages(input: {
 
   const created = [];
   for (const inbound of inboundMessages) {
-    const contact = await findOrCreateContact({
-      accountId: inbox.accountId,
-      channelType: inbox.channelType,
+    const link = await findOrCreateCustomerForInbound({
+      channelType: channelCfg.channelType,
       inbound,
     });
-    const conversation = await findOrCreateConversation({
-      accountId: inbox.accountId,
-      inboxId: inbox.id,
-      contactId: contact.id,
-      externalThreadId: inbound.externalThreadId ?? inbound.senderId,
-    });
-
     const receivedAt = new Date();
-
     try {
       const message = await prisma.message.create({
         data: {
           id: ulid(),
-          conversationId: conversation.id,
+          channelType: link.channelType,
+          channelId: link.channelId,
+          customerId: link.customerId,
           direction: "incoming",
           content: inbound.content,
           contentType: mapContentType(inbound.contentType),
@@ -591,60 +404,56 @@ export async function ingestInboundMessages(input: {
           createdAt: receivedAt,
         },
       });
-      await prisma.conversation.update({
-        where: { id: conversation.id },
-        data: { lastMessageAt: receivedAt, status: "open" },
-      });
       created.push(message);
     } catch {
-      // duplicate message external id
+      // duplicate external id
     }
   }
 
   await prisma.webhookEvent.updateMany({
-    where: { inboxId: inbox.id, eventKey },
+    where: { channelConfigId: channelCfg.id, eventKey },
     data: { processed: true },
   });
 
   return { created: created.length, duplicates: false, messages: created };
 }
 
-export async function sendConversationMessage(input: {
-  conversationId: string;
+export async function sendCustomerChannelMessage(input: {
+  customerId: string;
+  channelType: ChannelType;
   content: string;
   subject?: string;
 }) {
-  const conversation = await prisma.conversation.findUnique({
-    where: { id: input.conversationId },
-    include: { inbox: true, contact: true },
-  });
-  if (!conversation) throw new Error("Conversation not found");
+  const channelCfg = await getEnabledChannelConfig(input.channelType);
+  if (!channelCfg || !channelCfg.enabled) {
+    throw new Error(`${input.channelType} channel is disabled`);
+  }
 
-  const channelType = conversation.inbox.channelType;
+  const identity = await getMostRecentIdentity(input.customerId, input.channelType);
+  if (!identity) throw new Error(`No ${input.channelType} identity on customer`);
+
   const adapter =
-    channelType === "email"
-      ? getEmailAdapter(conversation.inbox.channelConfig)
-      : getChannelAdapter(channelType);
-  const config = resolveChannelConfig(
-    channelType,
-    conversation.inbox.channelConfig,
-  ) as ChannelConfig;
+    input.channelType === "email"
+      ? getEmailAdapter(channelCfg.channelConfig)
+      : getChannelAdapter(input.channelType);
+  const config = resolveChannelConfig(input.channelType, channelCfg.channelConfig) as ChannelConfig;
 
-  const to = await resolveOutboundRecipient({
-    accountId: conversation.accountId,
-    contactId: conversation.contactId,
-    channelType,
-    contact: conversation.contact,
-    externalThreadId: conversation.externalThreadId,
-  });
+  const to =
+    input.channelType === "whatsapp"
+      ? normalizeWhatsAppId(identity.externalId) ?? identity.externalId
+      : identity.externalId;
 
   const lastInbound = await prisma.message.findFirst({
-    where: { conversationId: conversation.id, direction: "incoming" },
+    where: {
+      channelType: input.channelType,
+      channelId: identity.id,
+      direction: "incoming",
+    },
     orderBy: { createdAt: "desc" },
   });
 
   let subject = input.subject;
-  if (channelType === "email" && !subject) {
+  if (input.channelType === "email" && !subject) {
     const inboundSubject = lastInbound?.subject?.trim();
     if (inboundSubject) {
       subject = inboundSubject.toLowerCase().startsWith("re:")
@@ -657,14 +466,15 @@ export async function sendConversationMessage(input: {
     to,
     content: input.content,
     subject,
-    threadId: conversation.externalThreadId ?? undefined,
     replyToExternalId: lastInbound?.externalId ?? undefined,
   });
 
   const message = await prisma.message.create({
     data: {
       id: ulid(),
-      conversationId: conversation.id,
+      channelType: input.channelType,
+      channelId: identity.id,
+      customerId: input.customerId,
       direction: "outgoing",
       content: input.content,
       contentType: "text",
@@ -672,82 +482,134 @@ export async function sendConversationMessage(input: {
       externalId: result.externalId ?? `local_${ulid()}`,
       status: mapSendStatus(result.status),
       rawPayload: {
-        ...(result.raw && typeof result.raw === "object" && !Array.isArray(result.raw)
-          ? (result.raw as Record<string, unknown>)
-          : {}),
         error: result.error,
-        channelType,
         to,
+        ...(result.raw && typeof result.raw === "object" ? (result.raw as object) : {}),
       } as Prisma.InputJsonValue,
     },
   });
 
-  // Agent reply closes the channel (resolved). Customer inbound re-opens it.
-  // Failed sends do not mark resolved — agent still needs to follow up.
-  const nextStatus =
-    result.status === "failed" ? conversation.status : ("resolved" as const);
-
-  await prisma.conversation.update({
-    where: { id: conversation.id },
-    data: { lastMessageAt: message.createdAt, status: nextStatus },
-  });
-
-  return { message, result };
-}
-
-/** Legacy-friendly identifiers map from identity-like rows or contact columns. */
-export function identitiesToMap(
-  identities: { channel: ChannelType; externalId: string }[],
-): Record<string, string> {
-  const map: Record<string, string> = {};
-  for (const identity of identities) {
-    map[identity.channel] = identity.externalId;
+  if (input.channelType === "whatsapp") {
+    await prisma.whatsAppChannel.update({
+      where: { id: identity.id },
+      data: {
+        lastMessageAt: new Date(),
+        ...(result.status !== "failed" ? { resolved: true } : {}),
+      },
+    });
+  } else if (input.channelType === "instagram") {
+    await prisma.instagramChannel.update({
+      where: { id: identity.id },
+      data: {
+        lastMessageAt: new Date(),
+        ...(result.status !== "failed" ? { resolved: true } : {}),
+      },
+    });
+  } else {
+    await prisma.emailChannel.update({
+      where: { id: identity.id },
+      data: {
+        lastMessageAt: new Date(),
+        ...(result.status !== "failed" ? { resolved: true } : {}),
+      },
+    });
   }
-  return map;
+
+  if (result.status !== "failed") {
+    await setChannelResolved({
+      channelType: input.channelType,
+      channelId: identity.id,
+      resolved: true,
+    });
+  } else {
+    await recomputeCustomerResolved(input.customerId);
+  }
+
+  return {
+    message,
+    result: {
+      ok: result.ok,
+      status: result.status,
+      error: result.error,
+      externalId: result.externalId,
+    },
+    channelId: identity.id,
+    externalId: identity.externalId,
+  };
 }
 
-export function contactIdentifiersFromRow(contact: ContactChannelRow): Record<string, string> {
-  return identitiesToMap(
-    contactToIdentities(contact).map((i) => ({
-      channel: i.channel,
-      externalId: i.externalId,
+/** Compat shapes for UI */
+export function shapeCustomer(customer: {
+  id: string;
+  name: string | null;
+  resolved: boolean;
+  metadata?: unknown;
+  whatsappIdentities?: Array<{ id: string; externalId: string; resolved: boolean; metadata: unknown; lastMessageAt: Date | null }>;
+  instagramIdentities?: Array<{ id: string; externalId: string; resolved: boolean; metadata: unknown; lastMessageAt: Date | null }>;
+  emailIdentities?: Array<{ id: string; externalId: string; resolved: boolean; metadata: unknown; lastMessageAt: Date | null }>;
+}) {
+  const wa = customer.whatsappIdentities ?? [];
+  const ig = customer.instagramIdentities ?? [];
+  const em = customer.emailIdentities ?? [];
+  const whatsappIds = wa.map((i) => formatWhatsAppStorage(i.externalId) ?? i.externalId);
+  const emails = em.map((i) => i.externalId);
+  const identities = [
+    ...wa.map((i) => ({
+      id: i.id,
+      channel: "whatsapp" as const,
+      externalId: formatWhatsAppStorage(i.externalId) ?? i.externalId,
+      displayId: formatWhatsAppStorage(i.externalId) ?? i.externalId,
+      metadata: asMeta(i.metadata as Prisma.JsonValue),
+      enabled: true,
+      resolved: i.resolved,
+      lastMessageAt: i.lastMessageAt,
     })),
-  );
-}
+    ...ig.map((i) => {
+      const meta = asMeta(i.metadata as Prisma.JsonValue);
+      const username = typeof meta.username === "string" ? meta.username.replace(/^@/, "") : "";
+      return {
+        id: i.id,
+        channel: "instagram" as const,
+        externalId: i.externalId,
+        displayId: username ? `@${username}` : i.externalId,
+        metadata: meta,
+        enabled: true,
+        resolved: i.resolved,
+        lastMessageAt: i.lastMessageAt,
+      };
+    }),
+    ...em.map((i) => ({
+      id: i.id,
+      channel: "email" as const,
+      externalId: i.externalId,
+      displayId: i.externalId,
+      metadata: asMeta(i.metadata as Prisma.JsonValue),
+      enabled: true,
+      resolved: i.resolved,
+      lastMessageAt: i.lastMessageAt,
+    })),
+  ];
 
-export function redactConfig(config: Prisma.JsonValue): Prisma.JsonValue {
-  if (!config || typeof config !== "object" || Array.isArray(config)) return config;
-  const clone = { ...(config as Record<string, unknown>) };
-  for (const key of Object.keys(clone)) {
-    const lower = key.toLowerCase();
-    if (
-      lower.includes("token") ||
-      lower.includes("secret") ||
-      lower.includes("pass") ||
-      lower.includes("password")
-    ) {
-      if (typeof clone[key] === "string" && clone[key]) {
-        clone[key] = "***";
-      }
-    }
-  }
-  return clone as Prisma.JsonValue;
-}
-
-export function mergeChannelConfig(
-  existing: Prisma.JsonValue,
-  patch: Record<string, unknown>,
-): Prisma.InputJsonValue {
-  const base =
-    existing && typeof existing === "object" && !Array.isArray(existing)
-      ? { ...(existing as Record<string, unknown>) }
-      : {};
-
-  for (const [key, value] of Object.entries(patch)) {
-    if (key === "mock") continue;
-    if (value === "***") continue;
-    base[key] = value;
-  }
-  delete base.mock;
-  return base as Prisma.InputJsonValue;
+  return {
+    id: customer.id,
+    name: customer.name,
+    email: emails[0] ?? null,
+    emails,
+    whatsappId: whatsappIds[0] ?? null,
+    whatsappIds,
+    whatsappEnabled: wa.length > 0,
+    instagramEnabled: ig.length > 0,
+    emailEnabled: em.length > 0,
+    instagramId: ig[0]?.externalId ?? null,
+    instagramDetails: ig[0] ? asMeta(ig[0].metadata as Prisma.JsonValue) : null,
+    resolved: customer.resolved,
+    globalStatus: customer.resolved ? ("resolved" as const) : ("active" as const),
+    identifiers: {
+      ...(whatsappIds[0] ? { whatsapp: whatsappIds[0] } : {}),
+      ...(ig[0] ? { instagram: ig[0].externalId } : {}),
+      ...(emails[0] ? { email: emails[0] } : {}),
+    },
+    identities,
+    metadata: customer.metadata,
+  };
 }

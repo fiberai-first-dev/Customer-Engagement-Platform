@@ -3,6 +3,7 @@ dist
 build
 .env
 .env.local
+seed.creds.json
 *.log
 .DS_Store
 coverage

@@ -1,21 +1,75 @@
-import { MockOrderProvider } from "./mock-order.provider.js";
-import type { OrderLookupQuery, OrderProvider, OrdersResponse } from "./types.js";
+import { isShopifyConfigured, resolveShopifyCredentials } from "./shopify.client.js";
+import { ShopifyOrderProvider } from "./shopify.provider.js";
+import type {
+  CustomerCommerceResponse,
+  OrderLookupQuery,
+  OrdersResponse,
+} from "./types.js";
+
+function buildStatsFromOrders(orders: OrdersResponse["orders"]): CustomerCommerceResponse["stats"] {
+  const totalOrders = orders.length;
+  const lifetimeValue = orders.reduce((sum, o) => sum + (o.amount || 0), 0);
+  return {
+    totalOrders,
+    lifetimeValue,
+    averageOrderValue: totalOrders ? Math.round(lifetimeValue / totalOrders) : 0,
+    delivered: orders.filter((o) => /deliver/i.test(o.status)).length,
+    shipped: orders.filter((o) => /ship|out for/i.test(o.status)).length,
+    cancelled: orders.filter((o) => /cancel|return/i.test(o.status)).length,
+    placed: orders.filter((o) => /place|confirm/i.test(o.status)).length,
+    currency: orders[0]?.currency || "INR",
+  };
+}
 
 /**
- * Application-facing order service.
- * Swap the provider (mock → Shopify/WooCommerce/custom) without touching controllers or UI.
+ * Application-facing order / commerce service.
+ * Uses Shopify when shopify_config is set in DB. Never invents mock commerce.
  */
 export class OrderService {
-  constructor(private readonly provider: OrderProvider = new MockOrderProvider()) {}
+  private shopify = new ShopifyOrderProvider();
 
   async getOrdersForCustomer(query: OrderLookupQuery): Promise<OrdersResponse> {
-    return this.provider.getOrdersForCustomer({
+    if (!(await isShopifyConfigured())) return { orders: [] };
+    return this.shopify.getOrdersForCustomer({
       email: query.email ?? undefined,
       phone: query.phone ?? undefined,
     });
   }
+
+  async getCustomerCommerce(query: OrderLookupQuery): Promise<CustomerCommerceResponse> {
+    if (!(await isShopifyConfigured())) {
+      return {
+        provider: "none",
+        customer: null,
+        stats: buildStatsFromOrders([]),
+        orders: [],
+      };
+    }
+    return this.shopify.getCustomerCommerce({
+      email: query.email ?? undefined,
+      phone: query.phone ?? undefined,
+    });
+  }
+
+  async isLive(): Promise<boolean> {
+    return isShopifyConfigured();
+  }
+
+  async shopDomain(): Promise<string> {
+    const creds = await resolveShopifyCredentials();
+    return creds ? `${creds.shop}.myshopify.com` : "";
+  }
 }
 
 export const orderService = new OrderService();
+export const shopifyOrderProvider = new ShopifyOrderProvider();
 
-export type { OrderLookupQuery, OrdersResponse, CustomerOrder, OrderItem } from "./types.js";
+export type {
+  OrderLookupQuery,
+  OrdersResponse,
+  CustomerOrder,
+  OrderItem,
+  CustomerCommerceResponse,
+  OrderStats,
+  ShopifyCustomerSummary,
+} from "./types.js";

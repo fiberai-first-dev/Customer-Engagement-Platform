@@ -35,10 +35,13 @@ const rawDatabaseUrl = required(
   "postgresql://cep:cep@localhost:5434/cep_platform",
 );
 
+/**
+ * Runtime .env is only for infrastructure (DB, JWT, public URLs).
+ * Channel / Shopify / login secrets live in the database (Settings UI or seed scripts).
+ */
 export const env = {
   port: Number(process.env.PLATFORM_PORT ?? process.env.PORT ?? 4100),
   databaseUrl: encodePasswordAtSigns(rawDatabaseUrl),
-  /** Prefer session/direct URL for migrations when pooler hangs */
   migrateDatabaseUrl: encodePasswordAtSigns(
     stripQuotes(
       process.env.PLATFORM_MIGRATE_DATABASE_URL ||
@@ -46,42 +49,16 @@ export const env = {
         rawDatabaseUrl,
     ),
   ),
-  adminUsername: stripQuotes(process.env.ADMIN_USERNAME ?? "admin"),
-  adminPassword: stripQuotes(process.env.ADMIN_PASSWORD ?? "password"),
   jwtSecret: required("JWT_SECRET", process.env.JWT_SECRET ?? "dev-jwt-secret-do-not-use-in-prod"),
   publicBaseUrl: stripQuotes(
     process.env.PLATFORM_PUBLIC_BASE_URL ??
       `http://localhost:${process.env.PLATFORM_PORT ?? 4100}`,
   ),
-  /** Agent UI origin — OAuth success redirects here (Settings). Set in .env via PLATFORM_WEB_BASE_URL. */
   webBaseUrl: stripQuotes(
     process.env.PLATFORM_WEB_BASE_URL ??
       process.env.WEB_PUBLIC_BASE_URL ??
       "http://localhost:5173",
   ),
-
-  gmail: {
-    clientId: stripQuotes(process.env.GMAIL_CLIENT_ID ?? ""),
-    clientSecret: stripQuotes(process.env.GMAIL_CLIENT_SECRET ?? ""),
-    refreshToken: stripQuotes(process.env.GMAIL_REFRESH_TOKEN ?? ""),
-    accessToken: stripQuotes(process.env.GMAIL_ACCESS_TOKEN ?? ""),
-    pubsubTopic: stripQuotes(process.env.GMAIL_PUBSUB_TOPIC ?? ""),
-  },
-  whatsapp: {
-    phoneNumberId: stripQuotes(process.env.WHATSAPP_PHONE_NUMBER_ID ?? ""),
-    accessToken: stripQuotes(process.env.WHATSAPP_ACCESS_TOKEN ?? ""),
-    verifyToken: stripQuotes(process.env.WHATSAPP_VERIFY_TOKEN ?? ""),
-    appSecret: stripQuotes(process.env.WHATSAPP_APP_SECRET ?? ""),
-    businessAccountId: stripQuotes(process.env.WHATSAPP_BUSINESS_ACCOUNT_ID ?? ""),
-  },
-  instagram: {
-    pageId: stripQuotes(process.env.INSTAGRAM_PAGE_ID ?? ""),
-    accessToken: stripQuotes(process.env.INSTAGRAM_ACCESS_TOKEN ?? ""),
-    verifyToken: stripQuotes(process.env.INSTAGRAM_VERIFY_TOKEN ?? ""),
-    appSecret: stripQuotes(process.env.INSTAGRAM_APP_SECRET ?? ""),
-    appId: stripQuotes(process.env.INSTAGRAM_APP_ID ?? ""),
-    username: stripQuotes(process.env.INSTAGRAM_USERNAME ?? ""),
-  },
 };
 
 process.env.PLATFORM_DATABASE_URL = env.databaseUrl;

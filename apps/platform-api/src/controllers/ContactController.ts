@@ -1,85 +1,26 @@
 import type { FastifyRequest, FastifyReply } from "fastify";
-import { Prisma } from "../generated/client/index.js";
 import { prisma } from "../config/db.js";
 import {
-  asStringList,
-  contactIdentifiersFromRow,
-  contactToIdentities,
-  formatWhatsAppStorage,
-  withPrimaryAndLists,
-} from "../services/MessagingService.js";
-import { ulid } from "ulid";
-
-function shapeContact(c: {
-  id: string;
-  name: string | null;
-  email: string | null;
-  emails?: unknown;
-  whatsappEnabled: boolean;
-  instagramEnabled: boolean;
-  emailEnabled: boolean;
-  whatsappId?: string | null;
-  whatsappIds?: unknown;
-  instagramId?: string | null;
-  emailId?: string | null;
-  whatsappDetails?: unknown;
-  instagramDetails?: unknown;
-  emailDetails?: unknown;
-}) {
-  const emails = asStringList(c.emails);
-  const whatsappIds = asStringList(c.whatsappIds)
-    .map((id) => formatWhatsAppStorage(id) ?? id)
-    .filter(Boolean);
-  const primaryWa =
-    formatWhatsAppStorage(c.whatsappId) ?? whatsappIds[0] ?? null;
-  const identities = contactToIdentities(c as never);
-  return {
-    id: c.id,
-    name: c.name,
-    email: c.email ?? emails[0] ?? null,
-    emails: emails.length ? emails : c.email ? [c.email] : [],
-    whatsappId: primaryWa,
-    whatsappIds: whatsappIds.length
-      ? whatsappIds
-      : primaryWa
-        ? [primaryWa]
-        : [],
-    whatsappEnabled: c.whatsappEnabled,
-    instagramEnabled: c.instagramEnabled,
-    emailEnabled: c.emailEnabled,
-    identifiers: contactIdentifiersFromRow(c as never),
-    identities: identities.map((identity) => ({
-      id: identity.id,
-      channel: identity.channel,
-      externalId:
-        identity.channel === "whatsapp"
-          ? formatWhatsAppStorage(identity.externalId) ?? identity.externalId
-          : identity.externalId,
-      metadata: identity.metadata,
-      enabled: identity.enabled,
-    })),
-  };
-}
-
-function normalizeInstagramId(raw?: string | null): string | null {
-  if (!raw?.trim()) return null;
-  return raw.trim().replace(/^@+/, "");
-}
+  createCustomer,
+  findMatchingCustomers,
+  loadCustomerShaped,
+  mergeCustomers,
+  updateCustomer,
+} from "../services/CustomerService.js";
+import { shapeCustomer } from "../services/MessagingService.js";
 
 export class ContactController {
-  static async listContacts(
-    request: FastifyRequest<{ Querystring: { accountId?: string } }>,
-    reply: FastifyReply,
-  ) {
-    const { accountId } = request.query;
-
+  static async listContacts(_request: FastifyRequest, reply: FastifyReply) {
     try {
-      const contacts = await prisma.contact.findMany({
-        where: accountId ? { accountId } : undefined,
+      const customers = await prisma.customer.findMany({
+        include: {
+          whatsappIdentities: true,
+          instagramIdentities: true,
+          emailIdentities: true,
+        },
         orderBy: { updatedAt: "desc" },
       });
-
-      return reply.send(contacts.map(shapeContact));
+      return reply.send(customers.map(shapeCustomer));
     } catch (err: any) {
       return reply.code(500).send({ error: err.message });
     }
@@ -88,54 +29,64 @@ export class ContactController {
   static async createContact(request: FastifyRequest, reply: FastifyReply) {
     try {
       const body = request.body as {
-        accountId?: string;
         name?: string;
         email?: string;
         emails?: string[];
         whatsappId?: string;
         whatsappIds?: string[];
         instagramId?: string;
-        emailId?: string;
+        mergeIntoId?: string;
+        keepName?: string;
+        force?: boolean;
       };
 
-      if (!body.accountId?.trim()) {
-        return reply.code(400).send({ error: "accountId is required" });
+      const emails = body.emails?.length
+        ? body.emails
+        : body.email
+          ? [body.email]
+          : [];
+      const whatsappIds = body.whatsappIds?.length
+        ? body.whatsappIds
+        : body.whatsappId
+          ? [body.whatsappId]
+          : [];
+
+      if (!body.force && !body.mergeIntoId) {
+        const matches = await findMatchingCustomers({
+          emails,
+          whatsappIds,
+          instagramId: body.instagramId,
+        });
+        if (matches.length) {
+          return reply.code(409).send({
+            error: "customer_match",
+            message: "Customer found with matching channel ids",
+            matches,
+          });
+        }
       }
 
-      const account = await prisma.account.findUnique({ where: { id: body.accountId } });
-      if (!account) {
-        return reply.code(400).send({ error: "account not found" });
+      const result = await createCustomer({
+        name: body.name,
+        emails,
+        whatsappIds,
+        instagramId: body.instagramId,
+        mergeIntoId: body.mergeIntoId,
+        keepName: body.keepName ?? body.name,
+        force: Boolean(body.force),
+      });
+
+      if (result && "needsMerge" in result && result.needsMerge) {
+        return reply.code(409).send({
+          error: "customer_match",
+          message: "Customer found with matching channel ids",
+          matches: result.matches,
+        });
       }
 
-      const lists = withPrimaryAndLists({
-        emails: body.emails,
-        whatsappIds: body.whatsappIds,
-        email: body.email ?? body.emailId,
-        whatsappId: body.whatsappId,
-      });
-      const instagramId = normalizeInstagramId(body.instagramId);
-      const emailId = body.emailId?.trim() || lists.email;
-
-      const contact = await prisma.contact.create({
-        data: {
-          id: ulid(),
-          accountId: body.accountId,
-          name: body.name?.trim() || null,
-          email: lists.email,
-          emails: lists.emails as Prisma.InputJsonValue,
-          whatsappId: lists.whatsappId,
-          whatsappIds: lists.whatsappIds as Prisma.InputJsonValue,
-          instagramId,
-          emailId,
-          whatsappEnabled: Boolean(lists.whatsappId),
-          instagramEnabled: Boolean(instagramId),
-          emailEnabled: Boolean(emailId || lists.email),
-        },
-      });
-
-      return reply.code(201).send(shapeContact(contact));
+      return reply.code(201).send(result);
     } catch (err: any) {
-      return reply.code(500).send({ error: err.message || "Failed to create contact" });
+      return reply.code(400).send({ error: err.message });
     }
   }
 
@@ -144,7 +95,6 @@ export class ContactController {
     reply: FastifyReply,
   ) {
     try {
-      const { id } = request.params;
       const body = request.body as {
         name?: string;
         email?: string;
@@ -152,52 +102,88 @@ export class ContactController {
         whatsappId?: string;
         whatsappIds?: string[];
         instagramId?: string;
-        emailId?: string;
+        mergeIntoId?: string;
+        keepName?: string;
+        force?: boolean;
       };
+      const existing = await prisma.customer.findUnique({ where: { id: request.params.id } });
+      if (!existing) return reply.code(404).send({ error: "not found" });
 
-      const existing = await prisma.contact.findUnique({ where: { id } });
-      if (!existing) {
-        return reply.code(404).send({ error: "Contact not found" });
+      const emails = body.emails?.length
+        ? body.emails
+        : body.email
+          ? [body.email]
+          : undefined;
+      const whatsappIds = body.whatsappIds?.length
+        ? body.whatsappIds
+        : body.whatsappId
+          ? [body.whatsappId]
+          : undefined;
+
+      if (!body.force && !body.mergeIntoId) {
+        const matches = await findMatchingCustomers({
+          emails: emails ?? [],
+          whatsappIds: whatsappIds ?? [],
+          instagramId: body.instagramId,
+        });
+        const others = matches.filter((m) => m.id !== request.params.id);
+        if (others.length) {
+          return reply.code(409).send({
+            error: "customer_match",
+            message: "Customer found with matching channel ids",
+            matches: others,
+          });
+        }
       }
 
-      const lists = withPrimaryAndLists({
-        emails: body.emails ?? asStringList(existing.emails),
-        whatsappIds: body.whatsappIds ?? asStringList(existing.whatsappIds),
-        email: body.email ?? body.emailId ?? existing.email,
-        whatsappId: body.whatsappId ?? existing.whatsappId,
+      const result = await updateCustomer(request.params.id, {
+        name: body.name,
+        emails,
+        whatsappIds,
+        instagramId: body.instagramId,
+        mergeIntoId: body.mergeIntoId,
+        keepName: body.keepName ?? body.name,
+        force: Boolean(body.force),
       });
 
-      const instagramId =
-        body.instagramId !== undefined
-          ? normalizeInstagramId(body.instagramId)
-          : existing.instagramId;
-      const emailId =
-        body.emailId !== undefined
-          ? body.emailId.trim() || lists.email
-          : existing.emailId || lists.email;
+      if (result && "needsMerge" in result && result.needsMerge) {
+        return reply.code(409).send({
+          error: "customer_match",
+          message: "Customer found with matching channel ids",
+          matches: result.matches,
+        });
+      }
 
-      const contact = await prisma.contact.update({
-        where: { id },
-        data: {
-          name: body.name !== undefined ? body.name.trim() || null : undefined,
-          email: lists.email,
-          emails: lists.emails as Prisma.InputJsonValue,
-          whatsappId: lists.whatsappId,
-          whatsappIds: lists.whatsappIds as Prisma.InputJsonValue,
-          instagramId,
-          emailId,
-          whatsappEnabled: Boolean(lists.whatsappId),
-          instagramEnabled: Boolean(instagramId),
-          emailEnabled: Boolean(emailId || lists.email),
-        },
-      });
-
-      return reply.send(shapeContact(contact));
+      return reply.send(result);
     } catch (err: any) {
-      if (err.code === "P2025") {
-        return reply.code(404).send({ error: "Contact not found" });
-      }
-      return reply.code(500).send({ error: err.message || "Failed to update contact" });
+      return reply.code(400).send({ error: err.message });
     }
+  }
+
+  static async merge(
+    request: FastifyRequest<{
+      Body: { targetId?: string; sourceIds?: string[]; keepName?: string };
+    }>,
+    reply: FastifyReply,
+  ) {
+    const { targetId, sourceIds, keepName } = request.body ?? {};
+    if (!targetId || !sourceIds?.length || !keepName) {
+      return reply.code(400).send({ error: "targetId, sourceIds, keepName required" });
+    }
+    try {
+      const result = await mergeCustomers({ targetId, sourceIds, keepName });
+      return reply.send(result);
+    } catch (err: any) {
+      return reply.code(400).send({ error: err.message });
+    }
+  }
+
+  static async getOne(
+    request: FastifyRequest<{ Params: { id: string } }>,
+    reply: FastifyReply,
+  ) {
+    const shaped = await loadCustomerShaped(request.params.id);
+    if (!shaped) return reply.code(404).send({ error: "not found" });
+    return reply.send(shaped);
   }
 }

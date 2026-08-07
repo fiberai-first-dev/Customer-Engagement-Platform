@@ -1,12 +1,8 @@
 /**
  * Database bootstrap without `prisma migrate deploy` (hangs on Supabase pooler).
  *
- * Called automatically on API boot (`server.ts`). Safe paths:
- * - Empty / incomplete DB → create CEP tables (reset + apply migrations)
- * - Incremental column migrations when missing
- * - Already current → no-op
- *
- * Never wipe a populated unexpected schema (refuses with diagnostics).
+ * Empty / legacy / incomplete DB → wipe CEP objects and apply the current migration.
+ * Current schema → no-op (baseline history if needed).
  */
 import "../config/load-env.js";
 import { existsSync, readFileSync, readdirSync } from "node:fs";
@@ -17,11 +13,10 @@ import { PrismaClient } from "../generated/client/index.js";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 
-/** Resolve prisma/migrations whether running from src/ or dist/. */
 function resolveMigrationsDir(): string {
   const candidates = [
-    path.resolve(here, "../../prisma/migrations"), // src/scripts → apiRoot/prisma
-    path.resolve(here, "../../../prisma/migrations"), // dist/scripts → apiRoot/prisma
+    path.resolve(here, "../../prisma/migrations"),
+    path.resolve(here, "../../../prisma/migrations"),
     path.resolve(process.cwd(), "prisma/migrations"),
   ];
   for (const dir of candidates) {
@@ -123,12 +118,10 @@ async function markApplied(prisma: PrismaClient, name: string) {
 }
 
 async function baselineAllMigrations(prisma: PrismaClient) {
-  const folders = listMigrationFolders();
   await ensureMigrationsTable(prisma);
-  for (const folder of folders) await markApplied(prisma, folder);
+  for (const folder of listMigrationFolders()) await markApplied(prisma, folder);
 }
 
-/** Split SQL into executable chunks, keeping DO $$ ... $$; blocks intact. */
 function splitSql(sql: string): string[] {
   const chunks: string[] = [];
   let buf = "";
@@ -156,46 +149,28 @@ function splitSql(sql: string): string[] {
 async function applySqlFile(prisma: PrismaClient, filePath: string) {
   if (!existsSync(filePath)) throw new Error(`Missing SQL file: ${filePath}`);
   console.log(`[migrate] applying ${path.relative(apiRoot, filePath)}`);
-  const chunks = splitSql(readFileSync(filePath, "utf8"));
-  for (const chunk of chunks) {
+  for (const chunk of splitSql(readFileSync(filePath, "utf8"))) {
     await prisma.$executeRawUnsafe(chunk);
   }
 }
 
-/** True when core app tables are missing (accounts required). */
-async function isEmptyDatabase(prisma: PrismaClient): Promise<boolean> {
-  return !(await tableExists(prisma, "accounts"));
-}
-
-/**
- * Partial drop leftovers (e.g. only webhook_events + enums) break re-apply of init
- * because CREATE TYPE fails. Detect "some but not all" core tables.
- */
-async function isIncompleteSchema(prisma: PrismaClient): Promise<boolean> {
-  const core = ["accounts", "inboxes", "contacts", "conversations", "messages", "webhook_events"];
-  const present: string[] = [];
-  for (const table of core) {
-    if (await tableExists(prisma, table)) present.push(table);
-  }
-  if (present.length === 0) return false; // truly empty — normal empty path
-  if (present.length < core.length) {
-    console.log(`[migrate] Incomplete schema — found only: ${present.join(", ")}`);
-    return true;
-  }
-  return false;
-}
-
-/** Wipe CEP tables + enums so init SQL can run cleanly again. */
 async function resetCepSchema(prisma: PrismaClient) {
-  console.log("[migrate] Resetting CEP tables and enums for a clean apply…");
+  console.log("[migrate] Resetting CEP tables and enums…");
   await prisma.$executeRawUnsafe(`
     DROP TABLE IF EXISTS
       "messages",
+      "webhook_events",
+      "whatsapp_channel",
+      "instagram_channel",
+      "email_channel",
+      "channels_config",
+      "shopify_config",
+      "customers",
+      "users",
       "conversations",
       "contacts",
       "inboxes",
       "accounts",
-      "webhook_events",
       "contact_identities",
       "_prisma_migrations"
     CASCADE
@@ -207,86 +182,29 @@ async function resetCepSchema(prisma: PrismaClient) {
   await prisma.$executeRawUnsafe(`DROP TYPE IF EXISTS "ContentType" CASCADE`);
 }
 
-async function applyAllMigrations(prisma: PrismaClient) {
-  const folders = listMigrationFolders();
-  for (const folder of folders) {
-    await applySqlFile(prisma, migrationSqlPath(folder));
-  }
-  await baselineAllMigrations(prisma);
-  console.log("[migrate] Fresh schema ready");
-}
-
-async function needsLegacyRepair(prisma: PrismaClient): Promise<boolean> {
-  if (await isEmptyDatabase(prisma)) return false;
-  const hasInboxes = await tableExists(prisma, "inboxes");
-  const hasInboxId = await flag(
-    prisma,
-    `SELECT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='conversations' AND column_name='inbox_id') AS exists`,
-  );
-  const hasLegacyConfig = await flag(
-    prisma,
-    `SELECT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='accounts' AND column_name='whatsapp_config') AS exists`,
-  );
-  return !hasInboxes || !hasInboxId || hasLegacyConfig;
-}
-
 async function schemaLooksCurrent(prisma: PrismaClient): Promise<boolean> {
-  const hasInboxes = await tableExists(prisma, "inboxes");
-  const hasInboxId = await flag(
-    prisma,
-    `SELECT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='conversations' AND column_name='inbox_id') AS exists`,
-  );
-  const hasWebhook = await tableExists(prisma, "webhook_events");
-  const hasContactChannels = await flag(
-    prisma,
-    `SELECT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='contacts' AND column_name='whatsapp_enabled') AS exists`,
-  );
-  const hasEmailsArray = await flag(
-    prisma,
-    `SELECT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='contacts' AND column_name='emails') AS exists`,
-  );
-  const hasWhatsappIds = await flag(
-    prisma,
-    `SELECT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='contacts' AND column_name='whatsapp_ids') AS exists`,
-  );
-  const hasPhone = await flag(
-    prisma,
-    `SELECT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='contacts' AND column_name='phone') AS exists`,
-  );
-  const hasIdentityTable = await tableExists(prisma, "contact_identities");
   return (
-    hasInboxes &&
-    hasInboxId &&
-    hasWebhook &&
-    hasContactChannels &&
-    hasEmailsArray &&
-    hasWhatsappIds &&
-    !hasPhone &&
-    !hasIdentityTable
+    (await tableExists(prisma, "users")) &&
+    (await tableExists(prisma, "customers")) &&
+    (await tableExists(prisma, "channels_config")) &&
+    (await tableExists(prisma, "shopify_config")) &&
+    (await tableExists(prisma, "whatsapp_channel")) &&
+    (await tableExists(prisma, "instagram_channel")) &&
+    (await tableExists(prisma, "email_channel")) &&
+    (await tableExists(prisma, "messages")) &&
+    (await tableExists(prisma, "webhook_events")) &&
+    !(await tableExists(prisma, "accounts")) &&
+    !(await tableExists(prisma, "contacts")) &&
+    !(await tableExists(prisma, "inboxes"))
   );
 }
 
-async function needsContactChannelMigration(prisma: PrismaClient): Promise<boolean> {
-  if (await isEmptyDatabase(prisma)) return false;
-  const hasContacts = await tableExists(prisma, "contacts");
-  if (!hasContacts) return false;
-  const hasContactChannels = await flag(
-    prisma,
-    `SELECT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='contacts' AND column_name='whatsapp_enabled') AS exists`,
+async function isLegacySchema(prisma: PrismaClient): Promise<boolean> {
+  return (
+    (await tableExists(prisma, "accounts")) ||
+    (await tableExists(prisma, "contacts")) ||
+    (await tableExists(prisma, "inboxes"))
   );
-  const hasIdentityTable = await tableExists(prisma, "contact_identities");
-  return !hasContactChannels || hasIdentityTable;
-}
-
-async function migrationHistoryMissing(prisma: PrismaClient): Promise<boolean> {
-  const hasTable = await tableExists(prisma, "_prisma_migrations");
-  if (!hasTable) return true;
-  const folders = listMigrationFolders();
-  if (!folders.length) return false;
-  const rows = await prisma.$queryRawUnsafe<Array<{ c: bigint }>>(
-    `SELECT COUNT(*)::bigint AS c FROM "_prisma_migrations" WHERE rolled_back_at IS NULL`,
-  );
-  return Number(rows[0]?.c ?? 0) < folders.length;
 }
 
 function redactDbHost(url: string): string {
@@ -318,117 +236,24 @@ export async function runDatabaseMigrations(): Promise<void> {
     }
     console.log(`[migrate] found ${folders.length} migration folder(s)`);
 
-    const inboxMig =
-      folders.find((f) => f.includes("inbox_contact_identity")) ?? folders[1]!;
-    const contactMig =
-      folders.find((f) => f.includes("contact_channel_columns")) ?? folders.at(-1)!;
-
-    // Partial leftover schema (common after DROP TABLE while enums remain)
-    if (await isIncompleteSchema(prisma)) {
-      await resetCepSchema(prisma);
-      await applyAllMigrations(prisma);
-      return;
-    }
-
-    if (await isEmptyDatabase(prisma)) {
-      console.log("[migrate] Empty database — applying all SQL migrations");
-      // Enums may still exist after a manual table drop — clear them first
-      await resetCepSchema(prisma);
-      await applyAllMigrations(prisma);
-      return;
-    }
-
-    if (await needsLegacyRepair(prisma)) {
-      console.log("[migrate] Legacy schema — applying inbox SQL repair");
-      await applySqlFile(prisma, migrationSqlPath(inboxMig));
-      if (await needsContactChannelMigration(prisma)) {
-        await applySqlFile(prisma, migrationSqlPath(contactMig));
-      }
-      await baselineAllMigrations(prisma);
-      console.log("[migrate] Repair complete");
-      return;
-    }
-
-    if (await needsContactChannelMigration(prisma)) {
-      console.log("[migrate] Flattening contacts → channel columns");
-      await applySqlFile(prisma, migrationSqlPath(contactMig));
-      await baselineAllMigrations(prisma);
-      console.log("[migrate] Contact channel columns ready");
-      return;
-    }
-
-    const emailsPhonesMig =
-      folders.find((f) => f.includes("contact_emails_phones")) ?? null;
-    if (emailsPhonesMig) {
-      const hasEmailsArray = await flag(
-        prisma,
-        `SELECT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='contacts' AND column_name='emails') AS exists`,
-      );
-      if (!hasEmailsArray) {
-        console.log("[migrate] Adding contacts.emails / contacts.phones arrays");
-        await applySqlFile(prisma, migrationSqlPath(emailsPhonesMig));
-        await markApplied(prisma, emailsPhonesMig);
-        console.log("[migrate] emails/phones arrays ready");
-      }
-    }
-
-    const dropPhoneMig =
-      folders.find((f) => f.includes("drop_phone_use_whatsapp")) ?? null;
-    if (dropPhoneMig) {
-      const hasPhone = await flag(
-        prisma,
-        `SELECT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='contacts' AND column_name='phone') AS exists`,
-      );
-      const hasWhatsappIds = await flag(
-        prisma,
-        `SELECT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='contacts' AND column_name='whatsapp_ids') AS exists`,
-      );
-      if (hasPhone || !hasWhatsappIds) {
-        console.log("[migrate] Dropping phone; adding whatsapp_ids");
-        await applySqlFile(prisma, migrationSqlPath(dropPhoneMig));
-        await markApplied(prisma, dropPhoneMig);
-        console.log("[migrate] whatsapp_ids ready");
-        return;
-      }
-    }
-
-    if ((await schemaLooksCurrent(prisma)) && (await migrationHistoryMissing(prisma))) {
-      console.log("[migrate] Schema current — baselining Prisma history");
-      await baselineAllMigrations(prisma);
-      return;
-    }
-
     if (await schemaLooksCurrent(prisma)) {
       console.log("[migrate] Schema already up to date");
+      await baselineAllMigrations(prisma);
       return;
     }
 
-    // Never wipe a live DB here — that drops Gmail historyId / OAuth tokens / conversations.
-    // Incomplete/empty paths above already handle true greenfield recovery.
-    const diagnostics = {
-      hasInboxes: await tableExists(prisma, "inboxes"),
-      hasContacts: await tableExists(prisma, "contacts"),
-      hasWhatsappEnabled: await flag(
-        prisma,
-        `SELECT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='contacts' AND column_name='whatsapp_enabled') AS exists`,
-      ),
-      hasEmails: await flag(
-        prisma,
-        `SELECT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='contacts' AND column_name='emails') AS exists`,
-      ),
-      hasWhatsappIds: await flag(
-        prisma,
-        `SELECT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='contacts' AND column_name='whatsapp_ids') AS exists`,
-      ),
-      hasPhone: await flag(
-        prisma,
-        `SELECT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='contacts' AND column_name='phone') AS exists`,
-      ),
-      hasIdentityTable: await tableExists(prisma, "contact_identities"),
-    };
-    throw new Error(
-      `[migrate] Unexpected schema — refusing to wipe production data. Diagnostics: ${JSON.stringify(diagnostics)}. Fix with an incremental migration or run migrate reset only intentionally.`,
-    );
+    if (await isLegacySchema(prisma)) {
+      console.log("[migrate] Legacy schema detected — wiping for customers/channels rebuild");
+    } else {
+      console.log("[migrate] Empty or incomplete schema — applying fresh migrations");
+    }
+
+    await resetCepSchema(prisma);
+    for (const folder of folders) {
+      await applySqlFile(prisma, migrationSqlPath(folder));
+    }
+    await baselineAllMigrations(prisma);
+    console.log("[migrate] Fresh schema ready");
   } finally {
     await prisma.$disconnect();
   }

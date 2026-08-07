@@ -10,10 +10,12 @@ import { dashboardRoutes } from "./v1/dashboard.routes.js";
 import { orderRoutes } from "./v1/orders.routes.js";
 import { publicOAuthRoutes } from "./v1/oauth.routes.js";
 import { oauthConnectRoutes } from "./v1/oauth-connect.routes.js";
+import { shopifyConfigRoutes } from "./v1/shopify.routes.js";
 import { requireAuth } from "../middleware/auth.js";
 import { prisma } from "../config/db.js";
 import { ulid } from "ulid";
 import { ingestInboundMessages } from "../services/MessagingService.js";
+
 
 export async function registerRoutes(app: FastifyInstance) {
   app.get("/health", async () => ({ ok: true, service: "platform-api" }));
@@ -41,7 +43,7 @@ export async function registerRoutes(app: FastifyInstance) {
       path === "/privacy" ||
       path.startsWith("/webhooks/") ||
       path.startsWith("/oauth/") ||
-      path.startsWith("/api/v1/auth/")
+      path === "/api/v1/auth/login"
     ) {
       return;
     }
@@ -57,6 +59,7 @@ export async function registerRoutes(app: FastifyInstance) {
   app.register(dashboardRoutes, { prefix: "/api/v1/dashboard" });
   app.register(orderRoutes, { prefix: "/api/v1/orders" });
   app.register(emailRoutes, { prefix: "/api/v1/email" });
+  app.register(shopifyConfigRoutes, { prefix: "/api/v1/shopify" });
   // Back-compat alias
   app.register(emailRoutes, { prefix: "/api/v1/gmail" });
   app.register(oauthConnectRoutes, { prefix: "/api/v1/oauth" });
@@ -77,8 +80,8 @@ export async function registerRoutes(app: FastifyInstance) {
         return reply.code(400).send({ error: "inboxId, from, content required" });
       }
 
-      const inbox = await prisma.inbox.findUnique({ where: { id: inboxId } });
-      if (!inbox) return reply.code(404).send({ error: "inbox not found" });
+      const inbox = await prisma.channelConfig.findUnique({ where: { id: inboxId } });
+      if (!inbox) return reply.code(404).send({ error: "channel config not found" });
 
       let payload: unknown;
       if (inbox.channelType === "whatsapp") {
@@ -131,7 +134,10 @@ export async function registerRoutes(app: FastifyInstance) {
         };
       }
 
-      const result = await ingestInboundMessages({ inboxId, payload });
+      const result = await ingestInboundMessages({
+        channelConfigId: inbox.id,
+        payload,
+      });
       return reply.code(201).send(result);
     });
   }

@@ -8,13 +8,22 @@ export class ConversationController {
     }>,
     reply: FastifyReply,
   ) {
-    const conversations = await ConversationService.listConversations(request.query);
+    const status = request.query.status;
+    const mapped =
+      status === "resolved" || status === "active" || status === "all"
+        ? status
+        : status === "open" || status === "pending"
+          ? "active"
+          : "all";
+    const conversations = await ConversationService.list(mapped);
     return reply.send(conversations);
   }
 
   static async getConversation(request: FastifyRequest<{ Params: { id: string } }>, reply: FastifyReply) {
     try {
-      const conversation = await ConversationService.getConversation(request.params.id);
+      const list = await ConversationService.list("all");
+      const conversation = list.find((c) => c.id === request.params.id);
+      if (!conversation) return reply.code(404).send({ error: "not found" });
       return reply.send(conversation);
     } catch (err: any) {
       return reply.code(404).send({ error: err.message });
@@ -23,36 +32,44 @@ export class ConversationController {
 
   static async getMessages(request: FastifyRequest<{ Params: { id: string } }>, reply: FastifyReply) {
     try {
-      const messages = await ConversationService.getMessages(request.params.id);
+      const messages = await ConversationService.listMessages(request.params.id);
       return reply.send(messages);
     } catch (err: any) {
       return reply.code(404).send({ error: err.message });
     }
   }
 
-  static async sendMessage(request: FastifyRequest<{ Params: { id: string }; Body: { content?: string; subject?: string } }>, reply: FastifyReply) {
+  static async sendMessage(
+    request: FastifyRequest<{ Params: { id: string }; Body: { content?: string; subject?: string } }>,
+    reply: FastifyReply,
+  ) {
     const content = request.body?.content?.trim();
     if (!content) return reply.code(400).send({ error: "content is required" });
     try {
-      const result = await ConversationService.sendMessage(request.params.id, content, request.body?.subject);
-      
-      // Even if the transmission failed (result.result.ok === false), the message was still 
-      // successfully created in our database with status='failed'. 
-      // We return 201 so the frontend can display the failed message rather than crashing.
+      const result = await ConversationService.sendMessage(
+        request.params.id,
+        content,
+        request.body?.subject,
+      );
       return reply.code(201).send(result);
     } catch (err: any) {
       return reply.code(400).send({ error: err.message });
     }
   }
 
-  static async updateStatus(request: FastifyRequest<{ Params: { id: string }; Body: { status?: "open" | "pending" | "resolved" } }>, reply: FastifyReply) {
+  static async updateStatus(
+    request: FastifyRequest<{
+      Params: { id: string };
+      Body: { status?: "open" | "pending" | "resolved" };
+    }>,
+    reply: FastifyReply,
+  ) {
     const status = request.body?.status;
     if (!status) return reply.code(400).send({ error: "status is required" });
     try {
       const conversation = await ConversationService.updateStatus(request.params.id, status);
       return reply.send(conversation);
     } catch (err: any) {
-      if (err.message === "invalid status") return reply.code(400).send({ error: err.message });
       return reply.code(404).send({ error: err.message });
     }
   }

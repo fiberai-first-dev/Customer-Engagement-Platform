@@ -3,53 +3,56 @@ import { prisma } from "../config/db.js";
 
 export class DashboardController {
   static async getMetrics(
-    request: FastifyRequest<{ Querystring: { accountId?: string } }>,
+    _request: FastifyRequest<{ Querystring: { accountId?: string } }>,
     reply: FastifyReply,
   ) {
-    const { accountId } = request.query;
-    const where = accountId ? { accountId } : undefined;
-
     try {
-      const [totalMessages, activeContacts, recentConversations, channelRows] =
+      const [totalMessages, activeContacts, recentMessages, byChannel] =
         await Promise.all([
-          prisma.message.count({
-            where: where ? { conversation: { accountId: where.accountId } } : undefined,
+          prisma.message.count(),
+          prisma.customer.count({ where: { resolved: false } }),
+          prisma.message.findMany({
+            orderBy: { createdAt: "desc" },
+            take: 20,
+            distinct: ["customerId", "channelType"],
           }),
-          prisma.contact.count({ where }),
-          prisma.conversation.findMany({
-            where,
-            orderBy: { lastMessageAt: "desc" },
-            take: 4,
-            include: {
-              contact: true,
-              inbox: { select: { channelType: true } },
-              messages: {
-                orderBy: { createdAt: "desc" },
-                take: 1,
-              },
-            },
-          }),
-          prisma.conversation.findMany({
-            where,
-            select: { inbox: { select: { channelType: true } } },
+          prisma.message.groupBy({
+            by: ["channelType"],
+            _count: { _all: true },
           }),
         ]);
 
-      const recentActivity = recentConversations.map((c) => ({
-        id: c.id,
-        contactName: c.contact.name || c.contact.whatsappId || c.contact.email || "Unknown",
-        initials: (c.contact.name || c.contact.whatsappId || c.contact.email || "U")
-          .substring(0, 2)
-          .toUpperCase(),
-        preview: c.messages[0]?.content || "No messages",
-        timestamp: c.lastMessageAt || c.createdAt,
-        channelType: c.inbox.channelType,
-      }));
+      const customerIds = [...new Set(recentMessages.map((m) => m.customerId))];
+      const customers = await prisma.customer.findMany({
+        where: { id: { in: customerIds } },
+        include: {
+          whatsappIdentities: true,
+          instagramIdentities: true,
+          emailIdentities: true,
+        },
+      });
+      const byId = new Map(customers.map((c) => [c.id, c]));
 
-      const channelDistribution = channelRows.reduce(
+      const recentActivity = recentMessages.slice(0, 4).map((m) => {
+        const c = byId.get(m.customerId);
+        const name =
+          c?.name ||
+          c?.whatsappIdentities[0]?.externalId ||
+          c?.emailIdentities[0]?.externalId ||
+          "Unknown";
+        return {
+          id: `${m.customerId}:${m.channelType}`,
+          contactName: name,
+          initials: name.substring(0, 2).toUpperCase(),
+          preview: m.content || "No messages",
+          timestamp: m.createdAt,
+          channelType: m.channelType,
+        };
+      });
+
+      const channelDistribution = byChannel.reduce(
         (acc: Record<string, number>, row) => {
-          const key = row.inbox.channelType;
-          acc[key] = (acc[key] ?? 0) + 1;
+          acc[row.channelType] = row._count._all;
           return acc;
         },
         {} as Record<string, number>,
