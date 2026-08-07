@@ -47,7 +47,6 @@ CREATE TABLE "shopify_config" (
   "shop" TEXT NOT NULL DEFAULT '',
   "client_id" TEXT NOT NULL DEFAULT '',
   "client_secret" TEXT NOT NULL DEFAULT '',
-  "api_version" TEXT NOT NULL DEFAULT '2024-10',
   "metadata" JSONB NOT NULL DEFAULT '{}',
   "created_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
   "updated_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,

@@ -67,7 +67,6 @@ export async function ensureWorkspace() {
         shop: "",
         clientId: "",
         clientSecret: "",
-        apiVersion: "2024-10",
       },
     });
     console.log("[workspace] created empty shopify_config");
@@ -121,18 +120,16 @@ export async function upsertShopifyConfigSeed(input: {
   shop?: string;
   clientId?: string;
   clientSecret?: string;
-  apiVersion?: string;
 }) {
   const existing = await prisma.shopifyConfig.findUnique({ where: { id: "shopify_default" } });
   const shop = (input.shop ?? existing?.shop ?? "").trim().replace(/\.myshopify\.com$/i, "");
   const clientId = (input.clientId ?? existing?.clientId ?? "").trim();
   const clientSecret = (input.clientSecret ?? existing?.clientSecret ?? "").trim();
-  const apiVersion = (input.apiVersion ?? existing?.apiVersion ?? "2024-10").trim() || "2024-10";
 
   if (existing) {
     return prisma.shopifyConfig.update({
       where: { id: "shopify_default" },
-      data: { shop, clientId, clientSecret, apiVersion },
+      data: { shop, clientId, clientSecret },
     });
   }
   return prisma.shopifyConfig.create({
@@ -141,7 +138,6 @@ export async function upsertShopifyConfigSeed(input: {
       shop,
       clientId,
       clientSecret,
-      apiVersion,
     },
   });
 }

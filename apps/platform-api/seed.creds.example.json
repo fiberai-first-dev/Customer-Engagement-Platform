@@ -24,7 +24,6 @@
   "shopify": {
     "shop": "",
     "clientId": "",
-    "clientSecret": "",
-    "apiVersion": "2024-10"
+    "clientSecret": ""
   }
 }

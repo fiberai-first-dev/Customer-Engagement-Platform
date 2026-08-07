@@ -18,7 +18,6 @@ import {
   type CustomerOrder,
   type OrderStats,
 } from "../../services/order.service";
-import { OrderWidget } from "../customer/OrderWidget";
 import { Badge } from "../ui/badge";
 import { Button } from "../ui/button";
 import {
@@ -99,7 +98,12 @@ export function CustomerDetails({ contact, onClose }: Props) {
   const lookupPhone = whatsappIds[0] ?? contact?.whatsappId ?? null;
   const canLookup = Boolean(lookupEmail || lookupPhone);
 
-  const { data: commerce = emptyCommerce(), isLoading, isError, error } = useQuery({
+  const {
+    data: commerce = emptyCommerce(),
+    isLoading,
+    isError,
+    error,
+  } = useQuery({
     queryKey: ["customer-commerce", contact?.id, lookupEmail, lookupPhone],
     queryFn: () =>
       orderService.getCustomerCommerce({
@@ -121,6 +125,20 @@ export function CustomerDetails({ contact, onClose }: Props) {
             </div>
             <p className="text-sm font-medium text-foreground">No customer selected</p>
           </div>
+        </div>
+      </aside>
+    );
+  }
+
+  // Wait for Shopify/commerce before showing any profile chrome so the panel
+  // does not flash local contact UI with a spinner underneath.
+  if (canLookup && isLoading) {
+    return (
+      <aside className="flex w-[400px] shrink-0 flex-col border-l border-border bg-card">
+        <Header onClose={onClose} />
+        <div className="flex flex-1 flex-col items-center justify-center gap-3 p-8 text-center">
+          <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+          <p className="text-xs text-muted-foreground">Loading customer data…</p>
         </div>
       </aside>
     );
@@ -148,9 +166,7 @@ export function CustomerDetails({ contact, onClose }: Props) {
               {emails[0] || whatsappIds[0] || "No contact identifiers"}
             </p>
             <p className="mt-1 text-[10px] font-medium uppercase tracking-[0.14em] text-muted-foreground">
-              {isLoading
-                ? "Loading commerce…"
-                : `LTV ${formatInr(ltv, commerce.stats.currency)} · ${orderCount} orders`}
+              {`LTV ${formatInr(ltv, commerce.stats.currency)} · ${orderCount} orders`}
             </p>
           </div>
         </div>
@@ -185,11 +201,6 @@ export function CustomerDetails({ contact, onClose }: Props) {
             {(error as Error)?.message || "Failed to load Shopify data"}
           </p>
         )}
-        {canLookup && isLoading && (
-          <div className="mb-3 flex items-center justify-center py-8">
-            <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
-          </div>
-        )}
 
         {tab === "profile" && (
           <ProfileTab
@@ -203,9 +214,12 @@ export function CustomerDetails({ contact, onClose }: Props) {
         {tab === "stats" && <StatsTab stats={commerce.stats} />}
         {tab === "orders" && (
           <div className="space-y-3">
-            <OrderWidget email={lookupEmail} phone={lookupPhone} />
-            {!isLoading && commerce.orders.length > 0 && (
+            {commerce.orders.length > 0 ? (
               <OrdersTable orders={commerce.orders} currency={commerce.stats.currency} />
+            ) : (
+              <p className="rounded-lg border border-border px-3 py-3 text-xs text-muted-foreground">
+                No orders found for this customer.
+              </p>
             )}
           </div>
         )}

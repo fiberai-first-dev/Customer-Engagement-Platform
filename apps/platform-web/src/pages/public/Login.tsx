@@ -27,7 +27,7 @@ export function LoginPage() {
 
       const contentType = res.headers.get("content-type") ?? "";
       if (!contentType.includes("application/json")) {
-        throw new Error("API unreachable. Is platform-api running on port 4100?");
+        throw new Error("Unable to reach the server. Please try again later.");
       }
 
       const data = await res.json();

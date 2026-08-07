@@ -186,9 +186,11 @@ export async function findOrCreateCustomerForInbound(input: {
         ? normalizeWhatsAppId(inbound.senderId) ?? inbound.senderId
         : inbound.senderId;
 
+  // Instagram: person name is usually missing — always create as "Unknown".
+  // Username (@handle) is stored on the identity for display, not as customer.name.
   const displayName =
     channelType === "instagram"
-      ? inbound.senderName?.trim() || "Unknown"
+      ? "Unknown"
       : inbound.senderName?.trim() ||
         inbound.senderEmail?.trim() ||
         inbound.senderPhone?.trim() ||
@@ -197,8 +199,14 @@ export async function findOrCreateCustomerForInbound(input: {
   const metadata: Record<string, unknown> = {
     senderName: inbound.senderName ?? null,
   };
-  if (channelType === "instagram" && inbound.senderName?.startsWith("@")) {
-    metadata.username = inbound.senderName.slice(1);
+  if (channelType === "instagram") {
+    const handle = (inbound.senderName ?? "").trim().replace(/^@+/, "");
+    if (handle && !/^\d{5,}$/.test(handle)) {
+      metadata.username = handle;
+      metadata.senderName = `@${handle}`;
+    } else if (inbound.senderName?.trim()) {
+      metadata.senderName = inbound.senderName.trim();
+    }
   }
 
   const existing = await findIdentityByExternalId(channelType, senderKey);
@@ -220,16 +228,15 @@ export async function findOrCreateCustomerForInbound(input: {
         data: { resolved: false, lastMessageAt: new Date(), metadata: metadata as Prisma.InputJsonValue },
       });
     }
-    const customer = await prisma.customer.findUniqueOrThrow({ where: { id: customerId } });
-    if (
-      displayName &&
-      displayName !== "Unknown" &&
-      (!customer.name || customer.name === "Unknown" || /^\d{5,}$/.test(customer.name))
-    ) {
-      await prisma.customer.update({
-        where: { id: customerId },
-        data: { name: displayName },
-      });
+    // Never overwrite customer.name with an Instagram @username
+    if (channelType !== "instagram" && displayName && displayName !== "Unknown") {
+      const customer = await prisma.customer.findUniqueOrThrow({ where: { id: customerId } });
+      if (!customer.name || customer.name === "Unknown" || /^\d{5,}$/.test(customer.name)) {
+        await prisma.customer.update({
+          where: { id: customerId },
+          data: { name: displayName },
+        });
+      }
     }
     await recomputeCustomerResolved(customerId);
     return {
@@ -240,7 +247,7 @@ export async function findOrCreateCustomerForInbound(input: {
     };
   }
 
-  // Shopify enrichment path (phone/email)
+  // Shopify enrichment path (phone/email) — skip Instagram-only (no phone/email)
   const phone =
     channelType === "whatsapp"
       ? senderKey
@@ -255,28 +262,30 @@ export async function findOrCreateCustomerForInbound(input: {
         : null;
 
   let customerId: string | null = null;
-  try {
-    const shopifyHit = await enrichCustomerFromShopify({
-      name: displayName,
-      email,
-      phone,
-    });
-    if (shopifyHit?.customerId) customerId = shopifyHit.customerId;
-  } catch (err) {
-    console.warn("[inbound] shopify enrich skipped:", err instanceof Error ? err.message : err);
+  if (channelType !== "instagram" && (email || phone)) {
+    try {
+      const shopifyHit = await enrichCustomerFromShopify({
+        name: displayName,
+        email,
+        phone,
+      });
+      if (shopifyHit?.customerId) customerId = shopifyHit.customerId;
+    } catch (err) {
+      console.warn("[inbound] shopify enrich skipped:", err instanceof Error ? err.message : err);
+    }
   }
 
   if (!customerId) {
     const customer = await prisma.customer.create({
       data: {
         id: ulid(),
-        name: displayName || (channelType === "instagram" ? "Unknown" : null),
+        name: channelType === "instagram" ? "Unknown" : displayName,
         resolved: false,
         metadata: {},
       },
     });
     customerId = customer.id;
-  } else if (displayName && displayName !== "Unknown") {
+  } else if (channelType !== "instagram" && displayName && displayName !== "Unknown") {
     const customer = await prisma.customer.findUnique({ where: { id: customerId } });
     if (customer && (!customer.name || customer.name === "Unknown")) {
       await prisma.customer.update({

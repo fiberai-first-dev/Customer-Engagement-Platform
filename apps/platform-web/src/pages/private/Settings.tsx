@@ -7,8 +7,6 @@ import {
   startChannelOAuth,
   startGmailWatch,
   useAccounts,
-  useAuthUsers,
-  useCreateAuthUser,
   useInboxes,
   useOAuthHints,
   useShopifyConfig,
@@ -17,7 +15,7 @@ import {
 } from "../../api";
 import { CheckCircle2, Copy, Link2, Loader2, Radio, Save } from "lucide-react";
 
-type SettingsTab = "channels" | "shopify" | "users";
+type SettingsTab = "channels" | "shopify";
 
 type Field = {
   key: string;
@@ -97,6 +95,7 @@ function ChannelCard({
   children,
   onSave,
   saving,
+  busy,
   footer,
 }: {
   title: string;
@@ -106,6 +105,7 @@ function ChannelCard({
   children: ReactNode;
   onSave: () => void;
   saving: boolean;
+  busy?: boolean;
   footer?: ReactNode;
 }) {
   return (
@@ -120,6 +120,7 @@ function ChannelCard({
             <input
               type="checkbox"
               checked={enabled}
+              disabled={busy}
               onChange={(e) => onToggleEnabled(e.target.checked)}
             />
             Enabled
@@ -129,7 +130,7 @@ function ChannelCard({
       <CardContent className="space-y-5">
         {children}
         <div className="flex flex-wrap items-center gap-3">
-          <Button onClick={onSave} disabled={saving}>
+          <Button onClick={onSave} disabled={busy}>
             {saving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}
             Save
           </Button>
@@ -169,7 +170,7 @@ function CopyRow({ label, value }: { label: string; value?: string }) {
 
 function tabFromSearch(params: URLSearchParams): SettingsTab {
   const t = params.get("tab");
-  if (t === "shopify" || t === "users" || t === "channels") return t;
+  if (t === "shopify" || t === "channels") return t;
   return "channels";
 }
 
@@ -186,15 +187,17 @@ export function SettingsPage() {
   const activeAccount = accounts?.[0];
   const { data: inboxes, isLoading: inboxesLoading } = useInboxes(activeAccount?.id);
   const { data: oauthHints } = useOAuthHints();
-  const { mutate: updateInbox, isPending } = useUpdateInbox();
+  const { mutate: updateInbox } = useUpdateInbox();
   const { data: shopify, isLoading: shopifyLoading } = useShopifyConfig();
   const { mutate: updateShopify, isPending: shopifySaving } = useUpdateShopifyConfig();
-  const { data: users } = useAuthUsers();
-  const { mutate: createUser, isPending: creatingUser } = useCreateAuthUser();
 
   const [banner, setBanner] = useState<{ tone: "ok" | "err"; text: string } | null>(null);
   const [connecting, setConnecting] = useState<"gmail" | "instagram" | null>(null);
   const [watching, setWatching] = useState(false);
+  const [pendingChannel, setPendingChannel] = useState<"whatsapp" | "instagram" | "email" | null>(
+    null,
+  );
+  const [pendingAction, setPendingAction] = useState<"save" | "toggle" | null>(null);
 
   const [waConfig, setWaConfig] = useState<Record<string, string>>(EMPTY_WA);
   const [igConfig, setIgConfig] = useState<Record<string, string>>(EMPTY_IG);
@@ -203,9 +206,7 @@ export function SettingsPage() {
     shop: "",
     clientId: "",
     clientSecret: "",
-    apiVersion: "2024-10",
   });
-  const [newUser, setNewUser] = useState({ username: "", password: "" });
 
   useEffect(() => {
     if (!inboxes) return;
@@ -225,8 +226,7 @@ export function SettingsPage() {
     setShopifyForm({
       shop: shopify.shop || "",
       clientId: shopify.clientId || "",
-      clientSecret: "",
-      apiVersion: shopify.apiVersion || "2024-10",
+      clientSecret: shopify.clientSecret || "",
     });
   }, [shopify]);
 
@@ -272,9 +272,11 @@ export function SettingsPage() {
   ) => {
     const inbox = inboxes?.find((i) => i.channelType === channelType);
     if (!inbox) {
-      setBanner({ tone: "err", text: "Channel config is missing. Restart the API." });
+      setBanner({ tone: "err", text: "Channel is not available. Please try again later." });
       return;
     }
+    setPendingChannel(channelType);
+    setPendingAction("save");
     updateInbox(
       {
         id: inbox.id,
@@ -286,6 +288,10 @@ export function SettingsPage() {
       {
         onSuccess: () => setBanner({ tone: "ok", text: "Saved" }),
         onError: (err) => setBanner({ tone: "err", text: err.message }),
+        onSettled: () => {
+          setPendingChannel(null);
+          setPendingAction(null);
+        },
       },
     );
   };
@@ -296,6 +302,8 @@ export function SettingsPage() {
   ) => {
     const inbox = inboxes?.find((i) => i.channelType === channelType);
     if (!inbox) return;
+    setPendingChannel(channelType);
+    setPendingAction("toggle");
     updateInbox(
       { id: inbox.id, body: { enabled } },
       {
@@ -305,14 +313,23 @@ export function SettingsPage() {
             text: `${channelType} ${enabled ? "enabled" : "disabled"}`,
           }),
         onError: (err) => setBanner({ tone: "err", text: err.message }),
+        onSettled: () => {
+          setPendingChannel(null);
+          setPendingAction(null);
+        },
       },
     );
   };
 
+  const isSaving = (channel: "whatsapp" | "instagram" | "email") =>
+    pendingChannel === channel && pendingAction === "save";
+  const isChannelBusy = (channel: "whatsapp" | "instagram" | "email") =>
+    pendingChannel === channel;
+
   const handleConnect = async (provider: "gmail" | "instagram") => {
     const inbox = provider === "gmail" ? emailInbox : igInbox;
     if (!inbox) {
-      setBanner({ tone: "err", text: "Channel config is missing. Restart the API." });
+      setBanner({ tone: "err", text: "Channel is not available. Please try again later." });
       return;
     }
     setConnecting(provider);
@@ -327,7 +344,7 @@ export function SettingsPage() {
 
   const handleStartWatch = async () => {
     if (!emailInbox) {
-      setBanner({ tone: "err", text: "Email channel is missing. Restart the API." });
+      setBanner({ tone: "err", text: "Email channel is not available. Please try again later." });
       return;
     }
     setWatching(true);
@@ -352,7 +369,6 @@ export function SettingsPage() {
   const tabs: { id: SettingsTab; label: string }[] = [
     { id: "channels", label: "Channels" },
     { id: "shopify", label: "Shopify" },
-    { id: "users", label: "Users" },
   ];
 
   return (
@@ -360,10 +376,7 @@ export function SettingsPage() {
       <div className="mx-auto w-full max-w-4xl space-y-8 pb-12">
         <div>
           <h1 className="mb-1 text-3xl font-bold">Settings</h1>
-          <p className="text-muted-foreground">
-            Configure messaging channels, Shopify, and users. Credentials live in the database
-            (Settings UI or seed scripts) — not overridden from .env on restart.
-          </p>
+          <p className="text-muted-foreground">Manage channels and Shopify integration.</p>
         </div>
 
         <div className="flex gap-1 rounded-lg border border-border bg-muted/40 p-1 w-fit">
@@ -400,7 +413,6 @@ export function SettingsPage() {
             <Card>
               <CardHeader className="pb-3">
                 <CardTitle className="text-base">Callback URLs</CardTitle>
-                <CardDescription>Paste these into Meta or Google when asked.</CardDescription>
               </CardHeader>
               <CardContent className="grid gap-2">
                 <CopyRow label="WhatsApp webhook" value={waInbox?.webhookUrl ?? oauthHints?.webhooks.whatsapp} />
@@ -413,10 +425,11 @@ export function SettingsPage() {
 
             <ChannelCard
               title="WhatsApp"
-              description="Paste values from Meta WhatsApp → API Setup. Disable to hide from Inbox/Contacts."
+              description="Connect your WhatsApp Business number."
               enabled={waInbox?.enabled ?? false}
               onToggleEnabled={(v) => handleToggleEnabled("whatsapp", v)}
-              saving={isPending}
+              saving={isSaving("whatsapp")}
+              busy={isChannelBusy("whatsapp")}
               onSave={() => handleSave("whatsapp", waConfig, true)}
             >
               <FieldGrid
@@ -434,16 +447,17 @@ export function SettingsPage() {
 
             <ChannelCard
               title="Instagram"
-              description="Save App ID and App Secret, then Connect."
+              description="Connect Instagram Messaging for your business account."
               enabled={igInbox?.enabled ?? false}
               onToggleEnabled={(v) => handleToggleEnabled("instagram", v)}
-              saving={isPending}
+              saving={isSaving("instagram")}
+              busy={isChannelBusy("instagram")}
               onSave={() => handleSave("instagram", igConfig, true)}
               footer={
                 <Button
                   type="button"
                   variant="secondary"
-                  disabled={connecting === "instagram" || isPending}
+                  disabled={connecting === "instagram" || isChannelBusy("instagram")}
                   onClick={() => void handleConnect("instagram")}
                 >
                   {connecting === "instagram" ? (
@@ -471,17 +485,18 @@ export function SettingsPage() {
 
             <ChannelCard
               title="Gmail"
-              description="Save Client ID, Client Secret, and Pub/Sub topic, then Connect."
+              description="Connect Gmail for email conversations."
               enabled={emailInbox?.enabled ?? false}
               onToggleEnabled={(v) => handleToggleEnabled("email", v)}
-              saving={isPending}
+              saving={isSaving("email")}
+              busy={isChannelBusy("email")}
               onSave={() => handleSave("email", emailConfig, true)}
               footer={
                 <>
                   <Button
                     type="button"
                     variant="secondary"
-                    disabled={connecting === "gmail" || isPending}
+                    disabled={connecting === "gmail" || isChannelBusy("email")}
                     onClick={() => void handleConnect("gmail")}
                   >
                     {connecting === "gmail" ? (
@@ -494,7 +509,7 @@ export function SettingsPage() {
                   <Button
                     type="button"
                     variant="outline"
-                    disabled={watching || isPending}
+                    disabled={watching || isChannelBusy("email")}
                     onClick={() => void handleStartWatch()}
                   >
                     {watching ? (
@@ -527,8 +542,7 @@ export function SettingsPage() {
             <CardHeader>
               <CardTitle>Shopify</CardTitle>
               <CardDescription>
-                Read-only Shopify credentials stored in DB. Use Settings or npm run seed:config.
-                API restart never overlays secrets from .env.
+                Connect your Shopify store to show customer and order details in the inbox.
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
@@ -538,13 +552,7 @@ export function SettingsPage() {
                 fields={[
                   { key: "shop", label: "Shop subdomain", placeholder: "mystore" },
                   { key: "clientId", label: "Client ID" },
-                  {
-                    key: "clientSecret",
-                    label: shopify?.clientSecretSet
-                      ? "Client Secret (leave blank to keep)"
-                      : "Client Secret",
-                  },
-                  { key: "apiVersion", label: "API version", placeholder: "2024-10" },
+                  { key: "clientSecret", label: "Client Secret" },
                 ]}
               />
               <Button
@@ -554,10 +562,7 @@ export function SettingsPage() {
                     {
                       shop: shopifyForm.shop,
                       clientId: shopifyForm.clientId,
-                      ...(shopifyForm.clientSecret.trim()
-                        ? { clientSecret: shopifyForm.clientSecret.trim() }
-                        : {}),
-                      apiVersion: shopifyForm.apiVersion,
+                      clientSecret: shopifyForm.clientSecret,
                     },
                     {
                       onSuccess: () => setBanner({ tone: "ok", text: "Shopify settings saved" }),
@@ -571,87 +576,10 @@ export function SettingsPage() {
                 ) : (
                   <Save className="mr-2 h-4 w-4" />
                 )}
-                Save Shopify
+                Save
               </Button>
             </CardContent>
           </Card>
-        )}
-
-        {tab === "users" && (
-          <div className="space-y-6">
-            <Card>
-              <CardHeader>
-                <CardTitle>Add user</CardTitle>
-                <CardDescription>
-                  Password is hashed with bcrypt before storage. Login only checks the users table.
-                </CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div className="grid gap-4 md:grid-cols-2">
-                  <div className="grid gap-1.5">
-                    <label className="text-sm font-medium">Username</label>
-                    <Input
-                      value={newUser.username}
-                      onChange={(e) => setNewUser((p) => ({ ...p, username: e.target.value }))}
-                      autoComplete="off"
-                    />
-                  </div>
-                  <div className="grid gap-1.5">
-                    <label className="text-sm font-medium">Password</label>
-                    <Input
-                      type="password"
-                      value={newUser.password}
-                      onChange={(e) => setNewUser((p) => ({ ...p, password: e.target.value }))}
-                      autoComplete="new-password"
-                    />
-                  </div>
-                </div>
-                <Button
-                  disabled={creatingUser || !newUser.username.trim() || !newUser.password}
-                  onClick={() =>
-                    createUser(
-                      {
-                        username: newUser.username.trim(),
-                        password: newUser.password,
-                      },
-                      {
-                        onSuccess: () => {
-                          setNewUser({ username: "", password: "" });
-                          setBanner({ tone: "ok", text: "User created" });
-                        },
-                        onError: (err) => setBanner({ tone: "err", text: err.message }),
-                      },
-                    )
-                  }
-                >
-                  {creatingUser && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                  Create user
-                </Button>
-              </CardContent>
-            </Card>
-
-            <Card>
-              <CardHeader>
-                <CardTitle>Existing users</CardTitle>
-              </CardHeader>
-              <CardContent>
-                {!users?.length ? (
-                  <p className="text-sm text-muted-foreground">No users yet.</p>
-                ) : (
-                  <ul className="divide-y divide-border text-sm">
-                    {users.map((u) => (
-                      <li key={u.id} className="flex items-center justify-between py-2">
-                        <span className="font-medium">{u.username}</span>
-                        <span className="text-xs text-muted-foreground">
-                          {new Date(u.createdAt).toLocaleString()}
-                        </span>
-                      </li>
-                    ))}
-                  </ul>
-                )}
-              </CardContent>
-            </Card>
-          </div>
         )}
       </div>
     </div>

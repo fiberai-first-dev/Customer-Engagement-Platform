@@ -115,7 +115,7 @@ export const whatsappAdapter: ChannelAdapter<WhatsAppChannelConfig> = {
       return {
         ok: false,
         status: "failed",
-        error: "WhatsApp phoneNumberId/accessToken missing — set WHATSAPP_* in .env and restart",
+        error: "WhatsApp is not configured. Add credentials in Settings → Channels.",
       };
     }
 
@@ -156,7 +156,7 @@ export const whatsappAdapter: ChannelAdapter<WhatsAppChannelConfig> = {
           ok: false,
           status: "failed",
           error: isAuth
-            ? `${detail} — WhatsApp access token is invalid/expired. Put a permanent System User token in WHATSAPP_ACCESS_TOKEN and restart the API.`
+            ? "WhatsApp access token is invalid or expired. Update it in Settings → Channels."
             : detail,
           raw,
         };

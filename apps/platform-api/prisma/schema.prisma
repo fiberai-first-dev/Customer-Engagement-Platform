@@ -89,7 +89,6 @@ model ShopifyConfig {
   shop         String   @default("")
   clientId     String   @default("") @map("client_id")
   clientSecret String   @default("") @map("client_secret")
-  apiVersion   String   @default("2024-10") @map("api_version")
   metadata     Json     @default("{}")
   createdAt    DateTime @default(now()) @map("created_at")
   updatedAt    DateTime @updatedAt @map("updated_at")

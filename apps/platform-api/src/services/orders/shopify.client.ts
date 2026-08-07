@@ -4,8 +4,9 @@ type ShopifyCreds = {
   shop: string;
   clientId: string;
   clientSecret: string;
-  apiVersion: string;
 };
+
+const SHOPIFY_API_VERSION = "2024-10";
 
 type TokenCache = {
   key: string;
@@ -42,9 +43,8 @@ export async function resolveShopifyCredentials(): Promise<ShopifyCreds | null> 
     const shop = normalizeShop(row.shop?.trim() || "");
     const clientId = row.clientId?.trim() || "";
     const clientSecret = row.clientSecret?.trim() || "";
-    const apiVersion = row.apiVersion?.trim() || "2024-10";
     if (!shop || !clientId || !clientSecret) return null;
-    return { shop, clientId, clientSecret, apiVersion };
+    return { shop, clientId, clientSecret };
   } catch {
     return null;
   }
@@ -114,7 +114,7 @@ export async function shopifyAdminFetch<T = unknown>(
   const token = await fetchAccessToken(creds);
   const url = init?.absoluteUrl
     ? init.absoluteUrl
-    : `https://${shopifyShopDomain(creds.shop)}/admin/api/${creds.apiVersion}${path.startsWith("/") ? path : `/${path}`}`;
+    : `https://${shopifyShopDomain(creds.shop)}/admin/api/${SHOPIFY_API_VERSION}${path.startsWith("/") ? path : `/${path}`}`;
 
   const { absoluteUrl: _a, ...rest } = init ?? {};
   const res = await fetch(url, {

@@ -131,8 +131,6 @@ export interface ShopifyConfig {
   shop: string;
   clientId: string;
   clientSecret: string;
-  clientSecretSet: boolean;
-  apiVersion: string;
   updatedAt: string;
 }
 
@@ -408,7 +406,6 @@ export const useUpdateShopifyConfig = () => {
       shop?: string;
       clientId?: string;
       clientSecret?: string;
-      apiVersion?: string;
     }) =>
       request<ShopifyConfig>("/api/v1/shopify", {
         method: "PUT",

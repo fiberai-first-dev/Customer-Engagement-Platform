@@ -1,10 +1,20 @@
 import type { FastifyRequest, FastifyReply } from "fastify";
 import { prisma } from "../config/db.js";
 
-function maskSecret(value: string): string {
-  if (!value) return "";
-  if (value.length <= 8) return "***";
-  return `${value.slice(0, 4)}…${value.slice(-4)}`;
+function shape(row: {
+  id: string;
+  shop: string;
+  clientId: string;
+  clientSecret: string;
+  updatedAt: Date;
+}) {
+  return {
+    id: row.id,
+    shop: row.shop,
+    clientId: row.clientId,
+    clientSecret: row.clientSecret,
+    updatedAt: row.updatedAt,
+  };
 }
 
 export class ShopifyConfigController {
@@ -14,15 +24,7 @@ export class ShopifyConfigController {
       (await prisma.shopifyConfig.create({
         data: { id: "shopify_default" },
       }));
-    return reply.send({
-      id: row.id,
-      shop: row.shop,
-      clientId: row.clientId,
-      clientSecret: row.clientSecret ? maskSecret(row.clientSecret) : "",
-      clientSecretSet: Boolean(row.clientSecret),
-      apiVersion: row.apiVersion,
-      updatedAt: row.updatedAt,
-    });
+    return reply.send(shape(row));
   }
 
   static async update(request: FastifyRequest, reply: FastifyReply) {
@@ -30,36 +32,22 @@ export class ShopifyConfigController {
       shop?: string;
       clientId?: string;
       clientSecret?: string;
-      apiVersion?: string;
     };
 
-    const existing =
-      (await prisma.shopifyConfig.findUnique({ where: { id: "shopify_default" } })) ??
+    await prisma.shopifyConfig.findUnique({ where: { id: "shopify_default" } }) ??
       (await prisma.shopifyConfig.create({ data: { id: "shopify_default" } }));
-
-    const secret =
-      body.clientSecret && !body.clientSecret.includes("…") && body.clientSecret !== "***"
-        ? body.clientSecret.trim()
-        : existing.clientSecret;
 
     const row = await prisma.shopifyConfig.update({
       where: { id: "shopify_default" },
       data: {
-        ...(body.shop !== undefined ? { shop: body.shop.trim().replace(/\.myshopify\.com$/i, "") } : {}),
+        ...(body.shop !== undefined
+          ? { shop: body.shop.trim().replace(/\.myshopify\.com$/i, "") }
+          : {}),
         ...(body.clientId !== undefined ? { clientId: body.clientId.trim() } : {}),
-        clientSecret: secret,
-        ...(body.apiVersion !== undefined ? { apiVersion: body.apiVersion.trim() || "2024-10" } : {}),
+        ...(body.clientSecret !== undefined ? { clientSecret: body.clientSecret.trim() } : {}),
       },
     });
 
-    return reply.send({
-      id: row.id,
-      shop: row.shop,
-      clientId: row.clientId,
-      clientSecret: row.clientSecret ? maskSecret(row.clientSecret) : "",
-      clientSecretSet: Boolean(row.clientSecret),
-      apiVersion: row.apiVersion,
-      updatedAt: row.updatedAt,
-    });
+    return reply.send(shape(row));
   }
 }

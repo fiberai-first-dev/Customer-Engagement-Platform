@@ -4,6 +4,8 @@ build
 .env
 .env.local
 seed.creds.json
+apps/platform-api/seed.creds.json
+**/seed.creds.json
 *.log
 .DS_Store
 coverage

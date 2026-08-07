@@ -26,7 +26,6 @@ type SeedFile = {
     shop?: string;
     clientId?: string;
     clientSecret?: string;
-    apiVersion?: string;
   };
 };
 
@@ -94,7 +93,6 @@ async function main() {
       shop: data.shopify.shop ?? "",
       clientId: data.shopify.clientId ?? "",
       clientSecret: data.shopify.clientSecret ?? "",
-      apiVersion: data.shopify.apiVersion ?? "",
     });
     if (Object.keys(shop).length) {
       await upsertShopifyConfigSeed(shop);
