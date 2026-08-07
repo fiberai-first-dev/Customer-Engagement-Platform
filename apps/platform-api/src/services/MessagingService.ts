@@ -180,10 +180,23 @@ async function createIdentity(input: {
 }
 
 /**
- * Resolve customer for inbound:
- * 1) identity exists → use that customer, mark unresolved
- * 2) else Shopify read-only lookup → attach to matched CEP customer (or create local from Shopify data)
- * 3) else new customer + identity
+ * Resolve customer for inbound message:
+ *
+ * Instagram
+ *   1) Identity exists → reuse
+ *   2) Else create "Unknown" (no Shopify)
+ *
+ * WhatsApp
+ *   1) Identity exists → reuse
+ *   2) Else Shopify by phone → get email → if CEP has that email, merge onto it
+ *      else create customer with Shopify email + WhatsApp
+ *   3) Else create customer from inbound only + attach WA
+ *
+ * Email
+ *   1) Identity exists → reuse
+ *   2) Else Shopify by email → get phone → if CEP has that WhatsApp, merge onto it
+ *      else create customer with Shopify email + WhatsApp
+ *   3) Else create customer from inbound only + attach email
  */
 export async function findOrCreateCustomerForInbound(input: {
   channelType: ChannelType;
@@ -211,7 +224,14 @@ export async function findOrCreateCustomerForInbound(input: {
     senderName: inbound.senderName ?? null,
   };
   if (channelType === "instagram") {
-    const handle = (inbound.senderName ?? "").trim().replace(/^@+/, "");
+    const raw = asMeta(inbound.raw as Prisma.JsonValue);
+    const profile = asMeta(raw._profile as Prisma.JsonValue | undefined);
+    const fromProfile =
+      typeof profile.username === "string" ? profile.username.replace(/^@+/, "").trim() : "";
+    const handle = (
+      fromProfile ||
+      (inbound.senderName ?? "").trim().replace(/^@+/, "")
+    ).trim();
     if (handle && !/^\d{5,}$/.test(handle)) {
       metadata.username = handle;
       metadata.senderName = `@${handle}`;
@@ -223,20 +243,32 @@ export async function findOrCreateCustomerForInbound(input: {
   const existing = await findIdentityByExternalId(channelType, senderKey);
   if (existing) {
     const customerId = existing.customerId;
+    const prevMeta = asMeta(existing.metadata as Prisma.JsonValue);
+    const mergedMeta = {
+      ...prevMeta,
+      ...metadata,
+      // Never drop a known IG username if this inbound didn't resolve one
+      ...(channelType === "instagram" &&
+      prevMeta.username &&
+      !metadata.username
+        ? { username: prevMeta.username, senderName: prevMeta.senderName ?? prevMeta.username }
+        : {}),
+    } as Prisma.InputJsonValue;
+
     if (channelType === "whatsapp") {
       await prisma.whatsAppChannel.update({
         where: { id: existing.id },
-        data: { resolved: false, lastMessageAt: new Date(), metadata: metadata as Prisma.InputJsonValue },
+        data: { resolved: false, lastMessageAt: new Date(), metadata: mergedMeta },
       });
     } else if (channelType === "instagram") {
       await prisma.instagramChannel.update({
         where: { id: existing.id },
-        data: { resolved: false, lastMessageAt: new Date(), metadata: metadata as Prisma.InputJsonValue },
+        data: { resolved: false, lastMessageAt: new Date(), metadata: mergedMeta },
       });
     } else {
       await prisma.emailChannel.update({
         where: { id: existing.id },
-        data: { resolved: false, lastMessageAt: new Date(), metadata: metadata as Prisma.InputJsonValue },
+        data: { resolved: false, lastMessageAt: new Date(), metadata: mergedMeta },
       });
     }
     // Never overwrite customer.name with an Instagram @username
@@ -273,12 +305,13 @@ export async function findOrCreateCustomerForInbound(input: {
         : null;
 
   let customerId: string | null = null;
-  if (channelType !== "instagram" && (email || phone)) {
+  if ((channelType === "whatsapp" || channelType === "email") && (email || phone)) {
     try {
       const shopifyHit = await enrichCustomerFromShopify({
         name: displayName,
         email,
         phone,
+        inboundChannel: channelType,
       });
       if (shopifyHit?.customerId) customerId = shopifyHit.customerId;
     } catch (err) {
@@ -385,6 +418,7 @@ export async function ingestInboundMessages(input: {
       ? `batch:${inboundMessages.map((m) => m.externalId).join(",")}`
       : `raw:${ulid()}`);
 
+  let alreadySeen = false;
   try {
     await prisma.webhookEvent.create({
       data: {
@@ -397,7 +431,8 @@ export async function ingestInboundMessages(input: {
       },
     });
   } catch {
-    return { created: 0, duplicates: true, messages: [] as unknown[] };
+    // Event key already recorded — still attempt message create (prior run may have failed mid-ingest).
+    alreadySeen = true;
   }
 
   const created = [];
@@ -426,7 +461,7 @@ export async function ingestInboundMessages(input: {
       });
       created.push(message);
     } catch {
-      // duplicate external id
+      // duplicate external id for this identity
     }
   }
 
@@ -435,7 +470,11 @@ export async function ingestInboundMessages(input: {
     data: { processed: true },
   });
 
-  return { created: created.length, duplicates: false, messages: created };
+  return {
+    created: created.length,
+    duplicates: alreadySeen && created.length === 0,
+    messages: created,
+  };
 }
 
 export async function sendCustomerChannelMessage(input: {
@@ -586,7 +625,12 @@ export function shapeCustomer(customer: {
     })),
     ...ig.map((i) => {
       const meta = asMeta(i.metadata as Prisma.JsonValue);
-      const username = typeof meta.username === "string" ? meta.username.replace(/^@/, "") : "";
+      const username =
+        typeof meta.username === "string"
+          ? meta.username.replace(/^@/, "").trim()
+          : !/^\d{5,}$/.test(i.externalId)
+            ? i.externalId.replace(/^@/, "").trim()
+            : "";
       return {
         id: i.id,
         channel: "instagram" as const,
@@ -610,6 +654,15 @@ export function shapeCustomer(customer: {
     })),
   ];
 
+  const primaryIg = ig[0];
+  const igMeta = primaryIg ? asMeta(primaryIg.metadata as Prisma.JsonValue) : null;
+  const igUsername =
+    (typeof igMeta?.username === "string" && igMeta.username.replace(/^@/, "").trim()) ||
+    (primaryIg && !/^\d{5,}$/.test(primaryIg.externalId)
+      ? primaryIg.externalId.replace(/^@/, "").trim()
+      : "") ||
+    null;
+
   return {
     id: customer.id,
     name: customer.name,
@@ -620,13 +673,20 @@ export function shapeCustomer(customer: {
     whatsappEnabled: wa.length > 0,
     instagramEnabled: ig.length > 0,
     emailEnabled: em.length > 0,
-    instagramId: ig[0]?.externalId ?? null,
-    instagramDetails: ig[0] ? asMeta(ig[0].metadata as Prisma.JsonValue) : null,
+    /** Username/handle for UI — never the numeric Instagram-scoped id when username is known. */
+    instagramId: igUsername,
+    instagramScopedId: primaryIg?.externalId ?? null,
+    instagramDetails: igMeta
+      ? {
+          ...igMeta,
+          ...(igUsername ? { username: igUsername } : {}),
+        }
+      : null,
     resolved: customer.resolved,
     globalStatus: customer.resolved ? ("resolved" as const) : ("active" as const),
     identifiers: {
       ...(whatsappIds[0] ? { whatsapp: whatsappIds[0] } : {}),
-      ...(ig[0] ? { instagram: ig[0].externalId } : {}),
+      ...(igUsername ? { instagram: igUsername } : {}),
       ...(emails[0] ? { email: emails[0] } : {}),
     },
     identities,

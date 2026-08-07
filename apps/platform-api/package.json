@@ -11,6 +11,7 @@
     "db:deploy": "tsx src/scripts/migrate.ts",
     "seed:config": "tsx src/scripts/seed-config.ts",
     "seed:user": "tsx src/scripts/seed-user.ts",
+    "email:catch-up": "tsx src/scripts/catch-up-email.ts",
     "test": "vitest run --passWithNoTests"
   },
   "dependencies": {

@@ -21,6 +21,45 @@ function joinList(primary: string | null | undefined, list?: string[] | null): s
   return out.length ? out.join(", ") : "—";
 }
 
+function instagramUsernameForEdit(c: {
+  instagramId?: string | null;
+  instagramDetails?: { username?: string | null } | null;
+  identifiers?: { instagram?: string } | null;
+  identities?: Array<{
+    channel?: string;
+    displayId?: string;
+    metadata?: { username?: string | null };
+  }>;
+}): string {
+  const candidates = [
+    c.instagramDetails?.username,
+    c.identities?.find((i) => i.channel === "instagram")?.metadata?.username,
+    c.identities?.find((i) => i.channel === "instagram")?.displayId,
+    c.instagramId,
+    c.identifiers?.instagram,
+  ]
+    .filter((v): v is string => typeof v === "string" && Boolean(v.trim()))
+    .map((v) => v.replace(/^@/, "").trim());
+
+  const username = candidates.find((v) => v && !/^\d{5,}$/.test(v));
+  return username ?? "";
+}
+
+function instagramUsernameForTable(c: {
+  instagramId?: string | null;
+  instagramDetails?: { username?: string | null; senderName?: string | null } | null;
+  identifiers?: { instagram?: string } | null;
+  identities?: Array<{
+    channel?: string;
+    displayId?: string;
+    metadata?: { username?: string | null; senderName?: string | null };
+  }>;
+}): string {
+  const handle = instagramUsernameForEdit(c);
+  if (handle) return `@${handle}`;
+  return "—";
+}
+
 function joinWhatsApp(primary: string | null | undefined, list?: string[] | null): string {
   const seen = new Set<string>();
   const out: string[] = [];
@@ -101,7 +140,7 @@ export function ContactsPage() {
         : c.whatsappId || c.identifiers?.whatsapp
           ? [c.whatsappId || c.identifiers!.whatsapp]
           : [""],
-      instagramId: c.identifiers?.instagram || "",
+      instagramId: instagramUsernameForEdit(c),
     });
     setIsModalOpen(true);
   };
@@ -195,17 +234,7 @@ export function ContactsPage() {
                       )}
                       {showIg && (
                         <td className="px-6 py-4 text-muted-foreground">
-                          {(() => {
-                            const igIdentity = c.identities?.find((i) => i.channel === "instagram");
-                            const igName = (igIdentity?.metadata as { senderName?: string } | undefined)
-                              ?.senderName;
-                            const ig =
-                              (igName?.startsWith("@") ? igName : igName ? `@${igName}` : null) ||
-                              (c.identifiers?.instagram
-                                ? `@${c.identifiers.instagram.replace(/^@/, "")}`
-                                : null);
-                            return ig || "—";
-                          })()}
+                          {instagramUsernameForTable(c)}
                         </td>
                       )}
                       <td className="px-6 py-4">

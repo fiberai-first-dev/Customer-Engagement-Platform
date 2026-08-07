@@ -22,6 +22,8 @@ interface EmailPubSubData {
   historyId?: string;
 }
 
+const RECENT_INBOX_LIMIT = 30;
+
 function asEmailConfig(raw: Prisma.JsonValue): EmailChannelConfig | null {
   if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null;
   const obj = raw as Record<string, unknown>;
@@ -44,7 +46,7 @@ async function resolveEmailInbox(emailAddress?: string) {
     const matched = emailInboxes.find((inbox) => {
       const cfg = inbox.channelConfig as Record<string, unknown>;
       const email = typeof cfg.email === "string" ? cfg.email : null;
-      return email === emailAddress;
+      return email?.toLowerCase() === emailAddress.toLowerCase();
     });
     if (matched) return matched;
   }
@@ -52,13 +54,79 @@ async function resolveEmailInbox(emailAddress?: string) {
   if (emailInboxes.length === 0) {
     throw new Error("No Email inbox found — connect Gmail in Settings or set .env tokens");
   }
-  // Prefer a single enabled inbox; otherwise first with credentials
   const enabled = emailInboxes.filter((i) => i.enabled);
   if (enabled.length === 1) return enabled[0]!;
   if (enabled.length > 1) {
     throw new Error("Multiple Email inboxes enabled — keep a single email inbox");
   }
   return emailInboxes[0]!;
+}
+
+async function listRecentInboxMessageIds(
+  gmail: ReturnType<typeof getEmailClient>,
+  maxResults = RECENT_INBOX_LIMIT,
+): Promise<string[]> {
+  const listRes = await gmail.users.messages.list({
+    userId: "me",
+    labelIds: ["INBOX"],
+    maxResults,
+  });
+  return (listRes.data.messages ?? [])
+    .map((m) => m.id)
+    .filter((id): id is string => !!id);
+}
+
+async function processGmailMessageIds(input: {
+  inboxId: string;
+  config: EmailChannelConfig;
+  messageIds: string[];
+}): Promise<{ processed: number; skipped: number }> {
+  const gmail = getEmailClient(input.config);
+  let processed = 0;
+  let skipped = 0;
+
+  for (const msgId of [...new Set(input.messageIds)]) {
+    try {
+      const msgRes = await gmail.users.messages.get({
+        userId: "me",
+        id: msgId,
+        format: "full",
+      });
+      const msgData = msgRes.data;
+      const labels = msgData.labelIds ?? [];
+      if (labels.includes("SENT") && !labels.includes("INBOX")) {
+        skipped++;
+        continue;
+      }
+
+      const normalized = emailAdapter.parseInbound(input.config, msgData);
+      if (normalized.length === 0) {
+        console.warn(`[email] parseInbound empty for gmail id=${msgId}`);
+        skipped++;
+        continue;
+      }
+
+      const from = normalized[0]?.senderEmail ?? normalized[0]?.senderId ?? "?";
+      const result = await ingestInboundMessages({
+        channelConfigId: input.inboxId,
+        payload: msgData,
+        eventKey: `email:${normalized.map((m) => m.externalId).join(",")}`,
+      });
+      if (result.created > 0) {
+        processed += result.created;
+        console.info(
+          `[email] ingested gmail=${msgId} from=${from} created=${result.created}`,
+        );
+      } else {
+        skipped++;
+      }
+    } catch (err) {
+      console.error(`[email] Failed to process message ${msgId}:`, err);
+      skipped++;
+    }
+  }
+
+  return { processed, skipped };
 }
 
 export async function handlePubSubNotification(
@@ -105,7 +173,7 @@ export async function handlePubSubNotification(
   const gmail = getEmailClient(config!);
   let messageIds: string[] = [];
 
-  // After a wipe/redeploy there is no prior cursor — skip history.list and catch up.
+  // History since last cursor (can miss messages if the cursor advanced ahead of ingest).
   if (startHistoryId && !primed) {
     try {
       let pageToken: string | undefined;
@@ -127,23 +195,26 @@ export async function handlePubSubNotification(
     } catch (err: unknown) {
       const status = (err as { code?: number })?.code;
       console.warn("[email] history.list failed:", status ?? err);
-      // Fall through to recent-inbox catch-up
     }
   }
 
-  // Catch-up: history cursor often skips the mail that primed historyId (and after wipe).
-  if (messageIds.length === 0) {
-    console.warn(
-      `[email] history.list empty from ${startHistoryId || "(none)"}; fetching recent INBOX messages`,
-    );
-    const listRes = await gmail.users.messages.list({
-      userId: "me",
-      labelIds: ["INBOX"],
-      maxResults: 15,
-    });
-    messageIds = (listRes.data.messages ?? [])
-      .map((m) => m.id)
-      .filter((id): id is string => !!id);
+  // ALWAYS also scan recent INBOX. Relying on history alone drops mail when:
+  // - history returns unrelated/partial ids and catch-up used to be skipped
+  // - historyId advanced after a failed/skipped ingest
+  try {
+    const recentIds = await listRecentInboxMessageIds(gmail);
+    if (messageIds.length === 0) {
+      console.warn(
+        `[email] history empty from ${startHistoryId || "(none)"}; using recent INBOX (${recentIds.length})`,
+      );
+    } else {
+      console.info(
+        `[email] history=${messageIds.length} + recent INBOX=${recentIds.length} (union)`,
+      );
+    }
+    messageIds = [...messageIds, ...recentIds];
+  } catch (err) {
+    console.error("[email] recent INBOX list failed:", err);
   }
 
   messageIds = [...new Set(messageIds)];
@@ -155,45 +226,20 @@ export async function handlePubSubNotification(
     return { processed: 0, skipped: 0, inboxId, primed };
   }
 
-  let processed = 0;
-  let skipped = 0;
-
-  for (const msgId of messageIds) {
-    try {
-      const msgRes = await gmail.users.messages.get({
-        userId: "me",
-        id: msgId,
-        format: "full",
-      });
-      const msgData = msgRes.data;
-      const labels = msgData.labelIds ?? [];
-      if (labels.includes("SENT") && !labels.includes("INBOX")) {
-        skipped++;
-        continue;
-      }
-
-      const normalized = emailAdapter.parseInbound(config!, msgData);
-      if (normalized.length === 0) {
-        skipped++;
-        continue;
-      }
-
-      const result = await ingestInboundMessages({
-        channelConfigId: inbox.id,
-        payload: msgData,
-        eventKey: `email:${normalized.map((m) => m.externalId).join(",")}`,
-      });
-      if (result.created > 0) processed += result.created;
-      else skipped++;
-    } catch (err) {
-      console.error(`[email] Failed to process message ${msgId}:`, err);
-      skipped++;
-    }
-  }
-
-  await updateInboxConfig(inboxId, (await prisma.channelConfig.findUnique({ where: { id: inboxId } }))?.channelConfig ?? inbox.channelConfig, {
-    historyId: notificationHistoryId,
+  const { processed, skipped } = await processGmailMessageIds({
+    inboxId,
+    config: config!,
+    messageIds,
   });
+
+  await updateInboxConfig(
+    inboxId,
+    (await prisma.channelConfig.findUnique({ where: { id: inboxId } }))?.channelConfig ??
+      inbox.channelConfig,
+    {
+      historyId: notificationHistoryId,
+    },
+  );
 
   console.info(`[email] pubsub done inbox=${inboxId} processed=${processed} skipped=${skipped}`);
   return { processed, skipped, inboxId, primed };
@@ -202,7 +248,7 @@ export async function handlePubSubNotification(
 /** After watch / redeploy: ingest recent INBOX so mail isn't stuck waiting for Pub/Sub. */
 export async function catchUpRecentEmailMessages(
   inboxId: string,
-  maxResults = 15,
+  maxResults = RECENT_INBOX_LIMIT,
 ): Promise<{ processed: number; skipped: number }> {
   const inbox = await prisma.channelConfig.findUnique({ where: { id: inboxId } });
   if (!inbox) return { processed: 0, skipped: 0 };
@@ -210,50 +256,8 @@ export async function catchUpRecentEmailMessages(
   if (!config) return { processed: 0, skipped: 0 };
 
   const gmail = getEmailClient(config);
-  const listRes = await gmail.users.messages.list({
-    userId: "me",
-    labelIds: ["INBOX"],
-    maxResults,
-  });
-  const messageIds = [...new Set(
-    (listRes.data.messages ?? [])
-      .map((m) => m.id)
-      .filter((id): id is string => !!id),
-  )];
-
-  let processed = 0;
-  let skipped = 0;
-  for (const msgId of messageIds) {
-    try {
-      const msgRes = await gmail.users.messages.get({
-        userId: "me",
-        id: msgId,
-        format: "full",
-      });
-      const msgData = msgRes.data;
-      const labels = msgData.labelIds ?? [];
-      if (labels.includes("SENT") && !labels.includes("INBOX")) {
-        skipped++;
-        continue;
-      }
-      const normalized = emailAdapter.parseInbound(config, msgData);
-      if (normalized.length === 0) {
-        skipped++;
-        continue;
-      }
-      const result = await ingestInboundMessages({
-        channelConfigId: inbox.id,
-        payload: msgData,
-        eventKey: `email:${normalized.map((m) => m.externalId).join(",")}`,
-      });
-      if (result.created > 0) processed += result.created;
-      else skipped++;
-    } catch (err) {
-      console.error(`[email] catch-up failed for ${msgId}:`, err);
-      skipped++;
-    }
-  }
-  return { processed, skipped };
+  const messageIds = await listRecentInboxMessageIds(gmail, maxResults);
+  return processGmailMessageIds({ inboxId: inbox.id, config, messageIds });
 }
 
 export async function setupEmailWatch(inboxId?: string) {
@@ -342,7 +346,7 @@ export async function renewEmailWatch(inboxId?: string) {
   return results;
 }
 
-/** @deprecated use renewEmailWatch */
+/** @deprecated use renewGmailWatch */
 export const renewGmailWatch = renewEmailWatch;
 
 async function updateInboxConfig(
@@ -357,7 +361,6 @@ async function updateInboxConfig(
   for (const [key, value] of Object.entries(patch)) {
     base[key] = value;
   }
-  // Normalize away legacy fields
   delete base.provider;
   delete base.smtpHost;
   delete base.smtpPort;

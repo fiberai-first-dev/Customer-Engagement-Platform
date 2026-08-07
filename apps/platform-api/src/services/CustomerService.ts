@@ -189,6 +189,15 @@ async function attachIdentities(
         OR: [{ externalId: ig }, { metadata: { path: ["username"], equals: ig } }],
       },
     });
+
+    const withUsernameMeta = (metadata: unknown) => {
+      const base =
+        metadata && typeof metadata === "object" && !Array.isArray(metadata)
+          ? { ...(metadata as Record<string, unknown>) }
+          : {};
+      return { ...base, username: ig, senderName: `@${ig}` };
+    };
+
     if (existing) {
       if (existing.customerId !== customerId) {
         await prisma.message.updateMany({
@@ -197,20 +206,48 @@ async function attachIdentities(
         });
         await prisma.instagramChannel.update({
           where: { id: existing.id },
-          data: { customerId },
+          data: {
+            customerId,
+            metadata: withUsernameMeta(existing.metadata),
+            // Keep numeric Instagram-scoped ids for messaging; username-only rows may rename
+            ...(/^\d{5,}$/.test(existing.externalId) ? {} : { externalId: ig }),
+          },
         });
         await recomputeCustomerResolved(existing.customerId);
+      } else {
+        await prisma.instagramChannel.update({
+          where: { id: existing.id },
+          data: {
+            metadata: withUsernameMeta(existing.metadata),
+            ...(/^\d{5,}$/.test(existing.externalId) ? {} : { externalId: ig }),
+          },
+        });
       }
     } else {
-      await prisma.instagramChannel.create({
-        data: {
-          id: ulid(),
-          customerId,
-          externalId: ig,
-          resolved: true,
-          metadata: { username: ig },
-        },
+      const owned = await prisma.instagramChannel.findFirst({
+        where: { customerId },
+        orderBy: [{ updatedAt: "desc" }],
       });
+      if (owned) {
+        // Contact already has an IG thread id — only refresh username metadata
+        await prisma.instagramChannel.update({
+          where: { id: owned.id },
+          data: {
+            metadata: withUsernameMeta(owned.metadata),
+            ...(/^\d{5,}$/.test(owned.externalId) ? {} : { externalId: ig }),
+          },
+        });
+      } else {
+        await prisma.instagramChannel.create({
+          data: {
+            id: ulid(),
+            customerId,
+            externalId: ig,
+            resolved: true,
+            metadata: { username: ig, senderName: `@${ig}` },
+          },
+        });
+      }
     }
   }
 
@@ -319,10 +356,12 @@ export async function createCustomer(input: {
 
   // Shopify read-only lookup — never writes to Shopify
   try {
+    const hasEmail = Boolean(input.emails?.[0]?.trim());
     const shopify = await enrichCustomerFromShopify({
       name: input.name,
       email: input.emails?.[0],
       phone: input.whatsappIds?.[0],
+      inboundChannel: hasEmail ? "email" : "whatsapp",
     });
     if (shopify?.customerId) {
       await attachIdentities(shopify.customerId, input);

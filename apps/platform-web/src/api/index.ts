@@ -85,6 +85,8 @@ export interface Contact {
   instagramEnabled?: boolean;
   emailEnabled?: boolean;
   instagramId?: string | null;
+  /** Numeric Instagram-scoped user id used for Graph messaging (not for UI). */
+  instagramScopedId?: string | null;
   instagramDetails?: { username?: string | null; senderName?: string | null } | null;
   globalStatus?: "active" | "resolved";
   channelStatuses?: Partial<Record<ChannelType, ConversationStatus>>;
