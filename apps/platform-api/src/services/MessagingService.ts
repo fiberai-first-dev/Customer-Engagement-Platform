@@ -108,7 +108,20 @@ export async function findIdentityByExternalId(
     return candidates.find((c) => whatsappDigitsEqual(c.externalId, digits)) ?? null;
   }
   if (channelType === "instagram") {
-    return prisma.instagramChannel.findUnique({ where: { externalId } });
+    const exact = await prisma.instagramChannel.findUnique({ where: { externalId } });
+    if (exact) return exact;
+    const username = externalId.replace(/^@+/, "").trim();
+    if (!username) return null;
+    return prisma.instagramChannel.findFirst({
+      where: {
+        OR: [
+          { metadata: { path: ["username"], equals: username } },
+          { metadata: { path: ["username"], equals: `@${username}` } },
+          { externalId: username },
+          { externalId: `@${username}` },
+        ],
+      },
+    });
   }
   const email = normalizeEmail(externalId) ?? externalId;
   return prisma.emailChannel.findUnique({ where: { externalId: email } });
@@ -273,9 +286,18 @@ export async function findOrCreateCustomerForInbound(input: {
         data: { resolved: false, lastMessageAt: new Date(), metadata: mergedMeta },
       });
     } else if (channelType === "instagram") {
+      const upgradeExternalId =
+        /^\d{5,}$/.test(senderKey) && !/^\d{5,}$/.test(existing.externalId)
+          ? senderKey
+          : undefined;
       await prisma.instagramChannel.update({
         where: { id: existing.id },
-        data: { resolved: false, lastMessageAt: new Date(), metadata: mergedMeta },
+        data: {
+          resolved: false,
+          lastMessageAt: new Date(),
+          metadata: mergedMeta,
+          ...(upgradeExternalId ? { externalId: upgradeExternalId } : {}),
+        },
       });
     } else {
       await prisma.emailChannel.update({
@@ -307,11 +329,15 @@ export async function findOrCreateCustomerForInbound(input: {
       }
     }
     await recomputeCustomerResolved(customerId);
+    const refreshedExternalId =
+      channelType === "instagram" && /^\d{5,}$/.test(senderKey) && !/^\d{5,}$/.test(existing.externalId)
+        ? senderKey
+        : existing.externalId;
     return {
       customerId,
       channelId: existing.id,
       channelType,
-      externalId: existing.externalId,
+      externalId: refreshedExternalId,
     };
   }
 

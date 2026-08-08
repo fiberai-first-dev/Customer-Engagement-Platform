@@ -42,7 +42,7 @@ async function ensureEmailIdentity(customerId: string, email: string) {
         id: ulid(),
         customerId,
         externalId: email,
-        resolved: true,
+        resolved: false,
         metadata: { source: "shopify" },
       },
     });
@@ -84,7 +84,7 @@ async function ensureWhatsAppIdentity(customerId: string, phoneDigits: string) {
         id: ulid(),
         customerId,
         externalId: formatted,
-        resolved: true,
+        resolved: false,
         metadata: { source: "shopify" },
       },
     });

@@ -129,7 +129,7 @@ async function attachIdentities(
       continue;
     }
     await prisma.emailChannel.create({
-      data: { id: ulid(), customerId, externalId: email, resolved: true, metadata: {} },
+      data: { id: ulid(), customerId, externalId: email, resolved: false, metadata: {} },
     });
   }
 
@@ -178,7 +178,7 @@ async function attachIdentities(
       continue;
     }
     await prisma.whatsAppChannel.create({
-      data: { id: ulid(), customerId, externalId, resolved: true, metadata: {} },
+      data: { id: ulid(), customerId, externalId, resolved: false, metadata: {} },
     });
   }
 
@@ -243,7 +243,7 @@ async function attachIdentities(
             id: ulid(),
             customerId,
             externalId: ig,
-            resolved: true,
+            resolved: false,
             metadata: { username: ig, senderName: `@${ig}` },
           },
         });
@@ -326,6 +326,50 @@ async function absorbCustomer(sourceId: string, targetId: string) {
   await prisma.customer.delete({ where: { id: sourceId } }).catch(() => undefined);
 }
 
+/**
+ * Same path as inbound: local identities already attached upstream → Shopify lookup →
+ * attach Shopify email+phone → if Shopify landed on another CEP customer, fold rows together.
+ * Returns the survivor customer id to load.
+ */
+async function applyShopifyCrossChannelLikeInbound(
+  preferredCustomerId: string | null,
+  input: {
+    name?: string | null;
+    emails?: string[];
+    whatsappIds?: string[];
+  },
+): Promise<string | null> {
+  const hasEmail = Boolean(input.emails?.[0]?.trim());
+  const hasPhone = Boolean(input.whatsappIds?.[0]?.trim());
+  if (!hasEmail && !hasPhone) return preferredCustomerId;
+
+  try {
+    const shopify = await enrichCustomerFromShopify({
+      name: input.name,
+      email: input.emails?.[0],
+      phone: input.whatsappIds?.[0],
+      inboundChannel: hasEmail ? "email" : "whatsapp",
+    });
+    if (!shopify?.customerId) return preferredCustomerId;
+
+    if (!preferredCustomerId) return shopify.customerId;
+
+    if (shopify.customerId === preferredCustomerId) return preferredCustomerId;
+
+    // Prefer keeping the contact the agent is editing; fold Shopify/CEP sibling into it.
+    // If Shopify matched an older CEP row (created=false), fold this contact into that row
+    // so we don't duplicate — same survivor as createCustomer used historically.
+    if (shopify.created) {
+      await absorbCustomer(shopify.customerId, preferredCustomerId);
+      return preferredCustomerId;
+    }
+    await absorbCustomer(preferredCustomerId, shopify.customerId);
+    return shopify.customerId;
+  } catch {
+    return preferredCustomerId;
+  }
+}
+
 export async function createCustomer(input: {
   name?: string | null;
   emails?: string[];
@@ -337,14 +381,17 @@ export async function createCustomer(input: {
 }) {
   if (input.mergeIntoId) {
     await attachIdentities(input.mergeIntoId, input);
+    const survivorId =
+      (await applyShopifyCrossChannelLikeInbound(input.mergeIntoId, input)) ?? input.mergeIntoId;
+    await attachIdentities(survivorId, input);
     const name = input.keepName ?? input.name;
     if (name && !isUnknownName(name)) {
       await prisma.customer.update({
-        where: { id: input.mergeIntoId },
+        where: { id: survivorId },
         data: { name },
       });
     }
-    return loadCustomerShaped(input.mergeIntoId);
+    return loadCustomerShaped(survivorId);
   }
 
   if (!input.force) {
@@ -354,27 +401,17 @@ export async function createCustomer(input: {
     }
   }
 
-  // Shopify read-only lookup — never writes to Shopify
-  try {
-    const hasEmail = Boolean(input.emails?.[0]?.trim());
-    const shopify = await enrichCustomerFromShopify({
-      name: input.name,
-      email: input.emails?.[0],
-      phone: input.whatsappIds?.[0],
-      inboundChannel: hasEmail ? "email" : "whatsapp",
-    });
-    if (shopify?.customerId) {
-      await attachIdentities(shopify.customerId, input);
-      if (input.name && !isUnknownName(input.name)) {
-        await prisma.customer.update({
-          where: { id: shopify.customerId },
-          data: { name: input.name },
-        });
-      }
-      return loadCustomerShaped(shopify.customerId);
+  // Shopify first (same as inbound): may return existing CEP or create with WA+email
+  const shopifySurvivor = await applyShopifyCrossChannelLikeInbound(null, input);
+  if (shopifySurvivor) {
+    await attachIdentities(shopifySurvivor, input);
+    if (input.name && !isUnknownName(input.name)) {
+      await prisma.customer.update({
+        where: { id: shopifySurvivor },
+        data: { name: input.name },
+      });
     }
-  } catch {
-    /* continue create locally */
+    return loadCustomerShaped(shopifySurvivor);
   }
 
   const customer = await prisma.customer.create({
@@ -404,20 +441,23 @@ export async function updateCustomer(
   if (input.mergeIntoId && input.mergeIntoId !== id) {
     await absorbCustomer(id, input.mergeIntoId);
     await attachIdentities(input.mergeIntoId, input);
+    const survivorId =
+      (await applyShopifyCrossChannelLikeInbound(input.mergeIntoId, input)) ?? input.mergeIntoId;
+    await attachIdentities(survivorId, input);
     const name = input.keepName ?? input.name;
     if (name && !isUnknownName(name)) {
       await prisma.customer.update({
-        where: { id: input.mergeIntoId },
+        where: { id: survivorId },
         data: { name },
       });
     } else if (input.keepName) {
       await prisma.customer.update({
-        where: { id: input.mergeIntoId },
+        where: { id: survivorId },
         data: { name: input.keepName },
       });
     }
-    await recomputeCustomerResolved(input.mergeIntoId);
-    return loadCustomerShaped(input.mergeIntoId);
+    await recomputeCustomerResolved(survivorId);
+    return loadCustomerShaped(survivorId);
   }
 
   if (!input.force) {
@@ -435,7 +475,12 @@ export async function updateCustomer(
     });
   }
   await attachIdentities(id, input);
-  return loadCustomerShaped(id);
+  const survivorId = (await applyShopifyCrossChannelLikeInbound(id, input)) ?? id;
+  if (survivorId !== id) {
+    await attachIdentities(survivorId, input);
+  }
+  await recomputeCustomerResolved(survivorId);
+  return loadCustomerShaped(survivorId);
 }
 
 export async function mergeCustomers(input: {
