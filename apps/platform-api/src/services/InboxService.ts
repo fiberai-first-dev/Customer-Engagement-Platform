@@ -1,6 +1,7 @@
 import { prisma } from "../config/db.js";
 import { env } from "../config/env.js";
 import { mergeChannelConfig } from "./MessagingService.js";
+import { normalizeInstagramChannelConfigStored } from "../adapters/shared/index.js";
 import type { ChannelType, Prisma } from "../generated/client/index.js";
 
 function shapeChannelConfig(row: {
@@ -11,12 +12,23 @@ function shapeChannelConfig(row: {
   enabled: boolean;
 }) {
   const base = env.publicBaseUrl.replace(/\/$/, "");
+  let channelConfig = row.channelConfig;
+  if (
+    row.channelType === "instagram" &&
+    channelConfig &&
+    typeof channelConfig === "object" &&
+    !Array.isArray(channelConfig)
+  ) {
+    channelConfig = normalizeInstagramChannelConfigStored(
+      channelConfig as Record<string, unknown>,
+    ) as Prisma.JsonValue;
+  }
   return {
     id: row.id,
     accountId: "workspace",
     name: row.name,
     channelType: row.channelType,
-    channelConfig: row.channelConfig,
+    channelConfig,
     enabled: row.enabled,
     webhookUrl: `${base}/webhooks/${row.channelType}`,
   };
@@ -43,10 +55,35 @@ export class InboxService {
   ) {
     const existing = await prisma.channelConfig.findUnique({ where: { id } });
     if (!existing) throw new Error("not found");
+
+    let patch = data.channelConfig;
+    if (patch && existing.channelType === "instagram") {
+      const incoming = { ...patch };
+      if (
+        typeof incoming.appSecret === "string" &&
+        incoming.appSecret.trim() &&
+        !(typeof incoming.instagramAppSecret === "string" && incoming.instagramAppSecret.trim())
+      ) {
+        incoming.instagramAppSecret = incoming.appSecret;
+      }
+      patch = {
+        ...normalizeInstagramChannelConfigStored(incoming),
+        appSecret: null,
+        pageId: null,
+      };
+    }
+
+    const merged =
+      patch !== undefined ? mergeChannelConfig(existing.channelConfig, patch) : undefined;
+
     const nextConfig =
-      data.channelConfig !== undefined
-        ? mergeChannelConfig(existing.channelConfig, data.channelConfig)
-        : undefined;
+      merged &&
+      existing.channelType === "instagram" &&
+      typeof merged === "object" &&
+      !Array.isArray(merged)
+        ? (normalizeInstagramChannelConfigStored(merged as Record<string, unknown>) as Prisma.InputJsonValue)
+        : merged;
+
     const row = await prisma.channelConfig.update({
       where: { id },
       data: {

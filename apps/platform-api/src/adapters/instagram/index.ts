@@ -242,7 +242,11 @@ export const instagramAdapter: ChannelAdapter<InstagramChannelConfig> = {
       : `${FB_GRAPH}/${config.pageId}/messages`;
 
     if (!useIgLogin && !config.pageId) {
-      return { ok: false, status: "failed", error: "Instagram pageId/accessToken missing" };
+      return {
+        ok: false,
+        status: "failed",
+        error: "Instagram access token is not an Instagram Login token. Reconnect Instagram in Settings.",
+      };
     }
 
     try {

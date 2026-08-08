@@ -76,8 +76,14 @@ async function main() {
     console.log(`[seed:config] whatsapp updated (${Object.keys(wa).join(", ")})`);
   }
 
-  const ig = pickNonEmpty(data.instagram);
-  if (Object.keys(ig).length) {
+  const igRaw = pickNonEmpty(data.instagram);
+  if (Object.keys(igRaw).length) {
+    const ig = { ...igRaw };
+    if (!ig.instagramAppSecret && ig.appSecret) {
+      ig.instagramAppSecret = ig.appSecret;
+    }
+    delete ig.appSecret;
+    delete ig.pageId;
     await upsertChannelConfigSeed("instagram", ig, true);
     console.log(`[seed:config] instagram updated (${Object.keys(ig).join(", ")})`);
   }

@@ -86,9 +86,36 @@ export function resolveChannelConfig(
     return mergeConfig({ ...whatsappConfig } as Record<string, unknown>, raw) as unknown as ChannelConfig;
   }
   if (channelType === "instagram") {
-    return mergeConfig({ ...instagramConfig } as Record<string, unknown>, raw) as unknown as ChannelConfig;
+    // Migrate legacy key appSecret → instagramAppSecret (read path)
+    const migrated: Record<string, unknown> = { ...raw };
+    if (!normalizeSecret(migrated.instagramAppSecret) && normalizeSecret(migrated.appSecret)) {
+      migrated.instagramAppSecret = migrated.appSecret;
+    }
+    delete migrated.appSecret;
+    delete migrated.pageId;
+    return mergeConfig(
+      { ...instagramConfig } as Record<string, unknown>,
+      migrated,
+    ) as unknown as ChannelConfig;
   }
   return mergeConfig({ ...emailConfig } as Record<string, unknown>, raw) as unknown as ChannelConfig;
+}
+
+/** Normalize Instagram JSON in DB: rename legacy keys, drop unused pageId. */
+export function normalizeInstagramChannelConfigStored(
+  existing: Record<string, unknown>,
+): Record<string, unknown> {
+  const next = { ...existing };
+  if (
+    (typeof next.instagramAppSecret !== "string" || !next.instagramAppSecret.trim()) &&
+    typeof next.appSecret === "string" &&
+    next.appSecret.trim()
+  ) {
+    next.instagramAppSecret = next.appSecret;
+  }
+  delete next.appSecret;
+  delete next.pageId;
+  return next;
 }
 
 export * from "./types.js";

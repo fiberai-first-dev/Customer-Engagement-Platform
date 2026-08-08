@@ -11,12 +11,16 @@ export interface WhatsAppChannelConfig {
 }
 
 export interface InstagramChannelConfig {
-  /** Instagram professional account id (user_id) or Facebook Page id */
-  pageId: string;
+  /**
+   * Legacy Facebook Page messaging only. Unused for Instagram Login
+   * (`graph.instagram.com/me/messages`). Stripped on Settings save / Connect.
+   */
+  pageId?: string;
   accessToken: string;
   verifyToken: string;
-  appSecret?: string;
-  /** Instagram Login API app id (optional) */
+  /** Instagram App Secret from Instagram > API setup with Instagram login */
+  instagramAppSecret?: string;
+  /** Instagram App ID from Instagram > API setup with Instagram login */
   instagramAppId?: string;
   instagramUsername?: string;
 }

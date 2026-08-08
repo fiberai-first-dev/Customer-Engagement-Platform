@@ -1,5 +1,6 @@
 import { prisma } from "../config/db.js";
 import {
+  normalizeInstagramChannelConfigStored,
   resolveChannelConfig,
   type EmailChannelConfig,
   type InstagramChannelConfig,
@@ -9,6 +10,7 @@ import { ensureWorkspace } from "./WorkspaceService.js";
 import { catchUpRecentEmailMessages, renewEmailWatch } from "./EmailService.js";
 import { subscribeInstagramMessaging } from "./OAuthService.js";
 import { isShopifyConfigured } from "./orders/shopify.client.js";
+import type { Prisma } from "../generated/client/index.js";
 
 function asRecord(value: unknown): Record<string, unknown> {
   return value && typeof value === "object" && !Array.isArray(value)
@@ -42,7 +44,32 @@ export async function bootstrapRuntime(): Promise<void> {
     console.warn("[boot:shopify] not configured — Settings → Shopify or npm run seed:config");
   }
 
+  await migrateInstagramConfigKeys();
   await Promise.all([prepareWhatsApp(), prepareInstagram(), prepareEmail()]);
+}
+
+/** Persist Instagram key rename: appSecret → instagramAppSecret; drop pageId. */
+async function migrateInstagramConfigKeys() {
+  try {
+    const rows = await prisma.channelConfig.findMany({ where: { channelType: "instagram" } });
+    for (const row of rows) {
+      if (!row.channelConfig || typeof row.channelConfig !== "object" || Array.isArray(row.channelConfig)) {
+        continue;
+      }
+      const prev = row.channelConfig as Record<string, unknown>;
+      const next = normalizeInstagramChannelConfigStored(prev);
+      const changed =
+        JSON.stringify(prev) !== JSON.stringify(next);
+      if (!changed) continue;
+      await prisma.channelConfig.update({
+        where: { id: row.id },
+        data: { channelConfig: next as Prisma.InputJsonValue },
+      });
+      console.log("[boot:instagram] migrated channelConfig keys (instagramAppSecret)");
+    }
+  } catch (err) {
+    console.warn("[boot:instagram] key migrate:", err instanceof Error ? err.message : err);
+  }
 }
 
 async function prepareWhatsApp() {

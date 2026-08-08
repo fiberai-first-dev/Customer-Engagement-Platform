@@ -29,7 +29,11 @@ export function mergeChannelConfig(
   for (const [key, value] of Object.entries(patch)) {
     if (key === "mock") continue;
     if (value === "***") continue;
-    if (value === undefined || value === null) continue;
+    if (value === undefined) continue;
+    if (value === null) {
+      delete base[key];
+      continue;
+    }
     if (typeof value === "string" && !value.trim()) continue;
     base[key] = value;
   }
@@ -184,7 +188,7 @@ async function createIdentity(input: {
  *
  * Instagram
  *   1) Identity exists → reuse
- *   2) Else create "Unknown" (no Shopify)
+ *   2) Else create named with @username when known (else "Unknown"); IGSID stays on identity for replies
  *
  * WhatsApp
  *   1) Identity exists → reuse
@@ -210,11 +214,27 @@ export async function findOrCreateCustomerForInbound(input: {
         ? normalizeWhatsAppId(inbound.senderId) ?? inbound.senderId
         : inbound.senderId;
 
-  // Instagram: person name is usually missing — always create as "Unknown".
-  // Username (@handle) is stored on the identity for display, not as customer.name.
+  /** Instagram @handle for customer.name — never the numeric IGSID. */
+  const igUsernameFromInbound = (): string | null => {
+    if (channelType !== "instagram") return null;
+    const raw = asMeta(inbound.raw as Prisma.JsonValue);
+    const profile = asMeta(raw._profile as Prisma.JsonValue | undefined);
+    const fromProfile =
+      typeof profile.username === "string" ? profile.username.replace(/^@+/, "").trim() : "";
+    const fromSender = (inbound.senderName ?? "").trim().replace(/^@+/, "");
+    const handle = (fromProfile || fromSender).trim();
+    if (!handle || /^\d{5,}$/.test(handle)) return null;
+    return handle;
+  };
+
+  const igHandle = igUsernameFromInbound();
+
+  // Instagram: prefer @username as customer name; IGSID stays on identity.externalId for Graph sends.
   const displayName =
     channelType === "instagram"
-      ? "Unknown"
+      ? igHandle
+        ? `@${igHandle}`
+        : "Unknown"
       : inbound.senderName?.trim() ||
         inbound.senderEmail?.trim() ||
         inbound.senderPhone?.trim() ||
@@ -224,17 +244,9 @@ export async function findOrCreateCustomerForInbound(input: {
     senderName: inbound.senderName ?? null,
   };
   if (channelType === "instagram") {
-    const raw = asMeta(inbound.raw as Prisma.JsonValue);
-    const profile = asMeta(raw._profile as Prisma.JsonValue | undefined);
-    const fromProfile =
-      typeof profile.username === "string" ? profile.username.replace(/^@+/, "").trim() : "";
-    const handle = (
-      fromProfile ||
-      (inbound.senderName ?? "").trim().replace(/^@+/, "")
-    ).trim();
-    if (handle && !/^\d{5,}$/.test(handle)) {
-      metadata.username = handle;
-      metadata.senderName = `@${handle}`;
+    if (igHandle) {
+      metadata.username = igHandle;
+      metadata.senderName = `@${igHandle}`;
     } else if (inbound.senderName?.trim()) {
       metadata.senderName = inbound.senderName.trim();
     }
@@ -271,8 +283,21 @@ export async function findOrCreateCustomerForInbound(input: {
         data: { resolved: false, lastMessageAt: new Date(), metadata: mergedMeta },
       });
     }
-    // Never overwrite customer.name with an Instagram @username
-    if (channelType !== "instagram" && displayName && displayName !== "Unknown") {
+
+    if (channelType === "instagram" && igHandle) {
+      const customer = await prisma.customer.findUniqueOrThrow({ where: { id: customerId } });
+      if (
+        !customer.name ||
+        customer.name === "Unknown" ||
+        /^\d{5,}$/.test(customer.name) ||
+        customer.name === existing.externalId
+      ) {
+        await prisma.customer.update({
+          where: { id: customerId },
+          data: { name: `@${igHandle}` },
+        });
+      }
+    } else if (channelType !== "instagram" && displayName && displayName !== "Unknown") {
       const customer = await prisma.customer.findUniqueOrThrow({ where: { id: customerId } });
       if (!customer.name || customer.name === "Unknown" || /^\d{5,}$/.test(customer.name)) {
         await prisma.customer.update({
@@ -323,15 +348,20 @@ export async function findOrCreateCustomerForInbound(input: {
     const customer = await prisma.customer.create({
       data: {
         id: ulid(),
-        name: channelType === "instagram" ? "Unknown" : displayName,
+        name: displayName,
         resolved: false,
         metadata: {},
       },
     });
     customerId = customer.id;
-  } else if (channelType !== "instagram" && displayName && displayName !== "Unknown") {
+  } else if (displayName && displayName !== "Unknown") {
     const customer = await prisma.customer.findUnique({ where: { id: customerId } });
-    if (customer && (!customer.name || customer.name === "Unknown")) {
+    if (
+      customer &&
+      (!customer.name ||
+        customer.name === "Unknown" ||
+        (channelType === "instagram" && /^\d{5,}$/.test(customer.name)))
+    ) {
       await prisma.customer.update({
         where: { id: customerId },
         data: { name: displayName },

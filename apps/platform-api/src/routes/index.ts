@@ -1,4 +1,7 @@
 import type { FastifyInstance } from "fastify";
+import fs from "node:fs/promises";
+import nodePath from "node:path";
+import { fileURLToPath } from "node:url";
 import { accountRoutes } from "./v1/accounts.routes.js";
 import { inboxRoutes } from "./v1/inboxes.routes.js";
 import { conversationRoutes } from "./v1/conversations.routes.js";
@@ -24,11 +27,31 @@ export async function registerRoutes(app: FastifyInstance) {
     return reply.type("text/html").send(PRIVACY_POLICY_HTML);
   });
 
+  // Static setup PDF (public) — generated via `npm run docs:pdf`
+  app.get("/docs/channel-setup-guide.pdf", async (_request, reply) => {
+    const pdfPath = nodePath.resolve(
+      nodePath.dirname(fileURLToPath(import.meta.url)),
+      "../../public/docs/channel-setup-guide.pdf",
+    );
+    try {
+      const buf = await fs.readFile(pdfPath);
+      return reply
+        .header("Content-Type", "application/pdf")
+        .header("Content-Disposition", 'attachment; filename="CEP-Channel-Setup-Guide.pdf"')
+        .send(buf);
+    } catch {
+      return reply.code(404).send({
+        error: "Setup guide PDF not found. Run: npm run docs:pdf (in platform-api).",
+      });
+    }
+  });
+
   app.get("/", async () => ({
     service: "platform-api",
     message: "This is the CEP API. Open the agent UI at http://localhost:5173",
     health: "/health",
     privacy: "/privacy",
+    docsPdf: "/docs/channel-setup-guide.pdf",
     docs: "See docs/PLATFORM.md",
   }));
 
@@ -36,14 +59,15 @@ export async function registerRoutes(app: FastifyInstance) {
   app.register(publicOAuthRoutes, { prefix: "/oauth" });
 
   app.addHook("preHandler", async (request, reply) => {
-    const path = request.url.split("?")[0] ?? request.url;
+    const reqPath = request.url.split("?")[0] ?? request.url;
     if (
-      path === "/" ||
-      path === "/health" ||
-      path === "/privacy" ||
-      path.startsWith("/webhooks/") ||
-      path.startsWith("/oauth/") ||
-      path === "/api/v1/auth/login"
+      reqPath === "/" ||
+      reqPath === "/health" ||
+      reqPath === "/privacy" ||
+      reqPath === "/docs/channel-setup-guide.pdf" ||
+      reqPath.startsWith("/webhooks/") ||
+      reqPath.startsWith("/oauth/") ||
+      reqPath === "/api/v1/auth/login"
     ) {
       return;
     }

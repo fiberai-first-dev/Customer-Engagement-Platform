@@ -183,10 +183,10 @@ export async function startInstagramOAuth(
   const inbox = await loadInbox(inboxId, "instagram");
   const cfg = asConfig(inbox.channelConfig);
   const appId = nonEmpty(cfg.instagramAppId);
-  const appSecret = nonEmpty(cfg.appSecret);
+  const appSecret = nonEmpty(cfg.instagramAppSecret) ?? nonEmpty(cfg.appSecret);
   if (!appId || !appSecret) {
     throw new Error(
-      "Save Instagram App ID and App Secret in Settings first, then click Connect Instagram.",
+      "Save Instagram App ID and Instagram App Secret in Settings first, then click Connect Instagram.",
     );
   }
 
@@ -268,9 +268,9 @@ export async function completeInstagramOAuth(input: {
 
   const cfg = asConfig(inbox.channelConfig);
   const appId = nonEmpty(cfg.instagramAppId);
-  const appSecret = nonEmpty(cfg.appSecret);
+  const appSecret = nonEmpty(cfg.instagramAppSecret) ?? nonEmpty(cfg.appSecret);
   if (!appId || !appSecret) {
-    throw new Error("Instagram App ID / Secret missing on channel config");
+    throw new Error("Instagram App ID / Instagram App Secret missing on channel config");
   }
 
   const redirectUri = instagramRedirectUri();
@@ -310,7 +310,6 @@ export async function completeInstagramOAuth(input: {
   }
 
   let username: string | undefined;
-  let pageId: string | undefined;
   try {
     const meRes = await fetch(
       `https://graph.instagram.com/v21.0/me?fields=id,username,user_id,account_type&access_token=${longJson.access_token}`,
@@ -321,7 +320,6 @@ export async function completeInstagramOAuth(input: {
       user_id?: string;
     };
     username = me.username;
-    pageId = me.user_id ?? me.id;
   } catch {
     /* optional */
   }
@@ -331,9 +329,11 @@ export async function completeInstagramOAuth(input: {
   await patchInboxConfig(inbox.id, inbox.channelConfig, {
     accessToken: longJson.access_token,
     instagramAppId: appId,
-    appSecret,
+    instagramAppSecret: appSecret,
     ...(username ? { instagramUsername: username } : {}),
-    ...(pageId ? { pageId } : {}),
+    // Drop legacy / unused keys
+    appSecret: null,
+    pageId: null,
   });
 
   return {
