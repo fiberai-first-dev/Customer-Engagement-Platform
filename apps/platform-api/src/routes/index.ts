@@ -29,21 +29,27 @@ export async function registerRoutes(app: FastifyInstance) {
 
   // Static setup PDF (public) — generated via `npm run docs:pdf`
   app.get("/docs/channel-setup-guide.pdf", async (_request, reply) => {
-    const pdfPath = nodePath.resolve(
-      nodePath.dirname(fileURLToPath(import.meta.url)),
-      "../../public/docs/channel-setup-guide.pdf",
-    );
-    try {
-      const buf = await fs.readFile(pdfPath);
-      return reply
-        .header("Content-Type", "application/pdf")
-        .header("Content-Disposition", 'attachment; filename="CEP-Channel-Setup-Guide.pdf"')
-        .send(buf);
-    } catch {
-      return reply.code(404).send({
-        error: "Setup guide PDF not found. Run: npm run docs:pdf (in platform-api).",
-      });
+    const here = nodePath.dirname(fileURLToPath(import.meta.url));
+    const candidates = [
+      // runtime Docker layout: /app/dist/routes → /app/public/docs
+      nodePath.resolve(here, "../../public/docs/channel-setup-guide.pdf"),
+      // cwd fallback
+      nodePath.resolve(process.cwd(), "public/docs/channel-setup-guide.pdf"),
+    ];
+    for (const pdfPath of candidates) {
+      try {
+        const buf = await fs.readFile(pdfPath);
+        return reply
+          .header("Content-Type", "application/pdf")
+          .header("Content-Disposition", 'attachment; filename="CEP-Channel-Setup-Guide.pdf"')
+          .send(buf);
+      } catch {
+        /* try next */
+      }
     }
+    return reply.code(404).send({
+      error: "Setup guide PDF not found. Rebuild API image (public/docs) or run: npm run docs:pdf",
+    });
   });
 
   app.get("/", async () => ({

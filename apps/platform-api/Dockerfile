@@ -17,6 +17,7 @@ ENV NODE_ENV=production
 COPY --from=deps /app/node_modules ./node_modules
 COPY --from=build /app/dist ./dist
 COPY --from=build /app/prisma ./prisma
+COPY --from=build /app/public ./public
 COPY package.json ./
 EXPOSE 4100
 # server.ts runs SQL migrate/repair before listen (no prisma migrate deploy)
