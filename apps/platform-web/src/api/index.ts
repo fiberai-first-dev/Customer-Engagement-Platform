@@ -3,6 +3,11 @@ import { useAuthStore } from "../store/auth";
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL ?? "";
 
+/** Public PDF served by platform-api (`GET /docs/channel-setup-guide.pdf`). */
+export function setupGuidePdfUrl(): string {
+  return `${API_BASE.replace(/\/$/, "")}/docs/channel-setup-guide.pdf`;
+}
+
 export class ApiError extends Error {
   status: number;
   data: unknown;
@@ -362,6 +367,7 @@ export const useCreateContact = () => {
       }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["contacts"] });
+      queryClient.invalidateQueries({ queryKey: ["conversations"] });
     },
   });
 };
@@ -376,6 +382,7 @@ export const useUpdateContact = () => {
       }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["contacts"] });
+      queryClient.invalidateQueries({ queryKey: ["conversations"] });
     },
   });
 };

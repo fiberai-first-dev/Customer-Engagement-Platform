@@ -29,7 +29,7 @@ export function InboxPage() {
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState<"active" | "all">("active");
   const [activeTab, setActiveTab] = useState<ChannelType>("whatsapp");
-  const [customerContextOpen, setCustomerContextOpen] = useState(false);
+  const [customerContextOpen, setCustomerContextOpen] = useState(true);
   const focusedContactRef = useRef<string | null>(null);
 
   const {
@@ -169,7 +169,6 @@ export function InboxPage() {
     focusedContactRef.current = contactId;
     setSelectedContactId(contactId);
     setActiveTab(pickPrimaryConversation(rows).channelType);
-    setCustomerContextOpen(false);
   };
 
   const handleSend = (content: string, subject?: string) => {

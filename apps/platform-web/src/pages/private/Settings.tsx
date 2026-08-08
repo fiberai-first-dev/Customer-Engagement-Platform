@@ -12,8 +12,9 @@ import {
   useShopifyConfig,
   useUpdateInbox,
   useUpdateShopifyConfig,
+  setupGuidePdfUrl,
 } from "../../api";
-import { CheckCircle2, Copy, Link2, Loader2, Radio, Save } from "lucide-react";
+import { CheckCircle2, Copy, Download, Link2, Loader2, Radio, Save } from "lucide-react";
 
 type SettingsTab = "channels" | "shopify";
 
@@ -32,10 +33,9 @@ const EMPTY_WA = {
 };
 
 const EMPTY_IG = {
-  pageId: "",
   accessToken: "",
   verifyToken: "",
-  appSecret: "",
+  instagramAppSecret: "",
   instagramAppId: "",
   instagramUsername: "",
 };
@@ -208,12 +208,35 @@ export function SettingsPage() {
     clientSecret: "",
   });
 
+  // Clear connect spinner on mount and when browser restores page from bfcache (Back after OAuth)
+  useEffect(() => {
+    setConnecting(null);
+    const onPageShow = (e: PageTransitionEvent) => {
+      if (e.persisted) setConnecting(null);
+    };
+    window.addEventListener("pageshow", onPageShow);
+    return () => window.removeEventListener("pageshow", onPageShow);
+  }, []);
+
   useEffect(() => {
     if (!inboxes) return;
     const wa = inboxes.find((i) => i.channelType === "whatsapp");
     setWaConfig({ ...EMPTY_WA, ...asStringRecord(wa?.channelConfig as Record<string, unknown>) });
     const ig = inboxes.find((i) => i.channelType === "instagram");
-    setIgConfig({ ...EMPTY_IG, ...asStringRecord(ig?.channelConfig as Record<string, unknown>) });
+    {
+      const raw = asStringRecord(ig?.channelConfig as Record<string, unknown>);
+      const {
+        pageId: _pageId,
+        appSecret: legacySecret,
+        instagramAppSecret,
+        ...igRest
+      } = raw;
+      setIgConfig({
+        ...EMPTY_IG,
+        ...igRest,
+        instagramAppSecret: instagramAppSecret || legacySecret || "",
+      });
+    }
     const em = inboxes.find((i) => i.channelType === "email");
     setEmailConfig({
       ...EMPTY_EMAIL,
@@ -234,6 +257,9 @@ export function SettingsPage() {
     const oauth = searchParams.get("oauth");
     const status = searchParams.get("status");
     if (!oauth || !status) return;
+
+    // Always stop Connect spinner after OAuth redirect back to Settings
+    setConnecting(null);
 
     if (status === "success") {
       const who =
@@ -275,13 +301,27 @@ export function SettingsPage() {
       setBanner({ tone: "err", text: "Channel is not available. Please try again later." });
       return;
     }
+    const channelConfig =
+      channelType === "instagram"
+        ? (() => {
+            const {
+              pageId: _pageId,
+              appSecret: _legacy,
+              ...rest
+            } = config as Record<string, string> & {
+              pageId?: string;
+              appSecret?: string;
+            };
+            return { ...rest, pageId: null, appSecret: null };
+          })()
+        : config;
     setPendingChannel(channelType);
     setPendingAction("save");
     updateInbox(
       {
         id: inbox.id,
         body: {
-          channelConfig: config,
+          channelConfig,
           enabled: enabled ?? inbox.enabled,
         },
       },
@@ -335,7 +375,8 @@ export function SettingsPage() {
     setConnecting(provider);
     try {
       const { url } = await startChannelOAuth(provider, inbox.id);
-      window.location.href = url;
+      // Prefer assign so unloading clears SPA state; still handle bfcache via pageshow
+      window.location.assign(url);
     } catch (err: any) {
       setBanner({ tone: "err", text: err?.message ?? "Could not start connection" });
       setConnecting(null);
@@ -374,9 +415,17 @@ export function SettingsPage() {
   return (
     <div className="flex h-full flex-1 flex-col overflow-y-auto bg-background p-8">
       <div className="mx-auto w-full max-w-4xl space-y-8 pb-12">
-        <div>
-          <h1 className="mb-1 text-3xl font-bold">Settings</h1>
-          <p className="text-muted-foreground">Manage channels and Shopify integration.</p>
+        <div className="flex flex-wrap items-start justify-between gap-4">
+          <div>
+            <h1 className="mb-1 text-3xl font-bold">Settings</h1>
+            <p className="text-muted-foreground">Manage channels and Shopify integration.</p>
+          </div>
+          <Button variant="outline" className="gap-2" asChild>
+            <a href={setupGuidePdfUrl()} download="CEP-Channel-Setup-Guide.pdf">
+              <Download className="h-4 w-4" />
+              Download setup guide (PDF)
+            </a>
+          </Button>
         </div>
 
         <div className="flex gap-1 rounded-lg border border-border bg-muted/40 p-1 w-fit">
@@ -447,7 +496,7 @@ export function SettingsPage() {
 
             <ChannelCard
               title="Instagram"
-              description="Connect Instagram Messaging for your business account."
+              description="Use Instagram App ID/Secret from Meta > Instagram > API setup with Instagram login, then Connect."
               enabled={igInbox?.enabled ?? false}
               onToggleEnabled={(v) => handleToggleEnabled("instagram", v)}
               saving={isSaving("instagram")}
@@ -473,11 +522,10 @@ export function SettingsPage() {
                 values={igConfig}
                 onChange={(key, value) => setIgConfig((prev) => ({ ...prev, [key]: value }))}
                 fields={[
-                  { key: "instagramAppId", label: "App ID" },
-                  { key: "appSecret", label: "App Secret" },
+                  { key: "instagramAppId", label: "Instagram App ID" },
+                  { key: "instagramAppSecret", label: "Instagram App Secret" },
                   { key: "verifyToken", label: "Verify Token" },
                   { key: "accessToken", label: "Access Token" },
-                  { key: "pageId", label: "Page / User ID" },
                   { key: "instagramUsername", label: "Username" },
                 ]}
               />

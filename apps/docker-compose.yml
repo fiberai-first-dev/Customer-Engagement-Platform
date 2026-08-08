@@ -1,22 +1,23 @@
 services:
-  # cep-postgres:
-  #   image: postgres:16
-  #   environment:
-  #     POSTGRES_USER: cep
-  #     POSTGRES_PASSWORD: cep
-  #     POSTGRES_DB: cep_platform
-  #   ports:
-  #     - "5434:5432"
-  #   volumes:
-  #     - cep_pg_data:/var/lib/postgresql/data
-  #   healthcheck:
-  #     test: ["CMD-SHELL", "pg_isready -U cep -d cep_platform"]
-  #     interval: 5s
-  #     timeout: 5s
-  #     retries: 10
+  cep-postgres:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: cep
+      POSTGRES_PASSWORD: cep
+      POSTGRES_DB: cep_platform
+    ports:
+      - "5434:5432"
+    volumes:
+      - cep_pg_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U cep -d cep_platform"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
 
-  # Boot: migrate if tables missing + sync non-empty .env channel creds into DB.
-  # Just: docker compose -f apps/docker-compose.yml up -d --build
+  # DB URL comes from apps/platform-api/.env (env_file) — not hardcoded here.
+  # Inside Compose that URL must use host "cep-postgres", e.g.
+  # PLATFORM_DATABASE_URL=postgresql://cep:cep@cep-postgres:5432/cep_platform
   platform-api:
     build:
       context: ./platform-api
@@ -25,9 +26,9 @@ services:
       - ./platform-api/.env
     ports:
       - "4100:4100"
-    # depends_on:
-    #   cep-postgres:
-    #     condition: service_healthy
+    depends_on:
+      cep-postgres:
+        condition: service_healthy
 
   platform-web:
     build:
@@ -39,8 +40,8 @@ services:
       - ./platform-web/.env
     ports:
       - "9000:5173"
-    # depends_on:
-    #   - platform-api
+    depends_on:
+      - platform-api
 
-# volumes:
-#   cep_pg_data:
+volumes:
+  cep_pg_data:
