@@ -9,7 +9,10 @@ import {
   type ChannelConfig,
 } from "../adapters/shared/index.js";
 import { extractEmailAddress } from "../adapters/email/index.js";
-import { recomputeCustomerResolved, setChannelResolved } from "./ResolveService.js";
+import {
+  recomputeCustomerResolved,
+  resolveAllIdentitiesForCustomerChannel,
+} from "./ResolveService.js";
 import { enrichCustomerFromShopify } from "./orders/shopify-contact.service.js";
 import {
   formatWhatsAppStorage as formatWa,
@@ -604,37 +607,30 @@ export async function sendCustomerChannelMessage(input: {
     },
   });
 
+  // Touch the identity we actually messaged (activity timestamp).
   if (input.channelType === "whatsapp") {
     await prisma.whatsAppChannel.update({
       where: { id: identity.id },
-      data: {
-        lastMessageAt: new Date(),
-        ...(result.status !== "failed" ? { resolved: true } : {}),
-      },
+      data: { lastMessageAt: new Date() },
     });
   } else if (input.channelType === "instagram") {
     await prisma.instagramChannel.update({
       where: { id: identity.id },
-      data: {
-        lastMessageAt: new Date(),
-        ...(result.status !== "failed" ? { resolved: true } : {}),
-      },
+      data: { lastMessageAt: new Date() },
     });
   } else {
     await prisma.emailChannel.update({
       where: { id: identity.id },
-      data: {
-        lastMessageAt: new Date(),
-        ...(result.status !== "failed" ? { resolved: true } : {}),
-      },
+      data: { lastMessageAt: new Date() },
     });
   }
 
+  // Inbox status is open if ANY identity on that channel is unresolved.
+  // A successful agent reply resolves the whole channel type (same as Resolve button).
   if (result.status !== "failed") {
-    await setChannelResolved({
+    await resolveAllIdentitiesForCustomerChannel({
+      customerId: input.customerId,
       channelType: input.channelType,
-      channelId: identity.id,
-      resolved: true,
     });
   } else {
     await recomputeCustomerResolved(input.customerId);

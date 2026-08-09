@@ -24,6 +24,18 @@ interface EmailPubSubData {
 
 const RECENT_INBOX_LIMIT = 30;
 
+/** Serialize Gmail ingest so Pub/Sub bursts + boot catch-up don't exhaust Prisma's tiny pool. */
+let emailIngestTail: Promise<unknown> = Promise.resolve();
+
+function withEmailIngestLock<T>(fn: () => Promise<T>): Promise<T> {
+  const run = emailIngestTail.then(fn, fn);
+  emailIngestTail = run.then(
+    () => undefined,
+    () => undefined,
+  );
+  return run;
+}
+
 function asEmailConfig(raw: Prisma.JsonValue): EmailChannelConfig | null {
   if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null;
   const obj = raw as Record<string, unknown>;
@@ -132,6 +144,12 @@ async function processGmailMessageIds(input: {
 export async function handlePubSubNotification(
   body: PubSubPushBody,
 ): Promise<{ processed: number; skipped: number; inboxId: string; primed?: boolean }> {
+  return withEmailIngestLock(() => handlePubSubNotificationLocked(body));
+}
+
+async function handlePubSubNotificationLocked(
+  body: PubSubPushBody,
+): Promise<{ processed: number; skipped: number; inboxId: string; primed?: boolean }> {
   const rawData = body.message?.data;
   if (!rawData) throw new Error("Missing Pub/Sub message data");
 
@@ -172,6 +190,7 @@ export async function handlePubSubNotification(
 
   const gmail = getEmailClient(config!);
   let messageIds: string[] = [];
+  let historyOk = false;
 
   // History since last cursor (can miss messages if the cursor advanced ahead of ingest).
   if (startHistoryId && !primed) {
@@ -192,29 +211,27 @@ export async function handlePubSubNotification(
         }
         pageToken = historyRes.data.nextPageToken ?? undefined;
       } while (pageToken);
+      historyOk = true;
     } catch (err: unknown) {
       const status = (err as { code?: number })?.code;
       console.warn("[email] history.list failed:", status ?? err);
     }
   }
 
-  // ALWAYS also scan recent INBOX. Relying on history alone drops mail when:
-  // - history returns unrelated/partial ids and catch-up used to be skipped
-  // - historyId advanced after a failed/skipped ingest
-  try {
-    const recentIds = await listRecentInboxMessageIds(gmail);
-    if (messageIds.length === 0) {
+  // Only scan recent INBOX when history is empty/failed or watch was just primed.
+  // Unioning 30 messages on every Pub/Sub push re-ran ingest under a 3-conn pool (P2024).
+  if (!historyOk || messageIds.length === 0 || primed) {
+    try {
+      const recentIds = await listRecentInboxMessageIds(gmail);
       console.warn(
-        `[email] history empty from ${startHistoryId || "(none)"}; using recent INBOX (${recentIds.length})`,
+        `[email] history empty/failed from ${startHistoryId || "(none)"}; using recent INBOX (${recentIds.length})`,
       );
-    } else {
-      console.info(
-        `[email] history=${messageIds.length} + recent INBOX=${recentIds.length} (union)`,
-      );
+      messageIds = [...messageIds, ...recentIds];
+    } catch (err) {
+      console.error("[email] recent INBOX list failed:", err);
     }
-    messageIds = [...messageIds, ...recentIds];
-  } catch (err) {
-    console.error("[email] recent INBOX list failed:", err);
+  } else {
+    console.info(`[email] history=${messageIds.length} (skipping recent INBOX union)`);
   }
 
   messageIds = [...new Set(messageIds)];
@@ -250,14 +267,16 @@ export async function catchUpRecentEmailMessages(
   inboxId: string,
   maxResults = RECENT_INBOX_LIMIT,
 ): Promise<{ processed: number; skipped: number }> {
-  const inbox = await prisma.channelConfig.findUnique({ where: { id: inboxId } });
-  if (!inbox) return { processed: 0, skipped: 0 };
-  const config = asEmailConfig(inbox.channelConfig);
-  if (!config) return { processed: 0, skipped: 0 };
+  return withEmailIngestLock(async () => {
+    const inbox = await prisma.channelConfig.findUnique({ where: { id: inboxId } });
+    if (!inbox) return { processed: 0, skipped: 0 };
+    const config = asEmailConfig(inbox.channelConfig);
+    if (!config) return { processed: 0, skipped: 0 };
 
-  const gmail = getEmailClient(config);
-  const messageIds = await listRecentInboxMessageIds(gmail, maxResults);
-  return processGmailMessageIds({ inboxId: inbox.id, config, messageIds });
+    const gmail = getEmailClient(config);
+    const messageIds = await listRecentInboxMessageIds(gmail, maxResults);
+    return processGmailMessageIds({ inboxId: inbox.id, config, messageIds });
+  });
 }
 
 export async function setupEmailWatch(inboxId?: string) {
