@@ -34,7 +34,7 @@ async function findCepCustomerIdByPhone(phoneDigits: string): Promise<string | n
   return wa?.customerId ?? null;
 }
 
-async function ensureEmailIdentity(customerId: string, email: string) {
+async function ensureEmailIdentity(customerId: string, email: string): Promise<boolean> {
   const em = await prisma.emailChannel.findUnique({ where: { externalId: email } });
   if (!em) {
     await prisma.emailChannel.create({
@@ -42,13 +42,14 @@ async function ensureEmailIdentity(customerId: string, email: string) {
         id: ulid(),
         customerId,
         externalId: email,
-        resolved: false,
+        // Ghost until first real message — must not inflate Unresolved badge.
+        resolved: true,
         metadata: { source: "shopify" },
       },
     });
-    return;
+    return true;
   }
-  if (em.customerId === customerId) return;
+  if (em.customerId === customerId) return false;
   // Merge onto the target customer (identity already existed on another row)
   await prisma.message.updateMany({
     where: { channelType: "email", channelId: em.id },
@@ -59,9 +60,10 @@ async function ensureEmailIdentity(customerId: string, email: string) {
     data: { customerId },
   });
   await recomputeCustomerResolved(em.customerId);
+  return true;
 }
 
-async function ensureWhatsAppIdentity(customerId: string, phoneDigits: string) {
+async function ensureWhatsAppIdentity(customerId: string, phoneDigits: string): Promise<boolean> {
   const formatted = formatWhatsAppStorage(phoneDigits) ?? phoneDigits;
   const suffix = phoneDigits.length > 10 ? phoneDigits.slice(-10) : phoneDigits;
   const candidates = await prisma.whatsAppChannel.findMany({
@@ -84,11 +86,11 @@ async function ensureWhatsAppIdentity(customerId: string, phoneDigits: string) {
         id: ulid(),
         customerId,
         externalId: formatted,
-        resolved: false,
+        resolved: true,
         metadata: { source: "shopify" },
       },
     });
-    return;
+    return true;
   }
   if (wa.customerId !== customerId) {
     await prisma.message.updateMany({
@@ -100,14 +102,16 @@ async function ensureWhatsAppIdentity(customerId: string, phoneDigits: string) {
       data: { customerId, externalId: formatted },
     });
     await recomputeCustomerResolved(wa.customerId);
-    return;
+    return true;
   }
   if (wa.externalId !== formatted) {
     await prisma.whatsAppChannel.update({
       where: { id: wa.id },
       data: { externalId: formatted },
     });
+    return true;
   }
+  return false;
 }
 
 /**
@@ -121,6 +125,9 @@ async function ensureWhatsAppIdentity(customerId: string, phoneDigits: string) {
  *   Shopify lookup by email → get phone → if CEP has that WhatsApp, merge onto it;
  *   else create CEP customer with Shopify email + WhatsApp.
  *
+ * When `preferredCustomerId` is set (existing CEP thread), never create a new
+ * customer — attach Shopify email/phone onto that row instead.
+ *
  * CEP id ≠ Shopify id — we never match on Shopify customer id.
  */
 export async function enrichCustomerFromShopify(input: {
@@ -129,7 +136,9 @@ export async function enrichCustomerFromShopify(input: {
   phone?: string | null;
   /** Which channel triggered this inbound — drives cross-match direction. */
   inboundChannel: InboundChannel;
-}): Promise<{ customerId: string; created: boolean; shopifyCustomerId?: string } | null> {
+  /** Existing CEP customer to keep; skip create + keep identities on this row. */
+  preferredCustomerId?: string | null;
+}): Promise<{ customerId: string; created: boolean; shopifyCustomerId?: string; changed?: boolean } | null> {
   const creds = await resolveShopifyCredentials();
   if (!creds) return null;
   if (!input.email && !input.phone) return null;
@@ -159,17 +168,19 @@ export async function enrichCustomerFromShopify(input: {
 
     if (!shopifyEmail && !shopifyPhoneDigits) return null;
 
-    let customerId: string | null = null;
+    let customerId: string | null = input.preferredCustomerId?.trim() || null;
+    let createdLocal = false;
 
-    if (input.inboundChannel === "whatsapp") {
-      // Cross-match: use Shopify email to find existing CEP customer
-      if (shopifyEmail) customerId = await findCepCustomerIdByEmail(shopifyEmail);
-    } else {
-      // Cross-match: use Shopify phone to find existing CEP customer
-      if (shopifyPhoneDigits) customerId = await findCepCustomerIdByPhone(shopifyPhoneDigits);
+    if (!customerId) {
+      if (input.inboundChannel === "whatsapp") {
+        // Cross-match: use Shopify email to find existing CEP customer
+        if (shopifyEmail) customerId = await findCepCustomerIdByEmail(shopifyEmail);
+      } else {
+        // Cross-match: use Shopify phone to find existing CEP customer
+        if (shopifyPhoneDigits) customerId = await findCepCustomerIdByPhone(shopifyPhoneDigits);
+      }
     }
 
-    let createdLocal = false;
     if (!customerId) {
       const created = await prisma.customer.create({
         data: {
@@ -183,37 +194,77 @@ export async function enrichCustomerFromShopify(input: {
       createdLocal = true;
     } else {
       const existing = await prisma.customer.findUnique({ where: { id: customerId } });
-      if (existing) {
-        const nextName =
-          !existing.name || existing.name === "Unknown"
-            ? shopifyName || input.name || existing.name
-            : existing.name;
-        if (nextName !== existing.name) {
-          await prisma.customer.update({
-            where: { id: customerId },
-            data: { name: nextName },
-          });
-        }
+      if (!existing) return null;
+      const nextName =
+        !existing.name || existing.name === "Unknown"
+          ? shopifyName || input.name || existing.name
+          : existing.name;
+      if (nextName !== existing.name) {
+        await prisma.customer.update({
+          where: { id: customerId },
+          data: { name: nextName },
+        });
       }
     }
 
     // Always attach both channels from Shopify when available (merge or new)
-    if (shopifyEmail) await ensureEmailIdentity(customerId, shopifyEmail);
-    if (shopifyPhoneDigits) await ensureWhatsAppIdentity(customerId, shopifyPhoneDigits);
+    let changed = false;
+    if (shopifyEmail) changed = (await ensureEmailIdentity(customerId, shopifyEmail)) || changed;
+    if (shopifyPhoneDigits) {
+      changed = (await ensureWhatsAppIdentity(customerId, shopifyPhoneDigits)) || changed;
+    }
 
     await recomputeCustomerResolved(customerId);
     console.log(
-      `[shopify] ${input.inboundChannel} inbound → customer=${customerId} shopify=${shopifyHit.id} new=${createdLocal} email=${shopifyEmail ?? "-"} phone=${shopifyPhoneDigits ? formatWhatsAppStorage(shopifyPhoneDigits) : "-"}`,
+      `[shopify] ${input.inboundChannel} inbound → customer=${customerId} shopify=${shopifyHit.id} new=${createdLocal} preferred=${input.preferredCustomerId ?? "-"} changed=${changed} email=${shopifyEmail ?? "-"} phone=${shopifyPhoneDigits ? formatWhatsAppStorage(shopifyPhoneDigits) : "-"}`,
     );
     return {
       customerId,
       created: createdLocal,
       shopifyCustomerId: String(shopifyHit.id),
+      changed,
     };
   } catch (err) {
     console.warn("[shopify] enrich failed:", err instanceof Error ? err.message : err);
     return null;
   }
+}
+
+/**
+ * Attach Shopify email/phone onto an existing CEP customer (no new customer).
+ * Used when opening the inbox panel and on repeat inbound for known identities.
+ */
+export async function linkShopifyChannelsToCustomer(
+  customerId: string,
+  input: {
+    email?: string | null;
+    phone?: string | null;
+  },
+): Promise<{ linked: boolean; changed: boolean; email?: string | null; phone?: string | null }> {
+  const hasEmail = Boolean(input.email?.trim());
+  const hasPhone = Boolean(input.phone?.trim());
+  if (!hasEmail && !hasPhone) return { linked: false, changed: false };
+
+  const result = await enrichCustomerFromShopify({
+    email: input.email,
+    phone: input.phone,
+    inboundChannel: hasPhone ? "whatsapp" : "email",
+    preferredCustomerId: customerId,
+  });
+
+  if (!result) return { linked: false, changed: false };
+
+  const customer = await prisma.customer.findUnique({
+    where: { id: customerId },
+    include: { emailIdentities: true, whatsappIdentities: true },
+  });
+
+  return {
+    linked: true,
+    changed: Boolean(result.changed),
+    email: customer?.emailIdentities[0]?.externalId ?? null,
+    phone: customer?.whatsappIdentities[0]?.externalId ?? null,
+  };
 }
 
 /** @deprecated use enrichCustomerFromShopify */

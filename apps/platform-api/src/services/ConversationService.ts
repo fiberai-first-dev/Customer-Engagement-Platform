@@ -8,6 +8,7 @@ import {
   recomputeCustomerResolved,
   resolveAllIdentitiesForCustomerChannel,
 } from "./ResolveService.js";
+import { suppressConversation, suppressMessages as suppressSelectedMessages } from "./SuppressService.js";
 
 function previewMessage(content: string) {
   return content.length > 120 ? `${content.slice(0, 117)}…` : content;
@@ -38,7 +39,7 @@ export class ConversationService {
       const shaped = shapeCustomer(customer);
       const channelStatuses: Partial<Record<ChannelType, "open" | "resolved">> = {};
 
-      // Pre-compute statuses for all enabled channels that have identities
+      // Pre-compute statuses for all enabled channels that have *messaged* identities
       for (const type of ["whatsapp", "instagram", "email"] as ChannelType[]) {
         if (!enabledTypes.has(type)) continue;
         const identities =
@@ -47,8 +48,9 @@ export class ConversationService {
             : type === "instagram"
               ? customer.instagramIdentities
               : customer.emailIdentities;
-        if (!identities.length) continue;
-        const unresolved = identities.some((i) => !i.resolved);
+        const active = identities.filter((i) => i.lastMessageAt != null);
+        if (!active.length) continue;
+        const unresolved = active.some((i) => !i.resolved);
         channelStatuses[type] = unresolved ? "open" : "resolved";
       }
 
@@ -60,14 +62,16 @@ export class ConversationService {
             : type === "instagram"
               ? customer.instagramIdentities
               : customer.emailIdentities;
-        if (!identities.length) continue;
+        // Shopify / contact-form ghosts have no lastMessageAt — hide from Inbox.
+        const active = identities.filter((i) => i.lastMessageAt != null);
+        if (!active.length) continue;
 
-        const unresolved = identities.some((i) => !i.resolved);
+        const unresolved = active.some((i) => !i.resolved);
         // Filter by per-channel status (not only global customer.resolved)
         if (status === "active" && !unresolved) continue;
         if (status === "resolved" && unresolved) continue;
 
-        const latest = [...identities].sort((a, b) => {
+        const latest = [...active].sort((a, b) => {
           const at = a.lastMessageAt?.getTime() ?? 0;
           const bt = b.lastMessageAt?.getTime() ?? 0;
           return bt - at;
@@ -93,7 +97,9 @@ export class ConversationService {
           contact: {
             ...shaped,
             channelStatuses,
-            globalStatus: customer.resolved ? ("resolved" as const) : ("active" as const),
+            globalStatus: Object.values(channelStatuses).some((s) => s === "open")
+              ? ("active" as const)
+              : ("resolved" as const),
           },
           messages: lastMsg
             ? [
@@ -158,16 +164,18 @@ export class ConversationService {
       subject,
     });
     return {
-      message: {
-        id: result.message.id,
-        conversationId,
-        direction: result.message.direction,
-        content: result.message.content,
-        contentType: result.message.contentType,
-        subject: result.message.subject,
-        status: result.message.status,
-        createdAt: result.message.createdAt.toISOString(),
-      },
+      message: result.message
+        ? {
+            id: result.message.id,
+            conversationId,
+            direction: result.message.direction,
+            content: result.message.content,
+            contentType: result.message.contentType,
+            subject: result.message.subject,
+            status: result.message.status,
+            createdAt: result.message.createdAt.toISOString(),
+          }
+        : null,
       result: result.result,
     };
   }
@@ -201,5 +209,19 @@ export class ConversationService {
     const found = list.find((r) => r.id === conversationId);
     if (!found) throw new Error("Conversation not found");
     return found;
+  }
+
+  /** Delete messages + tombstone external ids so providers cannot resurrect them. */
+  static async suppress(conversationId: string) {
+    const { customerId, channelType } = this.parseConversationId(conversationId);
+    const result = await suppressConversation({ customerId, channelType });
+    return { ok: true, conversationId, ...result };
+  }
+
+  /** Delete selected messages in a thread (tombstone external ids). */
+  static async suppressMessages(conversationId: string, messageIds: string[]) {
+    const { customerId, channelType } = this.parseConversationId(conversationId);
+    const result = await suppressSelectedMessages({ customerId, channelType, messageIds });
+    return { ok: true, conversationId, ...result };
   }
 }

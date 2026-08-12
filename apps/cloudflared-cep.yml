@@ -1,10 +1,10 @@
 # Cloudflare Tunnel → local platform-api (port 4100)
-# Hostname: cep-api.logback-backend-services.online
+# Hostname: api.cep-svasthyaa.fybud.com
 
 tunnel: 9d16720e-db18-4f96-b65b-67db30ee27ea
 credentials-file: C:\Users\jjaga\.cloudflared\9d16720e-db18-4f96-b65b-67db30ee27ea.json
 
 ingress:
-  - hostname: cep-api.logback-backend-services.online
+  - hostname: api.cep-svasthyaa.fybud.com
     service: http://127.0.0.1:4100
   - service: http_status:404

@@ -50,8 +50,8 @@ export const env = {
     ),
   ),
   jwtSecret: required("JWT_SECRET", process.env.JWT_SECRET ?? "dev-jwt-secret-do-not-use-in-prod"),
-  publicBaseUrl: stripQuotes(
-    process.env.PLATFORM_PUBLIC_BASE_URL ??
+  apiBaseUrl: stripQuotes(
+    process.env.PLATFORM_API_BASE_URL ??
       `http://localhost:${process.env.PLATFORM_PORT ?? 4100}`,
   ),
   webBaseUrl: stripQuotes(

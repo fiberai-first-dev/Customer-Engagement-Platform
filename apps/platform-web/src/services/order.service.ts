@@ -23,6 +23,7 @@ export interface OrdersResponse {
 export interface OrderLookupQuery {
   email?: string | null;
   phone?: string | null;
+  customerId?: string | null;
 }
 
 export interface ShopifyCustomerSummary {
@@ -52,6 +53,7 @@ export interface CustomerCommerceResponse {
   customer: ShopifyCustomerSummary | null;
   stats: OrderStats;
   orders: CustomerOrder[];
+  channelsLinked?: boolean;
 }
 
 async function requestJson<T>(path: string): Promise<T> {
@@ -80,6 +82,7 @@ function queryString(query: OrderLookupQuery): string {
   const params = new URLSearchParams();
   if (query.email?.trim()) params.set("email", query.email.trim());
   if (query.phone?.trim()) params.set("phone", query.phone.trim());
+  if (query.customerId?.trim()) params.set("customerId", query.customerId.trim());
   return params.toString();
 }
 

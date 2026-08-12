@@ -1,5 +1,5 @@
-import { useState, type ReactNode } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useState, type ReactNode, useEffect } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   CheckCircle2,
   Loader2,
@@ -87,6 +87,7 @@ function emptyCommerce(): CustomerCommerceResponse {
 
 export function CustomerDetails({ contact, onClose }: Props) {
   const [tab, setTab] = useState<TabId>("profile");
+  const queryClient = useQueryClient();
 
   const emails = listValues(contact?.email, contact?.emails);
   const whatsappRaw = listValues(
@@ -111,10 +112,18 @@ export function CustomerDetails({ contact, onClose }: Props) {
       orderService.getCustomerCommerce({
         email: lookupEmail,
         phone: lookupPhone,
+        customerId: contact?.id,
       }),
     enabled: Boolean(contact && canLookup),
     staleTime: 30_000,
   });
+
+  // When Shopify attaches email/phone onto this CEP contact, refresh inbox identities
+  useEffect(() => {
+    if (!commerce.channelsLinked) return;
+    void queryClient.invalidateQueries({ queryKey: ["conversations"] });
+    void queryClient.invalidateQueries({ queryKey: ["contacts"] });
+  }, [commerce.channelsLinked, queryClient]);
 
   if (!contact) {
     return (

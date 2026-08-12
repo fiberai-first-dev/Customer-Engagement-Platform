@@ -194,3 +194,17 @@ model WebhookEvent {
   @@index([channel, createdAt])
   @@map("webhook_events")
 }
+
+/// Inbound messages the agent removed — Pub/Sub/catch-up must not re-create them.
+model SuppressedInbound {
+  id          String      @id
+  channelType ChannelType @map("channel_type")
+  externalId  String      @map("external_id")
+  customerId  String?     @map("customer_id")
+  reason      String?
+  createdAt   DateTime    @default(now()) @map("created_at")
+
+  @@unique([channelType, externalId])
+  @@index([customerId])
+  @@map("suppressed_inbounds")
+}

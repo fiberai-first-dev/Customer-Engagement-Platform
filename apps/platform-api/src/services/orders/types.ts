@@ -28,6 +28,8 @@ export interface OrdersResponse {
 export interface OrderLookupQuery {
   email?: string | null;
   phone?: string | null;
+  /** When set, Shopify email/phone are attached onto this CEP customer. */
+  customerId?: string | null;
 }
 
 export interface ShopifyCustomerSummary {
@@ -57,6 +59,8 @@ export interface CustomerCommerceResponse {
   customer: ShopifyCustomerSummary | null;
   stats: OrderStats;
   orders: CustomerOrder[];
+  /** True when Shopify email/phone were linked onto the CEP customer. */
+  channelsLinked?: boolean;
 }
 
 export interface OrderProvider {

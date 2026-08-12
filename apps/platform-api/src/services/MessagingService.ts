@@ -9,10 +9,8 @@ import {
   type ChannelConfig,
 } from "../adapters/shared/index.js";
 import { extractEmailAddress } from "../adapters/email/index.js";
-import {
-  recomputeCustomerResolved,
-  resolveAllIdentitiesForCustomerChannel,
-} from "./ResolveService.js";
+import { recomputeCustomerResolved } from "./ResolveService.js";
+import { isInboundSuppressed } from "./SuppressService.js";
 import { enrichCustomerFromShopify } from "./orders/shopify-contact.service.js";
 import {
   formatWhatsAppStorage as formatWa,
@@ -230,27 +228,44 @@ export async function findOrCreateCustomerForInbound(input: {
         ? normalizeWhatsAppId(inbound.senderId) ?? inbound.senderId
         : inbound.senderId;
 
-  /** Instagram @handle for customer.name — never the numeric IGSID. */
+  /** Instagram @handle for identity metadata — never display/name/bio text. */
+  const lookslikeIgHandle = (raw: string | null | undefined): string | null => {
+    if (!raw) return null;
+    const u = raw.replace(/^@+/, "").trim();
+    if (!u || u.length > 30) return null;
+    if (/\s|[|/]/.test(u) || /^\d{5,}$/.test(u)) return null;
+    if (!/^[a-zA-Z0-9._]+$/.test(u)) return null;
+    return u;
+  };
+
   const igUsernameFromInbound = (): string | null => {
     if (channelType !== "instagram") return null;
     const raw = asMeta(inbound.raw as Prisma.JsonValue);
     const profile = asMeta(raw._profile as Prisma.JsonValue | undefined);
-    const fromProfile =
-      typeof profile.username === "string" ? profile.username.replace(/^@+/, "").trim() : "";
-    const fromSender = (inbound.senderName ?? "").trim().replace(/^@+/, "");
-    const handle = (fromProfile || fromSender).trim();
-    if (!handle || /^\d{5,}$/.test(handle)) return null;
-    return handle;
+    return (
+      lookslikeIgHandle(typeof profile.username === "string" ? profile.username : null) ||
+      // Only accept senderName when it is already handle-shaped (@user), not a profile name.
+      lookslikeIgHandle(inbound.senderName)
+    );
   };
 
   const igHandle = igUsernameFromInbound();
 
-  // Instagram: prefer @username as customer name; IGSID stays on identity.externalId for Graph sends.
+  const igProfileName = (() => {
+    if (channelType !== "instagram") return null;
+    const raw = asMeta(inbound.raw as Prisma.JsonValue);
+    const profile = asMeta(raw._profile as Prisma.JsonValue | undefined);
+    const name = typeof profile.name === "string" ? profile.name.trim() : "";
+    if (name && !/^\d{5,}$/.test(name) && !lookslikeIgHandle(name)) return name;
+    return null;
+  })();
+
+  // Instagram: prefer @username as customer name; otherwise profile display name (not as @handle).
   const displayName =
     channelType === "instagram"
       ? igHandle
         ? `@${igHandle}`
-        : "Unknown"
+        : igProfileName || "Unknown"
       : inbound.senderName?.trim() ||
         inbound.senderEmail?.trim() ||
         inbound.senderPhone?.trim() ||
@@ -331,6 +346,39 @@ export async function findOrCreateCustomerForInbound(input: {
         });
       }
     }
+
+    // Repeat inbound: still pull Shopify email/phone onto this customer
+    if (channelType === "whatsapp" || channelType === "email") {
+      const phone =
+        channelType === "whatsapp"
+          ? senderKey
+          : inbound.senderPhone
+            ? normalizeWhatsAppId(inbound.senderPhone)
+            : null;
+      const email =
+        channelType === "email"
+          ? senderKey
+          : inbound.senderEmail
+            ? normalizeEmail(inbound.senderEmail)
+            : null;
+      if (email || phone) {
+        try {
+          await enrichCustomerFromShopify({
+            name: displayName,
+            email,
+            phone,
+            inboundChannel: channelType,
+            preferredCustomerId: customerId,
+          });
+        } catch (err) {
+          console.warn(
+            "[inbound] shopify enrich (existing) skipped:",
+            err instanceof Error ? err.message : err,
+          );
+        }
+      }
+    }
+
     await recomputeCustomerResolved(customerId);
     const refreshedExternalId =
       channelType === "instagram" && /^\d{5,}$/.test(senderKey) && !/^\d{5,}$/.test(existing.externalId)
@@ -496,6 +544,24 @@ export async function ingestInboundMessages(input: {
 
   const created = [];
   for (const inbound of inboundMessages) {
+    if (!inbound.externalId) continue;
+
+    // Agent dismissed / deleted — do not resurrect via Pub/Sub or catch-up.
+    if (await isInboundSuppressed(channelCfg.channelType, inbound.externalId)) {
+      continue;
+    }
+
+    // Pub/Sub / catch-up re-delivers the same Gmail ids. Touching the identity
+    // would flip resolved→false and undo agent replies — skip known messages first.
+    const alreadyStored = await prisma.message.findFirst({
+      where: {
+        channelType: channelCfg.channelType,
+        externalId: inbound.externalId,
+      },
+      select: { id: true },
+    });
+    if (alreadyStored) continue;
+
     const link = await findOrCreateCustomerForInbound({
       channelType: channelCfg.channelType,
       inbound,
@@ -587,6 +653,20 @@ export async function sendCustomerChannelMessage(input: {
     replyToExternalId: lastInbound?.externalId ?? undefined,
   });
 
+  if (!result.ok || result.status === "failed") {
+    return {
+      message: null,
+      result: {
+        ok: false,
+        status: result.status,
+        error: result.error ?? "Message failed to send on channel",
+        externalId: result.externalId,
+      },
+      channelId: identity.id,
+      externalId: identity.externalId,
+    };
+  }
+
   const message = await prisma.message.create({
     data: {
       id: ulid(),
@@ -600,7 +680,6 @@ export async function sendCustomerChannelMessage(input: {
       externalId: result.externalId ?? `local_${ulid()}`,
       status: mapSendStatus(result.status),
       rawPayload: {
-        error: result.error,
         to,
         ...(result.raw && typeof result.raw === "object" ? (result.raw as object) : {}),
       } as Prisma.InputJsonValue,
@@ -608,6 +687,7 @@ export async function sendCustomerChannelMessage(input: {
   });
 
   // Touch the identity we actually messaged (activity timestamp).
+  // Resolve is manual only — agents click Resolve in the Inbox UI.
   if (input.channelType === "whatsapp") {
     await prisma.whatsAppChannel.update({
       where: { id: identity.id },
@@ -625,16 +705,7 @@ export async function sendCustomerChannelMessage(input: {
     });
   }
 
-  // Inbox status is open if ANY identity on that channel is unresolved.
-  // A successful agent reply resolves the whole channel type (same as Resolve button).
-  if (result.status !== "failed") {
-    await resolveAllIdentitiesForCustomerChannel({
-      customerId: input.customerId,
-      channelType: input.channelType,
-    });
-  } else {
-    await recomputeCustomerResolved(input.customerId);
-  }
+  await recomputeCustomerResolved(input.customerId);
 
   return {
     message,
@@ -677,12 +748,16 @@ export function shapeCustomer(customer: {
     })),
     ...ig.map((i) => {
       const meta = asMeta(i.metadata as Prisma.JsonValue);
+      const rawUsername =
+        typeof meta.username === "string" ? meta.username.replace(/^@/, "").trim() : "";
+      // Instagram usernames never contain spaces / "|"; display names must not become handles.
       const username =
-        typeof meta.username === "string"
-          ? meta.username.replace(/^@/, "").trim()
-          : !/^\d{5,}$/.test(i.externalId)
-            ? i.externalId.replace(/^@/, "").trim()
-            : "";
+        rawUsername &&
+        rawUsername.length <= 30 &&
+        !/\s|[|/]/.test(rawUsername) &&
+        /^[a-zA-Z0-9._]+$/.test(rawUsername)
+          ? rawUsername
+          : "";
       return {
         id: i.id,
         channel: "instagram" as const,
@@ -708,12 +783,19 @@ export function shapeCustomer(customer: {
 
   const primaryIg = ig[0];
   const igMeta = primaryIg ? asMeta(primaryIg.metadata as Prisma.JsonValue) : null;
-  const igUsername =
+  const rawIgUsername =
     (typeof igMeta?.username === "string" && igMeta.username.replace(/^@/, "").trim()) ||
     (primaryIg && !/^\d{5,}$/.test(primaryIg.externalId)
       ? primaryIg.externalId.replace(/^@/, "").trim()
       : "") ||
-    null;
+    "";
+  const igUsername =
+    rawIgUsername &&
+    rawIgUsername.length <= 30 &&
+    !/\s|[|/]/.test(rawIgUsername) &&
+    /^[a-zA-Z0-9._]+$/.test(rawIgUsername)
+      ? rawIgUsername
+      : null;
 
   return {
     id: customer.id,
@@ -731,7 +813,7 @@ export function shapeCustomer(customer: {
     instagramDetails: igMeta
       ? {
           ...igMeta,
-          ...(igUsername ? { username: igUsername } : {}),
+          ...(igUsername ? { username: igUsername } : { username: null }),
         }
       : null,
     resolved: customer.resolved,

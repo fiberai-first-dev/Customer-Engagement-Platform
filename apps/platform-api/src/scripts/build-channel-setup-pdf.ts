@@ -120,7 +120,7 @@ function drawCover(doc: PDFKit.PDFDocument) {
     doc.restore();
     doc.fillColor(C.muted).font("Helvetica").fontSize(9).text("Hosted platform", cardX + 16, cardY + 14, { lineBreak: false });
     doc.fillColor(C.navy).font("Helvetica-Bold").fontSize(12)
-      .text("https://cep.logback-backend-services.online", cardX + 16, cardY + 32, {
+      .text("https://cep-svasthyaa.fybud.com", cardX + 16, cardY + 32, {
         width: cardW - 32,
         lineBreak: false,
       });

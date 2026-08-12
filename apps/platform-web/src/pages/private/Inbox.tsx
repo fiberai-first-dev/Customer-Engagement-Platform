@@ -3,9 +3,11 @@ import { toast } from "sonner";
 import { Loader2, Search } from "lucide-react";
 import {
   useConversations,
+  useDeleteMessages,
   useEnabledChannelTypes,
   useMessages,
   useSendMessage,
+  useSuppressConversation,
   useUpdateConversation,
   type ChannelType,
   type Conversation,
@@ -21,7 +23,6 @@ import {
   cn,
   contactDisplayName,
   contactGlobalIsActive,
-  nextUnresolvedConversation,
   pickPrimaryConversation,
 } from "../../components/inbox";
 
@@ -41,6 +42,8 @@ export function InboxPage() {
 
   const sendMessage = useSendMessage();
   const updateStatus = useUpdateConversation();
+  const suppressConversation = useSuppressConversation();
+  const deleteMessages = useDeleteMessages();
   const { enabledChannels, channelsReady } = useEnabledChannelTypes();
   const enabledSet = useMemo(() => new Set(enabledChannels), [enabledChannels]);
 
@@ -171,61 +174,85 @@ export function InboxPage() {
     setActiveTab(pickPrimaryConversation(rows).channelType);
   };
 
-  const handleSend = (content: string, subject?: string) => {
-    if (!selectedConversation || !selectedContactId) return;
+  const handleSend = async (content: string, subject?: string): Promise<boolean> => {
+    if (!selectedConversation || !selectedContactId) return false;
     const channel = selectedConversation.channelType;
     const conversationId = selectedConversation.id;
-    const siblings = conversationsByContact[selectedContactId] ?? [];
 
-    sendMessage.mutate(
-      { id: conversationId, content, subject },
-      {
-        onSuccess: (data) => {
-          if (!data.result?.ok) {
-            toast.error(data.result?.error || "Message failed to send on channel");
-            return;
-          }
-          // Successful agent reply resolves this channel — jump to another open one if any
-          const next = nextUnresolvedConversation(siblings, conversationId);
-          const nextDifferent =
-            next && next.channelType !== channel ? next : null;
-          if (nextDifferent) {
-            setActiveTab(nextDifferent.channelType);
-          }
-        },
-        onError: (err) => toast.error(err.message || "Failed to send message"),
-      },
-    );
+    try {
+      const data = await sendMessage.mutateAsync({ id: conversationId, content, subject });
+      if (!data.result?.ok || !data.message) {
+        toast.error(data.result?.error || "Message failed to send on channel");
+        return false;
+      }
+      toast.success(`${channelLabel(channel)} reply sent`);
+      return true;
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to send message");
+      return false;
+    }
   };
 
   const handleResolve = () => {
     if (!selectedConversation || !selectedContactId) return;
     const channel = selectedConversation.channelType;
     const resolvedId = selectedConversation.id;
-    const siblings = conversationsByContact[selectedContactId] ?? [];
 
     updateStatus.mutate(
       { id: resolvedId, status: "resolved" },
       {
         onSuccess: () => {
-          const next = nextUnresolvedConversation(siblings, resolvedId);
-          // Prefer a *different* channel — same-channel switch is confusing in toasts/UX
-          const nextDifferent =
-            next && next.channelType !== channel ? next : null;
-
-          if (nextDifferent) {
-            setActiveTab(nextDifferent.channelType);
-            toast.success(
-              `${channelLabel(channel)} resolved · ${channelLabel(nextDifferent.channelType)} still unresolved`,
-            );
-            return;
-          }
-
           toast.success(`${channelLabel(channel)} resolved`);
         },
         onError: (err) => toast.error(err.message || "Failed to resolve channel"),
       },
     );
+  };
+
+  const handleClearChat = () => {
+    if (!selectedConversation || !selectedContactId) return;
+    const channel = selectedConversation.channelType;
+    const id = selectedConversation.id;
+    if (
+      !window.confirm(
+        `Clear all ${channelLabel(channel)} messages for this contact from CEP? They will not come back from sync.`,
+      )
+    ) {
+      return;
+    }
+    suppressConversation.mutate(id, {
+      onSuccess: () => {
+        toast.success(`${channelLabel(channel)} chat cleared`);
+      },
+      onError: (err) => toast.error(err.message || "Failed to clear chat"),
+    });
+  };
+
+  const handleDeleteMessages = async (messageIds: string[]): Promise<boolean> => {
+    if (!selectedConversation || messageIds.length === 0) return false;
+    const channel = selectedConversation.channelType;
+    const id = selectedConversation.id;
+    if (
+      !window.confirm(
+        `Delete ${messageIds.length} selected ${channelLabel(channel)} message${
+          messageIds.length === 1 ? "" : "s"
+        }? They will not come back from sync.`,
+      )
+    ) {
+      return false;
+    }
+    try {
+      await deleteMessages.mutateAsync({ id, messageIds });
+      toast.success(
+        messageIds.length === 1
+          ? "Message deleted"
+          : `${messageIds.length} messages deleted`,
+      );
+      return true;
+    } catch (err: any) {
+      toast.error(err?.message || "Failed to delete messages");
+      return false;
+    }
   };
 
   return (
@@ -305,6 +332,10 @@ export function InboxPage() {
           loadingMessages={showInitialMessagesLoader}
           onResolve={handleResolve}
           resolving={updateStatus.isPending}
+          onClearChat={handleClearChat}
+          clearingChat={suppressConversation.isPending}
+          onDeleteMessages={handleDeleteMessages}
+          deletingMessages={deleteMessages.isPending}
           onSend={handleSend}
           sending={sendMessage.isPending}
           customerContextOpen={customerContextOpen}

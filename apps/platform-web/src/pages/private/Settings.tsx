@@ -1,5 +1,6 @@
 import { useState, useEffect, type ReactNode } from "react";
 import { useSearchParams } from "react-router-dom";
+import { useQueryClient } from "@tanstack/react-query";
 import { Card, CardHeader, CardTitle, CardContent, CardDescription } from "../../components/ui/card";
 import { Button } from "../../components/ui/button";
 import { Input } from "../../components/ui/input";
@@ -59,6 +60,10 @@ function asStringRecord(config: Record<string, unknown> | undefined): Record<str
   return out;
 }
 
+function hasText(value?: string): boolean {
+  return Boolean(value?.trim());
+}
+
 function FieldGrid({
   fields,
   values,
@@ -97,6 +102,7 @@ function ChannelCard({
   saving,
   busy,
   footer,
+  health,
 }: {
   title: string;
   description: string;
@@ -107,7 +113,21 @@ function ChannelCard({
   saving: boolean;
   busy?: boolean;
   footer?: ReactNode;
+  health?: {
+    level: "ok" | "warn" | "error" | "unknown";
+    summary: string;
+    details: string[];
+  };
 }) {
+  const healthTone =
+    health?.level === "ok"
+      ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-900"
+      : health?.level === "warn"
+        ? "border-amber-500/30 bg-amber-500/10 text-amber-950"
+        : health?.level === "error"
+          ? "border-destructive/30 bg-destructive/10 text-destructive"
+          : "border-border bg-muted/40 text-muted-foreground";
+
   return (
     <Card>
       <CardHeader className="pb-4">
@@ -126,6 +146,18 @@ function ChannelCard({
             Enabled
           </label>
         </div>
+        {health && (
+          <div className={`mt-3 rounded-lg border px-3 py-2 text-xs ${healthTone}`}>
+            <p className="font-medium">{health.summary}</p>
+            {health.details.length > 0 && (
+              <ul className="mt-1 list-disc space-y-0.5 pl-4 opacity-90">
+                {health.details.map((d) => (
+                  <li key={d}>{d}</li>
+                ))}
+              </ul>
+            )}
+          </div>
+        )}
       </CardHeader>
       <CardContent className="space-y-5">
         {children}
@@ -176,6 +208,7 @@ function tabFromSearch(params: URLSearchParams): SettingsTab {
 
 export function SettingsPage() {
   const [searchParams, setSearchParams] = useSearchParams();
+  const queryClient = useQueryClient();
   const tab = tabFromSearch(searchParams);
   const setTab = (next: SettingsTab) => {
     const p = new URLSearchParams(searchParams);
@@ -262,6 +295,7 @@ export function SettingsPage() {
     setConnecting(null);
 
     if (status === "success") {
+      void queryClient.invalidateQueries({ queryKey: ["inboxes"] });
       const who =
         oauth === "gmail"
           ? searchParams.get("email")
@@ -285,11 +319,52 @@ export function SettingsPage() {
     ["oauth", "status", "message", "email", "username"].forEach((k) => next.delete(k));
     next.set("tab", "channels");
     setSearchParams(next, { replace: true });
-  }, [searchParams, setSearchParams]);
+  }, [searchParams, setSearchParams, queryClient]);
 
   const waInbox = inboxes?.find((i) => i.channelType === "whatsapp");
   const igInbox = inboxes?.find((i) => i.channelType === "instagram");
   const emailInbox = inboxes?.find((i) => i.channelType === "email");
+
+  const savedEmailConfig = asStringRecord(
+    emailInbox?.channelConfig as Record<string, unknown> | undefined,
+  );
+  const savedIgConfig = asStringRecord(
+    igInbox?.channelConfig as Record<string, unknown> | undefined,
+  );
+  const gmailConnectKeys = ["clientId", "clientSecret", "pubsubTopic"] as const;
+  const gmailAllKeys = [
+    "clientId",
+    "clientSecret",
+    "pubsubTopic",
+    "refreshToken",
+    "accessToken",
+  ] as const;
+  // Connect Instagram needs app creds + verify token; OAuth fills accessToken + username
+  const igConnectKeys = ["instagramAppId", "instagramAppSecret", "verifyToken"] as const;
+  const fieldsFilled = (
+    values: Record<string, string>,
+    keys: readonly string[],
+  ) => keys.every((key) => hasText(values[key]));
+  const fieldsSaved = (
+    form: Record<string, string>,
+    saved: Record<string, string>,
+    keys: readonly string[],
+  ) =>
+    keys.every(
+      (key) =>
+        hasText(saved[key]) && (form[key] ?? "").trim() === (saved[key] ?? "").trim(),
+    );
+  // Connect: prerequisites filled and Saved (OAuth then writes tokens)
+  const gmailCanConnect =
+    fieldsFilled(emailConfig, gmailConnectKeys) &&
+    fieldsSaved(emailConfig, savedEmailConfig, gmailConnectKeys);
+  const igCanConnect =
+    fieldsFilled(igConfig, igConnectKeys) &&
+    fieldsSaved(igConfig, savedIgConfig, igConnectKeys);
+  // Start watch: every Gmail field filled and Saved (tokens come from Connect OAuth)
+  const gmailCanWatch =
+    fieldsFilled(emailConfig, gmailAllKeys) &&
+    fieldsSaved(emailConfig, savedEmailConfig, gmailAllKeys);
 
   const handleSave = (
     channelType: "whatsapp" | "instagram" | "email",
@@ -372,6 +447,20 @@ export function SettingsPage() {
       setBanner({ tone: "err", text: "Channel is not available. Please try again later." });
       return;
     }
+    if (provider === "gmail" && !gmailCanConnect) {
+      setBanner({
+        tone: "err",
+        text: "Fill Client ID, Client Secret, and Pub/Sub Topic, then Save, before connecting Gmail.",
+      });
+      return;
+    }
+    if (provider === "instagram" && !igCanConnect) {
+      setBanner({
+        tone: "err",
+        text: "Fill Instagram App ID, App Secret, and Verify Token, then Save, before connecting Instagram.",
+      });
+      return;
+    }
     setConnecting(provider);
     try {
       const { url } = await startChannelOAuth(provider, inbox.id);
@@ -423,7 +512,7 @@ export function SettingsPage() {
           <Button variant="outline" className="gap-2" asChild>
             <a href={setupGuidePdfUrl()} download="CEP-Channel-Setup-Guide.pdf">
               <Download className="h-4 w-4" />
-              Download setup guide (PDF)
+              Download setup guide
             </a>
           </Button>
         </div>
@@ -464,9 +553,11 @@ export function SettingsPage() {
                 <CardTitle className="text-base">Callback URLs</CardTitle>
               </CardHeader>
               <CardContent className="grid gap-2">
-                <CopyRow label="WhatsApp webhook" value={waInbox?.webhookUrl ?? oauthHints?.webhooks.whatsapp} />
-                <CopyRow label="Instagram webhook" value={igInbox?.webhookUrl ?? oauthHints?.webhooks.instagram} />
-                <CopyRow label="Gmail push URL" value={oauthHints?.webhooks.emailPubSub} />
+                <CopyRow label="Agent UI" value={oauthHints?.webBaseUrl} />
+                <CopyRow label="API base URL" value={oauthHints?.apiBaseUrl} />
+                <CopyRow label="WhatsApp webhook" value={oauthHints?.webhooks.whatsapp ?? waInbox?.webhookUrl} />
+                <CopyRow label="Instagram webhook" value={oauthHints?.webhooks.instagram ?? igInbox?.webhookUrl} />
+                <CopyRow label="Gmail push URL" value={oauthHints?.webhooks.emailPubSub ?? emailInbox?.webhookUrl} />
                 <CopyRow label="Gmail OAuth redirect" value={oauthHints?.gmailRedirectUri} />
                 <CopyRow label="Instagram OAuth redirect" value={oauthHints?.instagramRedirectUri} />
               </CardContent>
@@ -476,6 +567,7 @@ export function SettingsPage() {
               title="WhatsApp"
               description="Connect your WhatsApp Business number."
               enabled={waInbox?.enabled ?? false}
+              health={waInbox?.health}
               onToggleEnabled={(v) => handleToggleEnabled("whatsapp", v)}
               saving={isSaving("whatsapp")}
               busy={isChannelBusy("whatsapp")}
@@ -498,6 +590,7 @@ export function SettingsPage() {
               title="Instagram"
               description="Use Instagram App ID/Secret from Meta > Instagram > API setup with Instagram login, then Connect."
               enabled={igInbox?.enabled ?? false}
+              health={igInbox?.health}
               onToggleEnabled={(v) => handleToggleEnabled("instagram", v)}
               saving={isSaving("instagram")}
               busy={isChannelBusy("instagram")}
@@ -506,7 +599,14 @@ export function SettingsPage() {
                 <Button
                   type="button"
                   variant="secondary"
-                  disabled={connecting === "instagram" || isChannelBusy("instagram")}
+                  disabled={
+                    !igCanConnect || connecting === "instagram" || isChannelBusy("instagram")
+                  }
+                  title={
+                    igCanConnect
+                      ? "Open Instagram OAuth to get access token"
+                      : "Fill App ID, App Secret, and Verify Token, then Save"
+                  }
                   onClick={() => void handleConnect("instagram")}
                 >
                   {connecting === "instagram" ? (
@@ -535,6 +635,7 @@ export function SettingsPage() {
               title="Gmail"
               description="Connect Gmail for email conversations."
               enabled={emailInbox?.enabled ?? false}
+              health={emailInbox?.health}
               onToggleEnabled={(v) => handleToggleEnabled("email", v)}
               saving={isSaving("email")}
               busy={isChannelBusy("email")}
@@ -544,7 +645,14 @@ export function SettingsPage() {
                   <Button
                     type="button"
                     variant="secondary"
-                    disabled={connecting === "gmail" || isChannelBusy("email")}
+                    disabled={
+                      !gmailCanConnect || connecting === "gmail" || isChannelBusy("email")
+                    }
+                    title={
+                      gmailCanConnect
+                        ? "Open Google OAuth to get tokens"
+                        : "Fill Client ID, Client Secret, and Pub/Sub Topic, then Save"
+                    }
                     onClick={() => void handleConnect("gmail")}
                   >
                     {connecting === "gmail" ? (
@@ -557,7 +665,12 @@ export function SettingsPage() {
                   <Button
                     type="button"
                     variant="outline"
-                    disabled={watching || isChannelBusy("email")}
+                    disabled={!gmailCanWatch || watching || isChannelBusy("email")}
+                    title={
+                      gmailCanWatch
+                        ? "Start Gmail push notifications"
+                        : "Fill all fields, Connect Gmail for tokens, then Save"
+                    }
                     onClick={() => void handleStartWatch()}
                   >
                     {watching ? (

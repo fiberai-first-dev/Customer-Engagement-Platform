@@ -37,6 +37,16 @@ export function formatWhatsAppDisplay(raw: string): string {
   return formatWaDisplay(raw);
 }
 
+/** Instagram handles: letters/numbers/._ — no spaces or bio-style "Name | Brand". */
+export function isLikelyInstagramUsername(raw: string | null | undefined): boolean {
+  if (!raw) return false;
+  const u = raw.replace(/^@/, "").trim();
+  if (!u || u.length > 30) return false;
+  if (/\s|[|/]/.test(u)) return false;
+  if (/^\d{5,}$/.test(u)) return false; // IGSID, not a handle
+  return /^[a-zA-Z0-9._]+$/.test(u);
+}
+
 /** All external IDs for a channel (WhatsApp / email can have multiple). */
 export function identitiesFor(contact: any, channel: ChannelType): string[] {
   if (!contact) return [];
@@ -44,14 +54,16 @@ export function identitiesFor(contact: any, channel: ChannelType): string[] {
   const fromIdentities = (contact.identities ?? [])
     .filter((i: any) => i?.channel === channel && typeof i.externalId === "string")
     .map((i: any) => {
-      // Prefer API displayId (@username) for Instagram UI
-      if (channel === "instagram" && typeof i.displayId === "string" && i.displayId.trim()) {
-        return i.displayId.trim();
-      }
+      // Prefer API displayId / metadata username for Instagram UI — never contact.name
       if (channel === "instagram") {
+        const displayId =
+          typeof i.displayId === "string" ? i.displayId.replace(/^@/, "").trim() : "";
+        if (isLikelyInstagramUsername(displayId)) return `@${displayId}`;
         const username =
-          typeof i.metadata?.username === "string" ? i.metadata.username.replace(/^@/, "").trim() : "";
-        if (username) return `@${username}`;
+          typeof i.metadata?.username === "string"
+            ? i.metadata.username.replace(/^@/, "").trim()
+            : "";
+        if (isLikelyInstagramUsername(username)) return `@${username}`;
       }
       return i.externalId as string;
     });
@@ -82,26 +94,25 @@ export function identitiesFor(contact: any, channel: ChannelType): string[] {
       typeof contact.instagramDetails?.username === "string"
         ? contact.instagramDetails.username.replace(/^@/, "").trim()
         : "";
-    const rawName = typeof contact.name === "string" ? contact.name.trim() : "";
-    const fromName =
-      rawName.startsWith("@")
-        ? rawName
-        : rawName && !/^\d{5,}$/.test(rawName)
-          ? `@${rawName.replace(/^@/, "")}`
-          : "";
 
     const candidates = [
       ...fromIdentities,
-      fromDetails ? `@${fromDetails}` : "",
-      fromName,
+      isLikelyInstagramUsername(fromDetails) ? `@${fromDetails}` : "",
     ].filter((v) => typeof v === "string" && v.trim());
 
-    // Prefer @username over bare IGSID
-    const handle = candidates.find((v) => v.startsWith("@") || !/^\d{5,}$/.test(v));
-    if (handle) return [handle];
+    // Prefer real @username over bare IGSID — never contact.name (bio/display names).
+    const handle = candidates.find((v) => isLikelyInstagramUsername(v));
+    if (handle) return [handle.startsWith("@") ? handle : `@${handle}`];
 
-    const fallback = contact.instagramId ?? contact.identifiers?.instagram ?? null;
-    return typeof fallback === "string" && fallback.trim() ? [fallback.trim()] : [];
+    const igsid =
+      fromIdentities.find((v) => /^\d{5,}$/.test(v)) ||
+      (typeof contact.instagramScopedId === "string" ? contact.instagramScopedId : null) ||
+      (typeof contact.instagramId === "string" && /^\d{5,}$/.test(contact.instagramId)
+        ? contact.instagramId
+        : null) ||
+      contact.identifiers?.instagram ||
+      null;
+    return typeof igsid === "string" && igsid.trim() ? [igsid.trim()] : [];
   }
   return [];
 }
@@ -116,9 +127,10 @@ export function formatIdentity(identity: string, channel: ChannelType): string {
     return formatWhatsAppDisplay(identity);
   }
   if (channel === "instagram") {
-    if (identity.startsWith("@")) return identity;
-    if (/^\d{5,}$/.test(identity)) return identity; // unresolved IGSID
-    return `@${identity.replace(/^@/, "")}`;
+    if (isLikelyInstagramUsername(identity)) {
+      return identity.startsWith("@") ? identity : `@${identity}`;
+    }
+    return identity; // IGSID or unknown — don't fake @Name
   }
   return identity;
 }
@@ -170,18 +182,27 @@ export function contactDisplayName(contact: {
 }): string {
   const name = contact.name?.trim();
   if (name && !/^\d{5,}$/.test(name)) {
-    return name.startsWith("@") || !name.includes("@") ? name : name;
+    // Old ingest could store a profile/bio name as "@Rajiv … | Brand" — not a handle.
+    if (name.startsWith("@") && !isLikelyInstagramUsername(name)) {
+      return name.replace(/^@+/, "").trim() || name;
+    }
+    return name;
   }
 
   const igIdentity = (contact.identities ?? []).find((i) => i.channel === "instagram");
   const igUser =
-    (typeof igIdentity?.displayId === "string" && igIdentity.displayId.startsWith("@")
-      ? igIdentity.displayId
+    (typeof igIdentity?.displayId === "string" &&
+    isLikelyInstagramUsername(igIdentity.displayId)
+      ? igIdentity.displayId.startsWith("@")
+        ? igIdentity.displayId
+        : `@${igIdentity.displayId}`
       : null) ||
-    (typeof igIdentity?.metadata?.username === "string"
+    (typeof igIdentity?.metadata?.username === "string" &&
+    isLikelyInstagramUsername(igIdentity.metadata.username)
       ? `@${igIdentity.metadata.username.replace(/^@/, "")}`
       : null) ||
-    (typeof contact.instagramDetails?.username === "string"
+    (typeof contact.instagramDetails?.username === "string" &&
+    isLikelyInstagramUsername(contact.instagramDetails.username)
       ? `@${contact.instagramDetails.username.replace(/^@/, "")}`
       : null);
   if (igUser) return igUser;

@@ -73,4 +73,38 @@ export class ConversationController {
       return reply.code(404).send({ error: err.message });
     }
   }
+
+  static async suppress(
+    request: FastifyRequest<{ Params: { id: string } }>,
+    reply: FastifyReply,
+  ) {
+    try {
+      const result = await ConversationService.suppress(request.params.id);
+      return reply.send(result);
+    } catch (err: any) {
+      return reply.code(400).send({ error: err.message });
+    }
+  }
+
+  static async suppressMessages(
+    request: FastifyRequest<{
+      Params: { id: string };
+      Body: { messageIds?: string[] };
+    }>,
+    reply: FastifyReply,
+  ) {
+    const messageIds = request.body?.messageIds;
+    if (!Array.isArray(messageIds) || messageIds.length === 0) {
+      return reply.code(400).send({ error: "messageIds required" });
+    }
+    try {
+      const result = await ConversationService.suppressMessages(
+        request.params.id,
+        messageIds,
+      );
+      return reply.send(result);
+    } catch (err: any) {
+      return reply.code(400).send({ error: err.message });
+    }
+  }
 }

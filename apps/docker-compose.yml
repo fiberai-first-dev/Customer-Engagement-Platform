@@ -15,9 +15,6 @@ services:
       timeout: 5s
       retries: 10
 
-  # DB URL comes from apps/platform-api/.env (env_file) — not hardcoded here.
-  # Inside Compose that URL must use host "cep-postgres", e.g.
-  # PLATFORM_DATABASE_URL=postgresql://cep:cep@cep-postgres:5432/cep_platform
   platform-api:
     build:
       context: ./platform-api
@@ -35,7 +32,7 @@ services:
       context: ./platform-web
       dockerfile: Dockerfile
       args:
-        VITE_API_BASE_URL: ${VITE_API_BASE_URL:-https://cep-api.logback-backend-services.online}
+        VITE_API_BASE_URL: ${VITE_API_BASE_URL:-https://api.cep-svasthyaa.fybud.com}
     env_file:
       - ./platform-web/.env
     ports:

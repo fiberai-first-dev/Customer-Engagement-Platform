@@ -1,7 +1,7 @@
 # Channel setup guide
 
-Hosted CEP Frontend URL: `https://cep.logback-backend-services.online`
-Hosted CEP base API URL: `https://cep-api.logback-backend-services.online`
+Hosted CEP Frontend URL: `https://cep-svasthyaa.fybud.com` (`PLATFORM_WEB_BASE_URL`)  
+Hosted CEP API URL: `https://api.cep-svasthyaa.fybud.com` (`PLATFORM_API_BASE_URL`)
 
 Brands configure WhatsApp, Instagram, Gmail, and Shopify in **Settings**. Credentials are created in Meta, Google Cloud, or Shopify Admin, then entered in CEP. No local install is required.
 
@@ -13,13 +13,13 @@ Register these values in provider consoles. Trailing slashes and host must match
 
 | Purpose | URL |
 |---------|-----|
-| Agent UI / login | `https://cep.logback-backend-services.online` |
-| WhatsApp webhook | `https://cep.logback-backend-services.online/webhooks/whatsapp` |
-| Instagram webhook | `https://cep.logback-backend-services.online/webhooks/instagram` |
-| Gmail Pub/Sub push | `https://cep.logback-backend-services.online/webhooks/email/pubsub` |
-| Gmail OAuth redirect | `https://cep.logback-backend-services.online/oauth/gmail/callback` |
-| Instagram OAuth redirect | `https://cep.logback-backend-services.online/oauth/instagram/callback` |
-| Privacy policy | `https://cep.logback-backend-services.online/privacy` |
+| Agent UI / login | `https://cep-svasthyaa.fybud.com` |
+| WhatsApp webhook | `https://api.cep-svasthyaa.fybud.com/webhooks/whatsapp` |
+| Instagram webhook | `https://api.cep-svasthyaa.fybud.com/webhooks/instagram` |
+| Gmail Pub/Sub push | `https://api.cep-svasthyaa.fybud.com/webhooks/email/pubsub` |
+| Gmail OAuth redirect | `https://api.cep-svasthyaa.fybud.com/oauth/gmail/callback` |
+| Instagram OAuth redirect | `https://api.cep-svasthyaa.fybud.com/oauth/instagram/callback` |
+| Privacy policy | `https://api.cep-svasthyaa.fybud.com/privacy` |
 
 The same list appears under Settings > Callback URLs (click a row to copy).
 
@@ -29,7 +29,7 @@ Suggested order of work: WhatsApp > Instagram > Gmail > Shopify.
 
 ## 1. Open Settings
 
-1. Sign in at `https://cep.logback-backend-services.online`.
+1. Sign in at `https://cep-svasthyaa.fybud.com`.
 2. Open **Settings** in the left navigation.
 3. Use the **Channels** tab for WhatsApp, Instagram, and Gmail.
 4. Use the **Shopify** tab for store API credentials.
@@ -118,7 +118,7 @@ https://developers.facebook.com/docs/whatsapp/business-management-api/get-starte
 1. In the Meta app open Webhooks or WhatsApp > Configuration:  
    `https://developers.facebook.com/apps/{APP_ID}/webhooks/`
 2. Callback URL:  
-   `https://cep.logback-backend-services.online/webhooks/whatsapp`
+   `https://api.cep-svasthyaa.fybud.com/webhooks/whatsapp`
 3. Verify token: same value as CEP Verify Token.
 4. Verify and save.
 5. Subscribe to **messages**.
@@ -175,28 +175,33 @@ https://developers.facebook.com/docs/instagram-platform/overview
 
 1. Still under Instagram > API setup with Instagram login, open **Set up Instagram business login** (Business login settings).
 2. Add OAuth redirect URI:  
-   `https://cep.logback-backend-services.online/oauth/instagram/callback`
+   `https://api.cep-svasthyaa.fybud.com/oauth/instagram/callback`
 3. Save in Meta.
 
 If Meta requests additional URLs:
 
 | Field | URL |
 |-------|-----|
-| Deauthorize | `https://cep.logback-backend-services.online/oauth/instagram/deauthorize` |
-| Data deletion | `https://cep.logback-backend-services.online/oauth/instagram/data-deletion` |
-| Privacy | `https://cep.logback-backend-services.online/privacy` |
+| Deauthorize | `https://api.cep-svasthyaa.fybud.com/oauth/instagram/deauthorize` |
+| Data deletion | `https://api.cep-svasthyaa.fybud.com/oauth/instagram/data-deletion` |
+| Privacy | `https://api.cep-svasthyaa.fybud.com/privacy` |
 
 ### 3.3 Connect Instagram
 
-1. In CEP Settings > Instagram, click **Connect Instagram**.
-2. Approve access as the business Instagram account that should receive DMs.
-3. Return to Settings and confirm success. Access Token and Username are filled automatically.
+**Connect Instagram** only turns on after you fill **Instagram App ID**, **Instagram App Secret**, and **Verify Token**, then click **Save**. Until those three are saved, the button stays disabled — that keeps OAuth from starting with empty credentials.
+
+1. Fill App ID, App Secret, and Verify Token → **Save**.
+2. Click **Connect Instagram**.
+3. Approve access as the business Instagram account that should receive DMs.
+4. You return to Settings with **Access Token** and **Username** filled in automatically. You do not type those by hand.
+
+If Connect fails, double-check the OAuth redirect URI in Meta matches the Callback URLs card, and that you used the Instagram app ID/secret from the Instagram API setup page (not the global Meta App ID).
 
 ### 3.4 Instagram webhook
 
 1. Open Meta Webhooks (and Messenger > Instagram if that is where Instagram messaging is configured).
 2. Callback URL:  
-   `https://cep.logback-backend-services.online/webhooks/instagram`
+   `https://api.cep-svasthyaa.fybud.com/webhooks/instagram`
 3. Verify token: Instagram Verify Token from CEP.
 4. Verify and save; subscribe to **messages**.
 
@@ -240,16 +245,21 @@ If Meta requests additional URLs:
 1. https://console.cloud.google.com/apis/credentials  
 2. Create credentials > OAuth client ID > Web application.
 3. Authorized redirect URI:  
-   `https://cep.logback-backend-services.online/oauth/gmail/callback`
+   `https://api.cep-svasthyaa.fybud.com/oauth/gmail/callback`
 4. Copy Client ID and Client Secret into CEP and Save.
 
 ### 4.4 Connect Gmail
 
-1. Click **Connect Gmail**.
-2. Sign in as the support mailbox and approve scopes.
-3. Confirm return to Settings.
+**Connect Gmail** only turns on after **Client ID**, **Client Secret**, and **Pub/Sub Topic** are filled and **Saved**. The button stays off until then so Google OAuth does not start against incomplete settings.
 
-If no refresh token is issued, revoke the app under https://myaccount.google.com/permissions and connect again.
+1. Enter Client ID, Client Secret, and Pub/Sub Topic → **Save**.
+2. Click **Connect Gmail**.
+3. Sign in as the support mailbox and approve the Gmail scopes.
+4. You return to Settings with **Refresh Token** and **Access Token** filled in.
+
+If Google does not issue a refresh token, revoke the app under https://myaccount.google.com/permissions and connect again.
+
+**Start watch** stays disabled until every Gmail field is filled (including the tokens from Connect) and saved. After Connect succeeds, click **Start Gmail watch** so push mail can arrive.
 
 ### 4.5 Pub/Sub
 
@@ -258,7 +268,7 @@ If no refresh token is issued, revoke the app under https://myaccount.google.com
 3. Topic permissions: grant **Pub/Sub Publisher** to  
    `gmail-api-push@system.gserviceaccount.com`
 4. Create a push subscription:
-   - Endpoint: `https://cep.logback-backend-services.online/webhooks/email/pubsub`
+   - Endpoint: `https://api.cep-svasthyaa.fybud.com/webhooks/email/pubsub`
    - Authentication off; payload unwrapping off (unless your ops standard differs)
 5. Put the full topic name into CEP > Pub/Sub Topic > Save.
 
@@ -266,7 +276,7 @@ If no refresh token is issued, revoke the app under https://myaccount.google.com
 
 Google's Gmail push watch is **not permanent**. You must call `users.watch` at least every **7 days** or push notifications stop. Maximum expiry is about **7 days** (Google API limit; CEP cannot make it forever).
 
-1. Click **Start Gmail watch** in Settings (runs `users.watch`).
+1. Click **Start Gmail watch** in Settings (runs `users.watch`). The button is available only after Client ID, Secret, Topic, and OAuth tokens are saved.
 2. Send a test message to the connected mailbox.
 3. Confirm CEP Inbox > Email.
 
@@ -294,13 +304,37 @@ Required Admin API scopes (minimum): `read_customers`, `read_orders`.
 
 Inbound linking behaviour:
 
-- WhatsApp message: search Shopify by phone, use returned email to match an existing CEP contact when possible.
-- Email message: search by email, use returned phone the same way.
-- Instagram: no Shopify lookup.
+- WhatsApp message: look up Shopify by phone; if found, attach the Shopify email onto the same CEP contact (and merge if that email already belonged to another contact).
+- Email message: look up Shopify by email; if found, attach the Shopify phone the same way.
+- Opening the customer panel also attaches missing Shopify email/phone onto the open contact.
+- Instagram: no Shopify lookup (no phone/email on that channel).
 
 ---
 
-## 6. Keeping channels online
+## 6. Inbox: clear chat and delete messages
+
+Agents sometimes need to clean a thread without losing the customer contact. CEP supports both a full clear and picking individual messages.
+
+### Clear the whole channel thread
+
+1. Open the contact in **Inbox** and select the channel tab (WhatsApp, Instagram, or Email).
+2. Click **Clear chat** in the thread header.
+3. Confirm. CEP deletes every message in that channel for the contact and remembers the provider message ids so Gmail sync (or similar catch-up) does not bring them back.
+
+The contact still exists. Other channels on the same contact are untouched.
+
+### Delete specific messages
+
+1. Open the thread and click **Select**.
+2. Tap the messages you want gone (or **Select all**).
+3. Click **Delete**, then confirm.
+4. Use **Cancel** to leave selection mode without deleting.
+
+Same rule as clear chat: deleted messages stay suppressed so they do not reappear from provider sync.
+
+---
+
+## 7. Keeping channels online
 
 Providers rotate or expire some credentials. Use this as the ops checklist after go-live.
 
@@ -342,26 +376,29 @@ Access Token and Refresh Token are not the same as the 7-day watch. Short-lived 
 
 ---
 
-## 7. Verification
+## 8. Verification
 
 | Step | WhatsApp | Instagram | Gmail | Shopify |
 |------|----------|-----------|-------|---------|
-| Credentials in Settings | Saved | Saved + Connect | Saved + Connect + Topic | Saved |
+| Credentials in Settings | Saved | Saved + Connect (after Save unlocks Connect) | Saved + Connect + Topic, then Start watch | Saved |
 | Provider config | Webhook verified, `messages` subscribed | Webhook + OAuth redirect | Redirect URI + push subscription + watch | App installed with read scopes |
 | Functional check | Inbound + reply | Customer DM + reply | Inbound email + reply | Customer panel shows orders for a matched contact |
 
 ---
 
-## 8. Common failures
+## 9. Common failures
 
 | Symptom | Likely cause |
 |---------|----------------|
 | Webhook verification failed | Callback URL or Verify Token does not match CEP; API unreachable |
 | WhatsApp stops after ~24h | Temporary API Setup token; replace with System User token |
 | Send fails, receive works | Token/scopes/Phone Number ID |
+| Instagram Connect stays disabled | App ID, App Secret, or Verify Token not filled and Saved yet |
 | Instagram Connect error | Redirect URI mismatch, or Instagram App ID/Secret (from Instagram API setup page) not saved before Connect; used Meta App ID from Basic by mistake |
 | IG DMs not arriving | Webhook URL/token mismatch, or `messages` not subscribed |
 | Instagram send fails after weeks | Long-lived token expired; Connect Instagram again |
+| Gmail Connect stays disabled | Client ID, Client Secret, or Pub/Sub Topic not filled and Saved yet |
+| Gmail Start watch stays disabled | Connect Gmail first so tokens exist, then Save if needed |
 | Gmail `redirect_uri_mismatch` | Client missing the hosted Gmail callback URL |
 | Gmail `access_denied` | Consent screen not published / mailbox not allowed |
 | New Gmail stops arriving after ~7 days | `users.watch` expired; click Start Gmail watch |
@@ -374,11 +411,11 @@ Access Token and Refresh Token are not the same as the 7-day watch. Short-lived 
 ## URL reference
 
 ```
-https://cep.logback-backend-services.online
-https://cep.logback-backend-services.online/webhooks/whatsapp
-https://cep.logback-backend-services.online/webhooks/instagram
-https://cep.logback-backend-services.online/webhooks/email/pubsub
-https://cep.logback-backend-services.online/oauth/gmail/callback
-https://cep.logback-backend-services.online/oauth/instagram/callback
-https://cep.logback-backend-services.online/privacy
+https://cep-svasthyaa.fybud.com
+https://api.cep-svasthyaa.fybud.com/webhooks/whatsapp
+https://api.cep-svasthyaa.fybud.com/webhooks/instagram
+https://api.cep-svasthyaa.fybud.com/webhooks/email/pubsub
+https://api.cep-svasthyaa.fybud.com/oauth/gmail/callback
+https://api.cep-svasthyaa.fybud.com/oauth/instagram/callback
+https://api.cep-svasthyaa.fybud.com/privacy
 ```

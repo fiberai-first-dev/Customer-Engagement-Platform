@@ -160,6 +160,7 @@ async function resetCepSchema(prisma: PrismaClient) {
     DROP TABLE IF EXISTS
       "messages",
       "webhook_events",
+      "suppressed_inbounds",
       "whatsapp_channel",
       "instagram_channel",
       "email_channel",
@@ -180,6 +181,24 @@ async function resetCepSchema(prisma: PrismaClient) {
   await prisma.$executeRawUnsafe(`DROP TYPE IF EXISTS "MessageDirection" CASCADE`);
   await prisma.$executeRawUnsafe(`DROP TYPE IF EXISTS "MessageStatus" CASCADE`);
   await prisma.$executeRawUnsafe(`DROP TYPE IF EXISTS "ContentType" CASCADE`);
+}
+
+async function appliedMigrationNames(prisma: PrismaClient): Promise<Set<string>> {
+  await ensureMigrationsTable(prisma);
+  const rows = await prisma.$queryRawUnsafe<Array<{ migration_name: string }>>(
+    `SELECT migration_name FROM "_prisma_migrations"`,
+  );
+  return new Set(rows.map((r) => r.migration_name));
+}
+
+async function applyPendingMigrations(prisma: PrismaClient, folders: string[]) {
+  const applied = await appliedMigrationNames(prisma);
+  for (const folder of folders) {
+    if (applied.has(folder)) continue;
+    await applySqlFile(prisma, migrationSqlPath(folder));
+    await markApplied(prisma, folder);
+    console.log(`[migrate] applied pending ${folder}`);
+  }
 }
 
 async function schemaLooksCurrent(prisma: PrismaClient): Promise<boolean> {
@@ -237,8 +256,8 @@ export async function runDatabaseMigrations(): Promise<void> {
     console.log(`[migrate] found ${folders.length} migration folder(s)`);
 
     if (await schemaLooksCurrent(prisma)) {
-      console.log("[migrate] Schema already up to date");
-      await baselineAllMigrations(prisma);
+      console.log("[migrate] Core schema present — applying any pending migrations");
+      await applyPendingMigrations(prisma, folders);
       return;
     }
 

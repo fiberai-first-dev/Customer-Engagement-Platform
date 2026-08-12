@@ -1,5 +1,6 @@
 import { isShopifyConfigured, resolveShopifyCredentials } from "./shopify.client.js";
 import { ShopifyOrderProvider } from "./shopify.provider.js";
+import { linkShopifyChannelsToCustomer } from "./shopify-contact.service.js";
 import type {
   CustomerCommerceResponse,
   OrderLookupQuery,
@@ -36,7 +37,9 @@ export class OrderService {
     });
   }
 
-  async getCustomerCommerce(query: OrderLookupQuery): Promise<CustomerCommerceResponse> {
+  async getCustomerCommerce(
+    query: OrderLookupQuery & { customerId?: string | null },
+  ): Promise<CustomerCommerceResponse & { channelsLinked?: boolean }> {
     if (!(await isShopifyConfigured())) {
       return {
         provider: "none",
@@ -45,10 +48,29 @@ export class OrderService {
         orders: [],
       };
     }
-    return this.shopify.getCustomerCommerce({
+    const commerce = await this.shopify.getCustomerCommerce({
       email: query.email ?? undefined,
       phone: query.phone ?? undefined,
     });
+
+    let channelsLinked = false;
+    const customerId = query.customerId?.trim();
+    if (customerId && commerce.customer) {
+      try {
+        const link = await linkShopifyChannelsToCustomer(customerId, {
+          email: commerce.customer.email || query.email,
+          phone: commerce.customer.phone || query.phone,
+        });
+        channelsLinked = link.changed;
+      } catch (err) {
+        console.warn(
+          "[commerce] shopify channel link skipped:",
+          err instanceof Error ? err.message : err,
+        );
+      }
+    }
+
+    return { ...commerce, channelsLinked };
   }
 
   async isLive(): Promise<boolean> {

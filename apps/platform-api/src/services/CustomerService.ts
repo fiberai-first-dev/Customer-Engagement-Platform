@@ -129,7 +129,7 @@ async function attachIdentities(
       continue;
     }
     await prisma.emailChannel.create({
-      data: { id: ulid(), customerId, externalId: email, resolved: false, metadata: {} },
+      data: { id: ulid(), customerId, externalId: email, resolved: true, metadata: {} },
     });
   }
 
@@ -178,7 +178,7 @@ async function attachIdentities(
       continue;
     }
     await prisma.whatsAppChannel.create({
-      data: { id: ulid(), customerId, externalId, resolved: false, metadata: {} },
+      data: { id: ulid(), customerId, externalId, resolved: true, metadata: {} },
     });
   }
 
@@ -243,7 +243,7 @@ async function attachIdentities(
             id: ulid(),
             customerId,
             externalId: ig,
-            resolved: false,
+            resolved: true,
             metadata: { username: ig, senderName: `@${ig}` },
           },
         });

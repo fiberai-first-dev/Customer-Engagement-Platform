@@ -101,7 +101,7 @@ export async function publicOAuthRoutes(app: FastifyInstance) {
     const confirmationCode = `cep_${Date.now()}`;
     request.log.info({ body: request.body, query: request.query }, "instagram data deletion");
     return reply.code(200).send({
-      url: `${env.publicBaseUrl.replace(/\/$/, "")}/privacy`,
+      url: `${env.apiBaseUrl.replace(/\/$/, "")}/privacy`,
       confirmation_code: confirmationCode,
     });
   });

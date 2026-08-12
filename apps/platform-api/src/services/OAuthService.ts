@@ -39,13 +39,13 @@ function nonEmpty(value: unknown): string | null {
 }
 
 export function gmailRedirectUri(): string {
-  return `${env.publicBaseUrl.replace(/\/$/, "")}/oauth/gmail/callback`;
+  return `${env.apiBaseUrl.replace(/\/$/, "")}/oauth/gmail/callback`;
 }
 
 export function instagramRedirectUri(): string {
   return (
     process.env.INSTAGRAM_OAUTH_REDIRECT_URI?.trim() ||
-    `${env.publicBaseUrl.replace(/\/$/, "")}/oauth/instagram/callback`
+    `${env.apiBaseUrl.replace(/\/$/, "")}/oauth/instagram/callback`
   );
 }
 
@@ -94,11 +94,11 @@ export function oauthRedirectHints() {
     gmailRedirectUri: gmailRedirectUri(),
     instagramRedirectUri: instagramRedirectUri(),
     webBaseUrl: env.webBaseUrl,
-    publicBaseUrl: env.publicBaseUrl,
+    apiBaseUrl: env.apiBaseUrl,
     webhooks: {
-      whatsapp: `${env.publicBaseUrl.replace(/\/$/, "")}/webhooks/whatsapp`,
-      instagram: `${env.publicBaseUrl.replace(/\/$/, "")}/webhooks/instagram`,
-      emailPubSub: `${env.publicBaseUrl.replace(/\/$/, "")}/webhooks/email/pubsub`,
+      whatsapp: `${env.apiBaseUrl.replace(/\/$/, "")}/webhooks/whatsapp`,
+      instagram: `${env.apiBaseUrl.replace(/\/$/, "")}/webhooks/instagram`,
+      emailPubSub: `${env.apiBaseUrl.replace(/\/$/, "")}/webhooks/email/pubsub`,
     },
   };
 }

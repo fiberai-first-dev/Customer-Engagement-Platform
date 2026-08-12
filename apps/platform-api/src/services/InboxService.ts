@@ -2,6 +2,7 @@ import { prisma } from "../config/db.js";
 import { env } from "../config/env.js";
 import { mergeChannelConfig } from "./MessagingService.js";
 import { normalizeInstagramChannelConfigStored } from "../adapters/shared/index.js";
+import { computeChannelHealth } from "./ChannelHealth.js";
 import type { ChannelType, Prisma } from "../generated/client/index.js";
 
 function shapeChannelConfig(row: {
@@ -11,7 +12,7 @@ function shapeChannelConfig(row: {
   channelConfig: Prisma.JsonValue;
   enabled: boolean;
 }) {
-  const base = env.publicBaseUrl.replace(/\/$/, "");
+  const base = env.apiBaseUrl.replace(/\/$/, "");
   let channelConfig = row.channelConfig;
   if (
     row.channelType === "instagram" &&
@@ -30,7 +31,11 @@ function shapeChannelConfig(row: {
     channelType: row.channelType,
     channelConfig,
     enabled: row.enabled,
-    webhookUrl: `${base}/webhooks/${row.channelType}`,
+    webhookUrl:
+      row.channelType === "email"
+        ? `${base}/webhooks/email/pubsub`
+        : `${base}/webhooks/${row.channelType}`,
+    health: computeChannelHealth(row.channelType, channelConfig, row.enabled),
   };
 }
 

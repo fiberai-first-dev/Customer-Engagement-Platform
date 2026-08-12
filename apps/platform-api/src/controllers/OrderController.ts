@@ -30,12 +30,13 @@ export class OrderController {
   /** Full commerce payload for the inbox customer widget (profile + stats + orders). */
   static async getCommerce(
     request: FastifyRequest<{
-      Querystring: { email?: string; phone?: string };
+      Querystring: { email?: string; phone?: string; customerId?: string };
     }>,
     reply: FastifyReply,
   ) {
     const email = request.query.email?.trim();
     const phone = request.query.phone?.trim();
+    const customerId = request.query.customerId?.trim();
 
     if (!email && !phone) {
       return reply.code(400).send({
@@ -44,7 +45,7 @@ export class OrderController {
     }
 
     try {
-      const result = await orderService.getCustomerCommerce({ email, phone });
+      const result = await orderService.getCustomerCommerce({ email, phone, customerId });
       return reply.send(result);
     } catch (err: any) {
       return reply.code(502).send({

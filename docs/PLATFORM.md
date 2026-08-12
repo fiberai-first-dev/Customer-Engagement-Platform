@@ -29,18 +29,18 @@ Public hosting:
 
 | Surface | Host |
 |---------|------|
-| Agent UI | `https://cep.logback-backend-services.online` |
-| API + webhooks + OAuth callbacks | `https://cep-api.logback-backend-services.online` |
+| Agent UI | `https://cep-svasthyaa.fybud.com` |
+| API + webhooks + OAuth callbacks | `https://api.cep-svasthyaa.fybud.com` |
 
 Env (set in `apps/platform-api/.env` — not hardcoded in source):
 
 ```env
-PLATFORM_PUBLIC_BASE_URL="https://cep-api.logback-backend-services.online"
-PLATFORM_WEB_BASE_URL="https://cep.logback-backend-services.online"
+PLATFORM_API_BASE_URL="https://api.cep-svasthyaa.fybud.com"
+PLATFORM_WEB_BASE_URL="https://cep-svasthyaa.fybud.com"
 ```
 
-- `PLATFORM_PUBLIC_BASE_URL` — API origin (webhooks, OAuth callbacks)  
-- `PLATFORM_WEB_BASE_URL` — agent UI origin (OAuth Connect returns here → `/settings`)  
+- `PLATFORM_API_BASE_URL` — API origin (webhooks, OAuth callbacks)
+- `PLATFORM_WEB_BASE_URL` — agent UI origin (OAuth Connect returns here → `/settings`)
 - Web `VITE_API_BASE_URL` — must point at the API origin  
 
 ---
@@ -95,9 +95,9 @@ Customer → Provider → POST /webhooks/{channel}
 Examples (hosted):
 
 ```text
-https://cep-api.logback-backend-services.online/webhooks/whatsapp
-https://cep-api.logback-backend-services.online/webhooks/instagram
-https://cep-api.logback-backend-services.online/webhooks/email/pubsub
+https://api.cep-svasthyaa.fybud.com/webhooks/whatsapp
+https://api.cep-svasthyaa.fybud.com/webhooks/instagram
+https://api.cep-svasthyaa.fybud.com/webhooks/email/pubsub
 ```
 
 There are **no** `/webhooks/whatsapp/:inboxId` or `/webhooks/instagram/:inboxId` routes. Meta callbacks use the channel-only URLs above; the API routes traffic to the first enabled inbox for that channel.
@@ -118,8 +118,9 @@ Agent UI → POST /api/v1/conversations/:id/messages
 Developers historically ran local OAuth CLIs. **Vendors only have the hosted UI**, so OAuth is browser-native:
 
 ```text
-Settings → Save App / Client credentials
-        → Connect Gmail | Connect Instagram
+Settings → Save App / Client credentials (required fields)
+        → Connect Gmail | Connect Instagram (enabled only after Save)
+        → (Gmail) Start watch once tokens exist
         → POST /api/v1/oauth/{gmail|instagram}/start   (JWT)
         → Redirect to Google / Meta consent
         → GET /oauth/{gmail|instagram}/callback          (public)
@@ -130,7 +131,7 @@ Settings → Save App / Client credentials
 After a successful Connect, the browser lands on:
 
 ```text
-https://cep.logback-backend-services.online/settings?oauth=gmail|instagram&status=success
+https://cep-svasthyaa.fybud.com/settings?oauth=gmail|instagram&status=success
 ```
 
 | Endpoint | Auth | Purpose |
@@ -154,7 +155,7 @@ CLI scripts remain for engineers debugging locally; they are **not** required fo
 | Health | `GET /health` |
 | Auth | `POST /api/v1/auth/login` |
 | Accounts / inboxes | `/api/v1/accounts…`, `PATCH /api/v1/inboxes/:id` |
-| Conversations / messages | `/api/v1/conversations…` |
+| Conversations / messages | `/api/v1/conversations…` · `POST /:id/suppress` (clear chat) · `POST /:id/messages/delete` (selected messages) |
 | Contacts | `/api/v1/contacts…` |
 | Dashboard | `/api/v1/dashboard…` |
 | Gmail watch | `POST /api/v1/gmail/watch`, `POST /api/v1/gmail/renew-watch` |
@@ -184,10 +185,10 @@ Shared types: `NormalizedInboundMessage`, per-channel config interfaces in `adap
 | Route | Page |
 |-------|------|
 | `/login` | Admin login |
-| `/inbox` | Omnichannel thread UI (list + channel tabs + customer panel) |
+| `/inbox` | Omnichannel thread UI (list + channel tabs + customer panel). **Clear chat** removes a whole channel thread; **Select → Delete** removes chosen messages. Both tombstone provider ids so sync cannot resurrect them. |
 | `/contacts` | Contact directory (multi email / WhatsApp) |
 | `/dashboard` | Lightweight metrics |
-| `/settings` | Channel credentials, webhook/OAuth URLs, **Connect** + Gmail watch |
+| `/settings` | Channel credentials, webhook/OAuth URLs. **Connect Instagram / Connect Gmail** stay disabled until required fields are filled and Saved (OAuth then writes tokens). **Start Gmail watch** unlocks after tokens are present and saved. |
 
 API client: `apps/platform-web/src/api/index.ts` (React Query + Zustand auth token).
 
@@ -222,8 +223,8 @@ Secrets:
 
 | Mode | Public URL | OAuth |
 |------|------------|--------|
-| Local eng | Tunnel (`cloudflared` / ngrok) → `PLATFORM_PUBLIC_BASE_URL` | Settings Connect **or** CLI scripts |
-| Hosted vendor | `cep-api…` API + `cep…` UI | **Settings Connect only** (recommended) |
+| Local eng | Tunnel (`cloudflared` / ngrok) → `PLATFORM_API_BASE_URL` | Settings Connect **or** CLI scripts |
+| Hosted vendor | `api.cep-svasthyaa.fybud.com` API + `cep-svasthyaa.fybud.com` UI | **Settings Connect only** (recommended) |
 
 Meta and Google **cannot** call `localhost`. Always point webhooks and OAuth redirects at the public API host.
 

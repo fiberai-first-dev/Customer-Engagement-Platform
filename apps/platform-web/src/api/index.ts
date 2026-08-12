@@ -68,6 +68,12 @@ export interface Inbox {
   channelConfig: Record<string, unknown>;
   enabled: boolean;
   webhookUrl?: string;
+  health?: {
+    level: "ok" | "warn" | "error" | "unknown";
+    summary: string;
+    details: string[];
+    watchExpiresAt?: string | null;
+  };
 }
 
 export interface ContactIdentity {
@@ -201,7 +207,7 @@ export const useSendMessage = () => {
   return useMutation({
     mutationFn: ({ id, content, subject }: { id: string; content: string; subject?: string }) =>
       request<{
-        message: Message;
+        message: Message | null;
         result: { ok: boolean; status: string; error?: string };
       }>(`/api/v1/conversations/${id}/messages`, {
         method: "POST",
@@ -228,12 +234,23 @@ export const useSendMessage = () => {
         queryClient.setQueryData(["messages", variables.id], context.previous);
       }
     },
-    onSuccess: (data, variables) => {
+    onSuccess: (data, variables, context) => {
+      if (!data.result?.ok || !data.message) {
+        // Channel send failed — drop optimistic bubble; keep draft restored by caller.
+        if (context?.previous) {
+          queryClient.setQueryData(["messages", variables.id], context.previous);
+        } else {
+          queryClient.setQueryData<Message[]>(["messages", variables.id], (current) =>
+            (current ?? []).filter((m) => !m.id.startsWith("local_")),
+          );
+        }
+        return;
+      }
       queryClient.setQueryData<Message[]>(["messages", variables.id], (current) => {
         const list = current ?? [];
         const withoutOptimistic = list.filter((m) => !m.id.startsWith("local_"));
-        const exists = withoutOptimistic.some((m) => m.id === data.message.id);
-        return exists ? withoutOptimistic : [...withoutOptimistic, data.message];
+        const exists = withoutOptimistic.some((m) => m.id === data.message!.id);
+        return exists ? withoutOptimistic : [...withoutOptimistic, data.message!];
       });
       queryClient.invalidateQueries({ queryKey: ["conversations"] });
     },
@@ -250,6 +267,41 @@ export const useUpdateConversation = () => {
       }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["conversations"] });
+    },
+  });
+};
+
+/** Clear all messages in a channel thread + tombstone external ids (won't reappear from sync). */
+export const useSuppressConversation = () => {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) =>
+      request<{ ok: boolean; suppressed: number; deletedMessages: number }>(
+        `/api/v1/conversations/${id}/suppress`,
+        { method: "POST" },
+      ),
+    onSuccess: (_data, id) => {
+      queryClient.invalidateQueries({ queryKey: ["conversations"] });
+      queryClient.invalidateQueries({ queryKey: ["messages", id] });
+    },
+  });
+};
+
+/** Delete selected messages in a thread + tombstone their external ids. */
+export const useDeleteMessages = () => {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, messageIds }: { id: string; messageIds: string[] }) =>
+      request<{ ok: boolean; suppressed: number; deletedMessages: number }>(
+        `/api/v1/conversations/${id}/messages/delete`,
+        {
+          method: "POST",
+          body: JSON.stringify({ messageIds }),
+        },
+      ),
+    onSuccess: (_data, { id }) => {
+      queryClient.invalidateQueries({ queryKey: ["conversations"] });
+      queryClient.invalidateQueries({ queryKey: ["messages", id] });
     },
   });
 };
@@ -278,7 +330,7 @@ export interface OAuthHints {
   gmailRedirectUri: string;
   instagramRedirectUri: string;
   webBaseUrl: string;
-  publicBaseUrl: string;
+  apiBaseUrl: string;
   webhooks: {
     whatsapp: string;
     instagram: string;

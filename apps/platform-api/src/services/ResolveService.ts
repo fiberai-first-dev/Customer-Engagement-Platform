@@ -1,14 +1,28 @@
 import { prisma } from "../config/db.js";
 
-/** Customer.resolved = true iff every channel identity is resolved (or customer has none). */
+/** Only identities that have actually messaged count toward resolve / Unresolved. */
+function isActiveIdentity(row: { lastMessageAt: Date | null; resolved: boolean }) {
+  return row.lastMessageAt != null;
+}
+
+/** Customer.resolved = true iff every *active* channel identity is resolved (or none active). */
 export async function recomputeCustomerResolved(customerId: string): Promise<boolean> {
   const [wa, ig, em] = await Promise.all([
-    prisma.whatsAppChannel.findMany({ where: { customerId }, select: { resolved: true } }),
-    prisma.instagramChannel.findMany({ where: { customerId }, select: { resolved: true } }),
-    prisma.emailChannel.findMany({ where: { customerId }, select: { resolved: true } }),
+    prisma.whatsAppChannel.findMany({
+      where: { customerId },
+      select: { resolved: true, lastMessageAt: true },
+    }),
+    prisma.instagramChannel.findMany({
+      where: { customerId },
+      select: { resolved: true, lastMessageAt: true },
+    }),
+    prisma.emailChannel.findMany({
+      where: { customerId },
+      select: { resolved: true, lastMessageAt: true },
+    }),
   ]);
-  const all = [...wa, ...ig, ...em];
-  const resolved = all.length === 0 ? false : all.every((r) => r.resolved);
+  const all = [...wa, ...ig, ...em].filter(isActiveIdentity);
+  const resolved = all.length === 0 ? true : all.every((r) => r.resolved);
   await prisma.customer.update({
     where: { id: customerId },
     data: { resolved },
