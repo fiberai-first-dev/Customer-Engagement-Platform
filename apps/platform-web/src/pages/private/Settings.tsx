@@ -8,6 +8,7 @@ import {
   startChannelOAuth,
   startGmailWatch,
   useAccounts,
+  useDisconnectInbox,
   useInboxes,
   useOAuthHints,
   useShopifyConfig,
@@ -16,6 +17,7 @@ import {
   setupGuidePdfUrl,
   type Inbox,
 } from "../../api";
+import { ConfirmDialog } from "../../components/ui/confirm-dialog";
 import {
   CheckCircle2,
   Copy,
@@ -112,8 +114,12 @@ function statusFromHealth(
       tone: "error",
     };
   }
-  if (health.level === "unknown") return { label: "Disabled", tone: "idle" };
+  if (health.level === "unknown") return { label: "Not Connected", tone: "idle" };
   return { label: "Not Connected", tone: "idle" };
+}
+
+function isLinkedStatus(tone: "ok" | "warn" | "error" | "idle") {
+  return tone === "ok" || tone === "warn";
 }
 
 function StatusBadge({
@@ -350,29 +356,44 @@ function ChannelRow({
   name,
   status,
   busy,
-  primaryLabel,
-  onPrimary,
+  linked,
+  onConnect,
+  onDisconnect,
   secondary,
 }: {
   name: string;
   status: { label: string; tone: "ok" | "warn" | "error" | "idle" };
   busy?: boolean;
-  primaryLabel: string;
-  onPrimary: () => void;
+  linked: boolean;
+  onConnect: () => void;
+  onDisconnect: () => void;
   secondary?: ReactNode;
 }) {
   return (
     <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-border bg-card px-4 py-3.5 shadow-sm">
-      <div className="flex min-w-0 items-center gap-3">
+      <div className="flex min-w-0 flex-col gap-1.5 sm:flex-row sm:items-center sm:gap-3">
         <span className="text-sm font-semibold text-foreground">{name}</span>
         <StatusBadge label={status.label} tone={status.tone} />
       </div>
       <div className="flex flex-wrap items-center gap-2">
         {secondary}
-        <Button type="button" onClick={onPrimary} disabled={busy} className="min-w-[7.5rem]">
-          {busy ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
-          {primaryLabel}
-        </Button>
+        {linked ? (
+          <Button
+            type="button"
+            variant="outline"
+            disabled={busy}
+            onClick={onDisconnect}
+            className="min-w-[7.5rem] border-destructive/40 text-destructive hover:bg-destructive/10 hover:text-destructive"
+          >
+            {busy ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+            Disconnect
+          </Button>
+        ) : (
+          <Button type="button" onClick={onConnect} disabled={busy} className="min-w-[7.5rem]">
+            {busy ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+            Connect
+          </Button>
+        )}
       </div>
     </div>
   );
@@ -387,14 +408,17 @@ export function SettingsPage() {
   const { data: inboxes, isLoading: inboxesLoading } = useInboxes(activeAccount?.id);
   const { data: oauthHints } = useOAuthHints();
   const { mutateAsync: updateInboxAsync } = useUpdateInbox();
+  const { mutateAsync: disconnectInboxAsync, isPending: disconnectingInbox } =
+    useDisconnectInbox();
   const { data: shopify, isLoading: shopifyLoading } = useShopifyConfig();
-  const { mutateAsync: updateShopifyAsync } = useUpdateShopifyConfig();
+  const { mutateAsync: updateShopifyAsync, isPending: shopifyBusy } = useUpdateShopifyConfig();
 
   const [banner, setBanner] = useState<{ tone: "ok" | "err"; text: string } | null>(null);
   const [connecting, setConnecting] = useState<"gmail" | "instagram" | null>(null);
   const [watching, setWatching] = useState(false);
   const [modal, setModal] = useState<ChannelKey | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const [disconnectTarget, setDisconnectTarget] = useState<ChannelKey | null>(null);
 
   useEffect(() => {
     setConnecting(null);
@@ -453,7 +477,7 @@ export function SettingsPage() {
     ? { label: "Connected", tone: "ok" as const }
     : { label: "Not Connected", tone: "idle" as const };
 
-  const connectedCount = [waStatus, igStatus, emailStatus, shopifyStatus].filter(
+  const connectedCount = [waStatus, igStatus, emailStatus].filter(
     (s) => s.tone === "ok",
   ).length;
 
@@ -503,7 +527,7 @@ export function SettingsPage() {
         description: "Enter your WhatsApp Business Cloud API credentials.",
         fields: WA_FIELDS,
         initialValues: publicPrefill(waInbox?.channelConfig as Record<string, unknown>),
-        submitLabel: waStatus.tone === "ok" ? "Reconnect" : "Connect",
+        submitLabel: "Connect",
       };
     }
     if (modal === "instagram") {
@@ -512,12 +536,7 @@ export function SettingsPage() {
         description: "Enter app credentials. CEP opens Instagram login to finish.",
         fields: IG_FIELDS,
         initialValues: publicPrefill(igInbox?.channelConfig as Record<string, unknown>),
-        submitLabel:
-          connecting === "instagram"
-            ? "Connecting…"
-            : igStatus.tone === "ok"
-              ? "Reconnect"
-              : "Connect",
+        submitLabel: connecting === "instagram" ? "Connecting…" : "Connect",
       };
     }
     if (modal === "email") {
@@ -526,12 +545,7 @@ export function SettingsPage() {
         description: "Enter OAuth client details. CEP opens Google to fill tokens.",
         fields: EMAIL_FIELDS,
         initialValues: publicPrefill(emailInbox?.channelConfig as Record<string, unknown>),
-        submitLabel:
-          connecting === "gmail"
-            ? "Connecting…"
-            : emailStatus.tone === "ok" || emailStatus.tone === "warn"
-              ? "Reconnect"
-              : "Connect",
+        submitLabel: connecting === "gmail" ? "Connecting…" : "Connect",
       };
     }
     return {
@@ -542,7 +556,7 @@ export function SettingsPage() {
         shop: shopify?.shop || "",
         clientId: shopify?.clientId || "",
       },
-      submitLabel: shopifyConnected ? "Reconnect" : "Connect",
+      submitLabel: "Connect",
     };
   }, [
     modal,
@@ -550,12 +564,48 @@ export function SettingsPage() {
     igInbox,
     emailInbox,
     shopify,
-    waStatus.tone,
-    igStatus.tone,
-    emailStatus.tone,
-    shopifyConnected,
     connecting,
   ]);
+
+  const disconnectLabel =
+    disconnectTarget === "whatsapp"
+      ? "WhatsApp"
+      : disconnectTarget === "instagram"
+        ? "Instagram"
+        : disconnectTarget === "email"
+          ? "Gmail"
+          : disconnectTarget === "shopify"
+            ? "Shopify"
+            : "";
+
+  const handleDisconnectConfirm = async () => {
+    if (!disconnectTarget) return;
+    try {
+      if (disconnectTarget === "shopify") {
+        await updateShopifyAsync({ disconnect: true });
+      } else {
+        const inbox =
+          disconnectTarget === "whatsapp"
+            ? waInbox
+            : disconnectTarget === "instagram"
+              ? igInbox
+              : emailInbox;
+        if (!inbox) throw new Error("Channel is not available.");
+        await disconnectInboxAsync(inbox.id);
+      }
+      setBanner({
+        tone: "ok",
+        text: `${disconnectLabel} disconnected · credentials removed`,
+      });
+      setDisconnectTarget(null);
+    } catch (err: unknown) {
+      setBanner({
+        tone: "err",
+        text: err instanceof Error ? err.message : "Disconnect failed",
+      });
+      setDisconnectTarget(null);
+    }
+  };
 
   const handleConnectSubmit = async (values: Record<string, string>) => {
     if (!modal) return;
@@ -659,7 +709,8 @@ export function SettingsPage() {
           <div>
             <h1 className="mb-1 text-3xl font-bold">Settings</h1>
             <p className="text-muted-foreground">
-              Connect messaging and commerce channels. Secrets stay on the server.
+              Connect messaging channels and Shopify for order context. Secrets stay on the
+              server.
             </p>
           </div>
           <Button variant="outline" className="gap-2" asChild>
@@ -689,7 +740,7 @@ export function SettingsPage() {
             <div>
               <h2 className="text-base font-semibold">Channels</h2>
               <p className="mt-1 text-sm text-muted-foreground">
-                Connect a channel, then manage it from this list.
+                WhatsApp, Instagram, and Gmail for conversations.
               </p>
             </div>
             <p className="text-sm text-muted-foreground">{connectedCount} connected</p>
@@ -699,27 +750,39 @@ export function SettingsPage() {
             <ChannelRow
               name="WhatsApp"
               status={waStatus}
-              busy={submitting && modal === "whatsapp"}
-              primaryLabel={waStatus.tone === "ok" ? "Reconnect" : "Connect"}
-              onPrimary={() => setModal("whatsapp")}
+              linked={isLinkedStatus(waStatus.tone)}
+              busy={
+                (submitting && modal === "whatsapp") ||
+                (disconnectingInbox && disconnectTarget === "whatsapp")
+              }
+              onConnect={() => setModal("whatsapp")}
+              onDisconnect={() => setDisconnectTarget("whatsapp")}
             />
             <ChannelRow
               name="Instagram"
               status={igStatus}
-              busy={connecting === "instagram" || (submitting && modal === "instagram")}
-              primaryLabel={igStatus.tone === "ok" ? "Reconnect" : "Connect"}
-              onPrimary={() => setModal("instagram")}
+              linked={isLinkedStatus(igStatus.tone)}
+              busy={
+                connecting === "instagram" ||
+                (submitting && modal === "instagram") ||
+                (disconnectingInbox && disconnectTarget === "instagram")
+              }
+              onConnect={() => setModal("instagram")}
+              onDisconnect={() => setDisconnectTarget("instagram")}
             />
             <ChannelRow
               name="Gmail"
               status={emailStatus}
-              busy={connecting === "gmail" || (submitting && modal === "email")}
-              primaryLabel={
-                emailStatus.tone === "ok" || emailStatus.tone === "warn" ? "Reconnect" : "Connect"
+              linked={isLinkedStatus(emailStatus.tone)}
+              busy={
+                connecting === "gmail" ||
+                (submitting && modal === "email") ||
+                (disconnectingInbox && disconnectTarget === "email")
               }
-              onPrimary={() => setModal("email")}
+              onConnect={() => setModal("email")}
+              onDisconnect={() => setDisconnectTarget("email")}
               secondary={
-                (emailStatus.tone === "ok" || emailStatus.tone === "warn") && (
+                isLinkedStatus(emailStatus.tone) && (
                   <Button
                     type="button"
                     variant="outline"
@@ -741,14 +804,33 @@ export function SettingsPage() {
                 )
               }
             />
-            <ChannelRow
-              name="Shopify"
-              status={shopifyStatus}
-              busy={submitting && modal === "shopify"}
-              primaryLabel={shopifyConnected ? "Reconnect" : "Connect"}
-              onPrimary={() => setModal("shopify")}
-            />
           </div>
+        </section>
+
+        <section className="space-y-3">
+          <div className="flex items-end justify-between gap-3">
+            <div>
+              <h2 className="text-base font-semibold">Shopify</h2>
+              <p className="mt-1 text-sm text-muted-foreground">
+                Store credentials for customer and order details in the inbox — not a messaging
+                channel.
+              </p>
+            </div>
+            <p className="text-sm text-muted-foreground">
+              {shopifyConnected ? "1 connected" : "0 connected"}
+            </p>
+          </div>
+          <ChannelRow
+            name="Shopify"
+            status={shopifyStatus}
+            linked={shopifyConnected}
+            busy={
+              (submitting && modal === "shopify") ||
+              (shopifyBusy && disconnectTarget === "shopify")
+            }
+            onConnect={() => setModal("shopify")}
+            onDisconnect={() => setDisconnectTarget("shopify")}
+          />
         </section>
       </div>
 
@@ -767,6 +849,18 @@ export function SettingsPage() {
           onSubmit={handleConnectSubmit}
         />
       )}
+
+      <ConfirmDialog
+        open={Boolean(disconnectTarget)}
+        title={`Disconnect ${disconnectLabel}?`}
+        description={`This removes credentials for ${disconnectLabel}. You can connect again anytime.`}
+        confirmLabel="Disconnect"
+        cancelLabel="Cancel"
+        destructive
+        confirming={disconnectingInbox || (shopifyBusy && disconnectTarget === "shopify")}
+        onConfirm={() => void handleDisconnectConfirm()}
+        onCancel={() => setDisconnectTarget(null)}
+      />
     </div>
   );
 }

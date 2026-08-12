@@ -2,6 +2,8 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import { Loader2, Search } from "lucide-react";
 import {
+  useAccounts,
+  useContacts,
   useConversations,
   useDeleteMessages,
   useEnabledChannelTypes,
@@ -52,6 +54,8 @@ export function InboxPage() {
     isFetching: conversationsFetching,
   } = useConversations("all");
   const { selectedContactId, setSelectedContactId } = useAppStore();
+  const { data: accounts } = useAccounts();
+  const { data: directoryContacts } = useContacts(accounts?.[0]?.id);
 
   const sendMessage = useSendMessage();
   const updateStatus = useUpdateConversation();
@@ -140,10 +144,16 @@ export function InboxPage() {
       ? pickPrimaryConversation(conversationsByContact[selectedContactId]!)
       : null);
 
+  const directoryContact = useMemo(
+    () => directoryContacts?.find((c) => c.id === selectedContactId) ?? null,
+    [directoryContacts, selectedContactId],
+  );
+
   const selectedContact =
     contactConversations[activeTab]?.contact ??
     selectedListConversation?.contact ??
     Object.values(contactConversations)[0]?.contact ??
+    directoryContact ??
     null;
 
   /** Email / WhatsApp can start outbound when an identity exists (Shopify-linked email, etc.). Instagram cannot. */
@@ -196,6 +206,7 @@ export function InboxPage() {
   /**
    * Once per contact open (including after data arrives), focus unresolved channel.
    * Polls/refetches won't steal the tab the agent chose.
+   * Contacts → Chat: if no threads yet, pick first channel with an identity.
    */
   useEffect(() => {
     if (!selectedContactId) {
@@ -204,10 +215,30 @@ export function InboxPage() {
     }
     if (focusedContactRef.current === selectedContactId) return;
     const rows = conversationsByContact[selectedContactId];
-    if (!rows?.length) return;
+    if (rows?.length) {
+      focusedContactRef.current = selectedContactId;
+      setActiveTab(pickPrimaryConversation(rows).channelType);
+      setStatusFilter("all");
+      return;
+    }
+    const contact = directoryContacts?.find((c) => c.id === selectedContactId);
+    if (!contact) return;
     focusedContactRef.current = selectedContactId;
-    setActiveTab(pickPrimaryConversation(rows).channelType);
-  }, [selectedContactId, conversationsByContact]);
+    setStatusFilter("all");
+    const preferred = (["whatsapp", "email", "instagram"] as ChannelType[]).find((ch) => {
+      if (channelsReady && !enabledSet.has(ch)) return false;
+      return identitiesFor(contact, ch).length > 0;
+    });
+    if (preferred) setActiveTab(preferred);
+    else if (enabledChannels[0]) setActiveTab(enabledChannels[0]);
+  }, [
+    selectedContactId,
+    conversationsByContact,
+    directoryContacts,
+    channelsReady,
+    enabledSet,
+    enabledChannels,
+  ]);
 
   const handleSelectConversation = (conversation: Conversation) => {
     const contactId = conversation.contactId;

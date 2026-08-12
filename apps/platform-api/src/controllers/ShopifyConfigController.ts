@@ -35,10 +35,19 @@ export class ShopifyConfigController {
       shop?: string;
       clientId?: string;
       clientSecret?: string;
+      disconnect?: boolean;
     };
 
     await prisma.shopifyConfig.findUnique({ where: { id: "shopify_default" } }) ??
       (await prisma.shopifyConfig.create({ data: { id: "shopify_default" } }));
+
+    if (body.disconnect) {
+      const row = await prisma.shopifyConfig.update({
+        where: { id: "shopify_default" },
+        data: { shop: "", clientId: "", clientSecret: "" },
+      });
+      return reply.send(shape(row));
+    }
 
     const nextSecret =
       typeof body.clientSecret === "string" ? body.clientSecret.trim() : undefined;

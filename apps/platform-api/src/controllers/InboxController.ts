@@ -16,4 +16,16 @@ export class InboxController {
       return reply.code(404).send({ error: err.message });
     }
   }
+
+  static async disconnectInbox(
+    request: FastifyRequest<{ Params: { inboxId: string } }>,
+    reply: FastifyReply,
+  ) {
+    try {
+      const inbox = await InboxService.disconnect(request.params.inboxId);
+      return reply.send(inbox);
+    } catch (err: any) {
+      return reply.code(404).send({ error: err.message });
+    }
+  }
 }

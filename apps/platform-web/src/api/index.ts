@@ -330,6 +330,17 @@ export const useUpdateInbox = () => {
   });
 };
 
+export const useDisconnectInbox = () => {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) =>
+      request<Inbox>(`/api/v1/inboxes/${id}/disconnect`, { method: "POST" }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["inboxes"] });
+    },
+  });
+};
+
 export interface OAuthHints {
   gmailRedirectUri: string;
   instagramRedirectUri: string;
@@ -491,6 +502,7 @@ export const useUpdateShopifyConfig = () => {
       shop?: string;
       clientId?: string;
       clientSecret?: string;
+      disconnect?: boolean;
     }) =>
       request<ShopifyConfig>("/api/v1/shopify", {
         method: "PUT",

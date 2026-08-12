@@ -3,7 +3,8 @@ import { Button } from "../../components/ui/button";
 import { Input } from "../../components/ui/input";
 import { ConfirmDialog } from "../../components/ui/confirm-dialog";
 import { useState, useMemo } from "react";
-import { Search, MoreHorizontal, Plus, Edit2, Trash2, Loader2 } from "lucide-react";
+import { useNavigate } from "react-router-dom";
+import { Search, MoreHorizontal, Plus, Edit2, Trash2, Loader2, MessageSquare } from "lucide-react";
 import { toast } from "sonner";
 import {
   useAccounts,
@@ -98,6 +99,7 @@ function matchesSearch(
 }
 
 export function ContactsPage() {
+  const navigate = useNavigate();
   const { data: accounts, isLoading: accountsLoading } = useAccounts();
   const accountId = accounts?.[0]?.id || "";
   const { data: contacts, isLoading: contactsLoading } = useContacts(accountId);
@@ -157,6 +159,12 @@ export function ContactsPage() {
       instagramId: instagramUsernameForEdit(c),
     });
     setIsModalOpen(true);
+  };
+
+  const openChat = (c: (typeof filteredContacts)[number]) => {
+    setOpenDropdownId(null);
+    setSelectedContactId(c.id);
+    navigate("/inbox");
   };
 
   const openDelete = (c: (typeof filteredContacts)[number]) => {
@@ -311,6 +319,17 @@ export function ContactsPage() {
                           </Button>
                           {openDropdownId === c.id && (
                             <div className="absolute right-0 top-full z-50 mt-1 w-40 overflow-hidden rounded-md border border-border bg-card text-card-foreground shadow-md">
+                              <button
+                                type="button"
+                                className="flex w-full items-center gap-2 px-4 py-2.5 text-left text-sm transition-colors hover:bg-muted"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  openChat(c);
+                                }}
+                              >
+                                <MessageSquare className="h-3.5 w-3.5" />
+                                Chat
+                              </button>
                               <button
                                 type="button"
                                 className="flex w-full items-center gap-2 px-4 py-2.5 text-left text-sm transition-colors hover:bg-muted"

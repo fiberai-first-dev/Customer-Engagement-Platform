@@ -115,4 +115,18 @@ export class InboxService {
     if (!existing) throw new Error("not found");
     return this.update(existing.id, data);
   }
+
+  /** Wipe credentials and disable — Settings "Disconnect". */
+  static async disconnect(id: string) {
+    const existing = await prisma.channelConfig.findUnique({ where: { id } });
+    if (!existing) throw new Error("not found");
+    const row = await prisma.channelConfig.update({
+      where: { id },
+      data: {
+        channelConfig: {},
+        enabled: false,
+      },
+    });
+    return shapeChannelConfig(row);
+  }
 }
