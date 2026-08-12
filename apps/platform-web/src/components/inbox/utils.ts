@@ -101,11 +101,11 @@ export function identitiesFor(contact: any, channel: ChannelType): string[] {
     ].filter((v) => typeof v === "string" && v.trim());
 
     // Prefer real @username over bare IGSID — never contact.name (bio/display names).
-    const handle = candidates.find((v) => isLikelyInstagramUsername(v));
+    const handle = candidates.find((v: string) => isLikelyInstagramUsername(v));
     if (handle) return [handle.startsWith("@") ? handle : `@${handle}`];
 
     const igsid =
-      fromIdentities.find((v) => /^\d{5,}$/.test(v)) ||
+      fromIdentities.find((v: string) => /^\d{5,}$/.test(v)) ||
       (typeof contact.instagramScopedId === "string" ? contact.instagramScopedId : null) ||
       (typeof contact.instagramId === "string" && /^\d{5,}$/.test(contact.instagramId)
         ? contact.instagramId
