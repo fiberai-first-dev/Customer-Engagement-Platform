@@ -1,9 +1,9 @@
-import { useState, useEffect, type ReactNode } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { useSearchParams } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
-import { Card, CardHeader, CardTitle, CardContent, CardDescription } from "../../components/ui/card";
 import { Button } from "../../components/ui/button";
 import { Input } from "../../components/ui/input";
+import { Badge } from "../../components/ui/badge";
 import {
   startChannelOAuth,
   startGmailWatch,
@@ -14,40 +14,74 @@ import {
   useUpdateInbox,
   useUpdateShopifyConfig,
   setupGuidePdfUrl,
+  type Inbox,
 } from "../../api";
-import { CheckCircle2, Copy, Download, Link2, Loader2, Radio, Save } from "lucide-react";
+import {
+  CheckCircle2,
+  Copy,
+  Download,
+  Eye,
+  EyeOff,
+  Loader2,
+  Radio,
+  X,
+} from "lucide-react";
 
-type SettingsTab = "channels" | "shopify";
+type ChannelKey = "whatsapp" | "instagram" | "email" | "shopify";
 
-type Field = {
+type FieldDef = {
   key: string;
   label: string;
   placeholder?: string;
+  secret?: boolean;
+  /** Required to enable Connect on first setup. */
+  required?: boolean;
 };
 
-const EMPTY_WA = {
-  phoneNumberId: "",
-  accessToken: "",
-  verifyToken: "",
-  appSecret: "",
-  businessAccountId: "",
-};
+const WA_FIELDS: FieldDef[] = [
+  { key: "phoneNumberId", label: "Phone Number ID", required: true },
+  { key: "accessToken", label: "Access Token", secret: true, required: true },
+  { key: "verifyToken", label: "Verify Token", secret: true, required: true },
+  { key: "appSecret", label: "App Secret", secret: true, required: true },
+  { key: "businessAccountId", label: "Business Account ID" },
+];
 
-const EMPTY_IG = {
-  accessToken: "",
-  verifyToken: "",
-  instagramAppSecret: "",
-  instagramAppId: "",
-  instagramUsername: "",
-};
+const IG_FIELDS: FieldDef[] = [
+  { key: "instagramAppId", label: "Instagram App ID", required: true },
+  { key: "instagramAppSecret", label: "Instagram App Secret", secret: true, required: true },
+  { key: "verifyToken", label: "Verify Token", secret: true, required: true },
+];
 
-const EMPTY_EMAIL = {
-  clientId: "",
-  clientSecret: "",
-  refreshToken: "",
-  accessToken: "",
-  pubsubTopic: "",
-};
+const EMAIL_FIELDS: FieldDef[] = [
+  { key: "clientId", label: "Client ID", required: true },
+  { key: "clientSecret", label: "Client Secret", secret: true, required: true },
+  {
+    key: "pubsubTopic",
+    label: "Pub/Sub Topic",
+    placeholder: "projects/…/topics/…",
+    required: true,
+  },
+];
+
+const SHOPIFY_FIELDS: FieldDef[] = [
+  { key: "shop", label: "Shop subdomain", placeholder: "mystore", required: true },
+  { key: "clientId", label: "Client ID", required: true },
+  { key: "clientSecret", label: "Client Secret", secret: true, required: true },
+];
+
+const PUBLIC_PREFILL_KEYS = new Set([
+  "phoneNumberId",
+  "businessAccountId",
+  "instagramAppId",
+  "instagramUsername",
+  "clientId",
+  "pubsubTopic",
+  "shop",
+]);
+
+function hasText(value?: string): boolean {
+  return Boolean(value?.trim()) && value!.trim() !== "***";
+}
 
 function asStringRecord(config: Record<string, unknown> | undefined): Record<string, string> {
   if (!config) return {};
@@ -60,188 +94,308 @@ function asStringRecord(config: Record<string, unknown> | undefined): Record<str
   return out;
 }
 
-function hasText(value?: string): boolean {
-  return Boolean(value?.trim());
+function statusFromHealth(
+  health?: Inbox["health"],
+  connectedFallback = false,
+): { label: string; tone: "ok" | "warn" | "error" | "idle" } {
+  if (!health) {
+    return connectedFallback
+      ? { label: "Connected", tone: "ok" }
+      : { label: "Not Connected", tone: "idle" };
+  }
+  if (health.level === "ok") return { label: "Connected", tone: "ok" };
+  if (health.level === "warn") return { label: health.summary || "Needs attention", tone: "warn" };
+  if (health.level === "error") {
+    const missing = health.details.some((d) => /missing|not configured|not connected/i.test(d));
+    return {
+      label: missing ? "Not Connected" : "Error",
+      tone: "error",
+    };
+  }
+  if (health.level === "unknown") return { label: "Disabled", tone: "idle" };
+  return { label: "Not Connected", tone: "idle" };
 }
 
-function FieldGrid({
-  fields,
-  values,
-  onChange,
+function StatusBadge({
+  label,
+  tone,
 }: {
-  fields: Field[];
-  values: Record<string, string>;
-  onChange: (key: string, value: string) => void;
+  label: string;
+  tone: "ok" | "warn" | "error" | "idle";
 }) {
+  const className =
+    tone === "ok"
+      ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-800"
+      : tone === "warn"
+        ? "border-amber-500/30 bg-amber-500/10 text-amber-900"
+        : tone === "error"
+          ? "border-destructive/30 bg-destructive/10 text-destructive"
+          : "border-border bg-muted text-muted-foreground";
   return (
-    <div className="grid gap-4 md:grid-cols-2">
-      {fields.map((field) => (
-        <div key={field.key} className="grid gap-1.5">
-          <label className="text-sm font-medium">{field.label}</label>
-          <Input
-            type="text"
-            value={values[field.key] ?? ""}
-            onChange={(e) => onChange(field.key, e.target.value)}
-            placeholder={field.placeholder}
-            autoComplete="off"
-            spellCheck={false}
-          />
+    <Badge variant="outline" className={`font-medium ${className}`}>
+      {label}
+    </Badge>
+  );
+}
+
+function CallbackUrlsCard({
+  rows,
+}: {
+  rows: { label: string; value?: string }[];
+}) {
+  const available = rows.filter((r) => Boolean(r.value));
+  const [selected, setSelected] = useState(available[0]?.label ?? "");
+  const [copied, setCopied] = useState(false);
+
+  useEffect(() => {
+    if (!available.some((r) => r.label === selected) && available[0]) {
+      setSelected(available[0].label);
+    }
+  }, [available, selected]);
+
+  const current = available.find((r) => r.label === selected) ?? available[0];
+  if (!available.length) return null;
+
+  return (
+    <div className="rounded-xl border border-border bg-card p-5 shadow-sm">
+      <div className="mb-3">
+        <h2 className="text-base font-semibold">Callback URLs</h2>
+        <p className="mt-1 text-sm text-muted-foreground">
+          Pick a URL to copy into Meta / Google when setting up channels.
+        </p>
+      </div>
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
+        <div className="min-w-0 flex-1 space-y-1.5">
+          <label className="text-sm font-medium" htmlFor="callback-url-select">
+            URL
+          </label>
+          <select
+            id="callback-url-select"
+            value={current?.label ?? ""}
+            onChange={(e) => setSelected(e.target.value)}
+            className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          >
+            {available.map((row) => (
+              <option key={row.label} value={row.label}>
+                {row.label}
+              </option>
+            ))}
+          </select>
         </div>
-      ))}
+        <Button
+          type="button"
+          variant="outline"
+          className="shrink-0 gap-2"
+          disabled={!current?.value}
+          onClick={async () => {
+            if (!current?.value) return;
+            await navigator.clipboard.writeText(current.value);
+            setCopied(true);
+            window.setTimeout(() => setCopied(false), 1500);
+          }}
+        >
+          {copied ? (
+            <CheckCircle2 className="h-4 w-4 text-emerald-600" />
+          ) : (
+            <Copy className="h-4 w-4" />
+          )}
+          {copied ? "Copied" : "Copy"}
+        </Button>
+      </div>
+      {current?.value && (
+        <p className="mt-3 break-all rounded-lg border border-border bg-muted/40 px-3 py-2 font-mono text-xs text-foreground">
+          {current.value}
+        </p>
+      )}
     </div>
   );
 }
 
-function ChannelCard({
+function ConnectModal({
   title,
   description,
-  enabled,
-  onToggleEnabled,
-  children,
-  onSave,
-  saving,
-  busy,
-  footer,
-  health,
+  fields,
+  initialValues,
+  submitting,
+  submitLabel,
+  onClose,
+  onSubmit,
 }: {
   title: string;
   description: string;
-  enabled: boolean;
-  onToggleEnabled: (next: boolean) => void;
-  children: ReactNode;
-  onSave: () => void;
-  saving: boolean;
-  busy?: boolean;
-  footer?: ReactNode;
-  health?: {
-    level: "ok" | "warn" | "error" | "unknown";
-    summary: string;
-    details: string[];
-  };
+  fields: FieldDef[];
+  initialValues: Record<string, string>;
+  submitting: boolean;
+  submitLabel: string;
+  onClose: () => void;
+  onSubmit: (values: Record<string, string>) => Promise<void>;
 }) {
-  const healthTone =
-    health?.level === "ok"
-      ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-900"
-      : health?.level === "warn"
-        ? "border-amber-500/30 bg-amber-500/10 text-amber-950"
-        : health?.level === "error"
-          ? "border-destructive/30 bg-destructive/10 text-destructive"
-          : "border-border bg-muted/40 text-muted-foreground";
+  const [values, setValues] = useState<Record<string, string>>(initialValues);
+  const [revealed, setRevealed] = useState<Record<string, boolean>>({});
+  const [error, setError] = useState<string | null>(null);
+
+  const canSubmit = fields
+    .filter((f) => f.required)
+    .every((f) => hasText(values[f.key]));
 
   return (
-    <Card>
-      <CardHeader className="pb-4">
-        <div className="flex items-start justify-between gap-3">
-          <div>
-            <CardTitle>{title}</CardTitle>
-            <CardDescription className="mt-1">{description}</CardDescription>
-          </div>
-          <label className="flex items-center gap-2 text-sm">
-            <input
-              type="checkbox"
-              checked={enabled}
-              disabled={busy}
-              onChange={(e) => onToggleEnabled(e.target.checked)}
-            />
-            Enabled
-          </label>
-        </div>
-        {health && (
-          <div className={`mt-3 rounded-lg border px-3 py-2 text-xs ${healthTone}`}>
-            <p className="font-medium">{health.summary}</p>
-            {health.details.length > 0 && (
-              <ul className="mt-1 list-disc space-y-0.5 pl-4 opacity-90">
-                {health.details.map((d) => (
-                  <li key={d}>{d}</li>
-                ))}
-              </ul>
-            )}
-          </div>
-        )}
-      </CardHeader>
-      <CardContent className="space-y-5">
-        {children}
-        <div className="flex flex-wrap items-center gap-3">
-          <Button onClick={onSave} disabled={busy}>
-            {saving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}
-            Save
-          </Button>
-          {footer}
-        </div>
-      </CardContent>
-    </Card>
-  );
-}
-
-function CopyRow({ label, value }: { label: string; value?: string }) {
-  const [copied, setCopied] = useState(false);
-  if (!value) return null;
-  return (
-    <div className="flex items-start justify-between gap-3 rounded-lg border border-border bg-muted/30 px-3 py-2.5">
-      <div className="min-w-0">
-        <p className="text-[11px] font-medium text-muted-foreground">{label}</p>
-        <p className="mt-0.5 break-all font-mono text-xs text-foreground">{value}</p>
-      </div>
-      <Button
-        type="button"
-        variant="ghost"
-        size="sm"
-        className="h-8 shrink-0 gap-1.5 px-2"
-        onClick={async () => {
-          await navigator.clipboard.writeText(value);
-          setCopied(true);
-          window.setTimeout(() => setCopied(false), 1500);
-        }}
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-background/80 p-4 backdrop-blur-sm">
+      <div
+        className="flex max-h-[90vh] w-full max-w-lg flex-col rounded-xl border border-border bg-card shadow-lg"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="connect-modal-title"
       >
-        {copied ? <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600" /> : <Copy className="h-3.5 w-3.5" />}
-        {copied ? "Copied" : "Copy"}
-      </Button>
+        <div className="flex items-center justify-between border-b border-border px-6 py-4">
+          <div>
+            <h2 id="connect-modal-title" className="text-lg font-semibold tracking-tight">
+              {title}
+            </h2>
+            <p className="mt-1 text-sm text-muted-foreground">{description}</p>
+          </div>
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
+            onClick={onClose}
+            disabled={submitting}
+            className="h-8 w-8 rounded-full"
+          >
+            <X className="h-4 w-4" />
+          </Button>
+        </div>
+
+        <form
+          className="flex min-h-0 flex-1 flex-col"
+          onSubmit={(e) => {
+            e.preventDefault();
+            if (!canSubmit || submitting) return;
+            setError(null);
+            void onSubmit(values).catch((err: unknown) => {
+              setError(err instanceof Error ? err.message : "Connection failed");
+            });
+          }}
+        >
+          <div className="flex-1 space-y-4 overflow-y-auto p-6">
+            <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+              Channel credentials
+            </p>
+            {error && (
+              <div className="rounded-lg border border-rose-500/30 bg-rose-500/10 px-3 py-2 text-sm text-rose-800">
+                {error}
+              </div>
+            )}
+            {fields.map((field) => {
+              const show = !field.secret || revealed[field.key];
+              return (
+                <div key={field.key} className="space-y-1.5">
+                  <label className="text-sm font-medium">
+                    {field.label}
+                    {field.required ? (
+                      <span className="text-destructive"> *</span>
+                    ) : null}
+                  </label>
+                  <div className="relative">
+                    <Input
+                      type={show ? "text" : "password"}
+                      value={values[field.key] ?? ""}
+                      onChange={(e) =>
+                        setValues((prev) => ({ ...prev, [field.key]: e.target.value }))
+                      }
+                      placeholder={field.placeholder}
+                      autoComplete="off"
+                      spellCheck={false}
+                      className={field.secret ? "pr-10" : undefined}
+                    />
+                    {field.secret && (
+                      <button
+                        type="button"
+                        className="absolute right-2 top-1/2 -translate-y-1/2 rounded p-1 text-muted-foreground hover:text-foreground"
+                        title={show ? "Hide" : "Reveal"}
+                        onClick={() =>
+                          setRevealed((prev) => ({
+                            ...prev,
+                            [field.key]: !prev[field.key],
+                          }))
+                        }
+                      >
+                        {show ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                      </button>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+            <p className="text-xs text-muted-foreground">
+              Credentials are saved only on the server. They are never kept in the browser after
+              Connect.
+            </p>
+          </div>
+          <div className="flex items-center justify-end gap-3 border-t border-border bg-muted/40 px-6 py-4">
+            <Button type="button" variant="ghost" onClick={onClose} disabled={submitting}>
+              Cancel
+            </Button>
+            <Button type="submit" disabled={!canSubmit || submitting}>
+              {submitting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+              {submitLabel}
+            </Button>
+          </div>
+        </form>
+      </div>
     </div>
   );
 }
 
-function tabFromSearch(params: URLSearchParams): SettingsTab {
-  const t = params.get("tab");
-  if (t === "shopify" || t === "channels") return t;
-  return "channels";
+function ChannelRow({
+  name,
+  status,
+  busy,
+  primaryLabel,
+  onPrimary,
+  secondary,
+}: {
+  name: string;
+  status: { label: string; tone: "ok" | "warn" | "error" | "idle" };
+  busy?: boolean;
+  primaryLabel: string;
+  onPrimary: () => void;
+  secondary?: ReactNode;
+}) {
+  return (
+    <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-border bg-card px-4 py-3.5 shadow-sm">
+      <div className="flex min-w-0 items-center gap-3">
+        <span className="text-sm font-semibold text-foreground">{name}</span>
+        <StatusBadge label={status.label} tone={status.tone} />
+      </div>
+      <div className="flex flex-wrap items-center gap-2">
+        {secondary}
+        <Button type="button" onClick={onPrimary} disabled={busy} className="min-w-[7.5rem]">
+          {busy ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+          {primaryLabel}
+        </Button>
+      </div>
+    </div>
+  );
 }
 
 export function SettingsPage() {
   const [searchParams, setSearchParams] = useSearchParams();
   const queryClient = useQueryClient();
-  const tab = tabFromSearch(searchParams);
-  const setTab = (next: SettingsTab) => {
-    const p = new URLSearchParams(searchParams);
-    p.set("tab", next);
-    setSearchParams(p, { replace: true });
-  };
 
   const { data: accounts, isLoading: accountsLoading } = useAccounts();
   const activeAccount = accounts?.[0];
   const { data: inboxes, isLoading: inboxesLoading } = useInboxes(activeAccount?.id);
   const { data: oauthHints } = useOAuthHints();
-  const { mutate: updateInbox } = useUpdateInbox();
+  const { mutateAsync: updateInboxAsync } = useUpdateInbox();
   const { data: shopify, isLoading: shopifyLoading } = useShopifyConfig();
-  const { mutate: updateShopify, isPending: shopifySaving } = useUpdateShopifyConfig();
+  const { mutateAsync: updateShopifyAsync } = useUpdateShopifyConfig();
 
   const [banner, setBanner] = useState<{ tone: "ok" | "err"; text: string } | null>(null);
   const [connecting, setConnecting] = useState<"gmail" | "instagram" | null>(null);
   const [watching, setWatching] = useState(false);
-  const [pendingChannel, setPendingChannel] = useState<"whatsapp" | "instagram" | "email" | null>(
-    null,
-  );
-  const [pendingAction, setPendingAction] = useState<"save" | "toggle" | null>(null);
+  const [modal, setModal] = useState<ChannelKey | null>(null);
+  const [submitting, setSubmitting] = useState(false);
 
-  const [waConfig, setWaConfig] = useState<Record<string, string>>(EMPTY_WA);
-  const [igConfig, setIgConfig] = useState<Record<string, string>>(EMPTY_IG);
-  const [emailConfig, setEmailConfig] = useState<Record<string, string>>(EMPTY_EMAIL);
-  const [shopifyForm, setShopifyForm] = useState({
-    shop: "",
-    clientId: "",
-    clientSecret: "",
-  });
-
-  // Clear connect spinner on mount and when browser restores page from bfcache (Back after OAuth)
   useEffect(() => {
     setConnecting(null);
     const onPageShow = (e: PageTransitionEvent) => {
@@ -252,47 +406,12 @@ export function SettingsPage() {
   }, []);
 
   useEffect(() => {
-    if (!inboxes) return;
-    const wa = inboxes.find((i) => i.channelType === "whatsapp");
-    setWaConfig({ ...EMPTY_WA, ...asStringRecord(wa?.channelConfig as Record<string, unknown>) });
-    const ig = inboxes.find((i) => i.channelType === "instagram");
-    {
-      const raw = asStringRecord(ig?.channelConfig as Record<string, unknown>);
-      const {
-        pageId: _pageId,
-        appSecret: legacySecret,
-        instagramAppSecret,
-        ...igRest
-      } = raw;
-      setIgConfig({
-        ...EMPTY_IG,
-        ...igRest,
-        instagramAppSecret: instagramAppSecret || legacySecret || "",
-      });
-    }
-    const em = inboxes.find((i) => i.channelType === "email");
-    setEmailConfig({
-      ...EMPTY_EMAIL,
-      ...asStringRecord(em?.channelConfig as Record<string, unknown>),
-    });
-  }, [inboxes]);
-
-  useEffect(() => {
-    if (!shopify) return;
-    setShopifyForm({
-      shop: shopify.shop || "",
-      clientId: shopify.clientId || "",
-      clientSecret: shopify.clientSecret || "",
-    });
-  }, [shopify]);
-
-  useEffect(() => {
     const oauth = searchParams.get("oauth");
     const status = searchParams.get("status");
     if (!oauth || !status) return;
 
-    // Always stop Connect spinner after OAuth redirect back to Settings
     setConnecting(null);
+    setModal(null);
 
     if (status === "success") {
       void queryClient.invalidateQueries({ queryKey: ["inboxes"] });
@@ -316,8 +435,7 @@ export function SettingsPage() {
     }
 
     const next = new URLSearchParams(searchParams);
-    ["oauth", "status", "message", "email", "username"].forEach((k) => next.delete(k));
-    next.set("tab", "channels");
+    ["oauth", "status", "message", "email", "username", "tab"].forEach((k) => next.delete(k));
     setSearchParams(next, { replace: true });
   }, [searchParams, setSearchParams, queryClient]);
 
@@ -325,170 +443,200 @@ export function SettingsPage() {
   const igInbox = inboxes?.find((i) => i.channelType === "instagram");
   const emailInbox = inboxes?.find((i) => i.channelType === "email");
 
-  const savedEmailConfig = asStringRecord(
-    emailInbox?.channelConfig as Record<string, unknown> | undefined,
+  const waStatus = statusFromHealth(waInbox?.health);
+  const igStatus = statusFromHealth(igInbox?.health);
+  const emailStatus = statusFromHealth(emailInbox?.health);
+  const shopifyConnected = Boolean(
+    shopify?.shop?.trim() && shopify?.clientId?.trim() && shopify?.hasClientSecret,
   );
-  const savedIgConfig = asStringRecord(
-    igInbox?.channelConfig as Record<string, unknown> | undefined,
-  );
-  const gmailConnectKeys = ["clientId", "clientSecret", "pubsubTopic"] as const;
-  const gmailAllKeys = [
-    "clientId",
-    "clientSecret",
-    "pubsubTopic",
-    "refreshToken",
-    "accessToken",
-  ] as const;
-  // Connect Instagram needs app creds + verify token; OAuth fills accessToken + username
-  const igConnectKeys = ["instagramAppId", "instagramAppSecret", "verifyToken"] as const;
-  const fieldsFilled = (
-    values: Record<string, string>,
-    keys: readonly string[],
-  ) => keys.every((key) => hasText(values[key]));
-  const fieldsSaved = (
-    form: Record<string, string>,
-    saved: Record<string, string>,
-    keys: readonly string[],
-  ) =>
-    keys.every(
-      (key) =>
-        hasText(saved[key]) && (form[key] ?? "").trim() === (saved[key] ?? "").trim(),
-    );
-  // Connect: prerequisites filled and Saved (OAuth then writes tokens)
-  const gmailCanConnect =
-    fieldsFilled(emailConfig, gmailConnectKeys) &&
-    fieldsSaved(emailConfig, savedEmailConfig, gmailConnectKeys);
-  const igCanConnect =
-    fieldsFilled(igConfig, igConnectKeys) &&
-    fieldsSaved(igConfig, savedIgConfig, igConnectKeys);
-  // Start watch: every Gmail field filled and Saved (tokens come from Connect OAuth)
+  const shopifyStatus = shopifyConnected
+    ? { label: "Connected", tone: "ok" as const }
+    : { label: "Not Connected", tone: "idle" as const };
+
+  const connectedCount = [waStatus, igStatus, emailStatus, shopifyStatus].filter(
+    (s) => s.tone === "ok",
+  ).length;
+
   const gmailCanWatch =
-    fieldsFilled(emailConfig, gmailAllKeys) &&
-    fieldsSaved(emailConfig, savedEmailConfig, gmailAllKeys);
+    emailInbox?.health?.level === "ok" ||
+    (emailInbox?.health?.level === "warn" &&
+      Boolean(emailInbox.health.details.some((d) => /watch/i.test(d))));
 
-  const handleSave = (
-    channelType: "whatsapp" | "instagram" | "email",
-    config: Record<string, string>,
-    enabled?: boolean,
-  ) => {
-    const inbox = inboxes?.find((i) => i.channelType === channelType);
-    if (!inbox) {
-      setBanner({ tone: "err", text: "Channel is not available. Please try again later." });
-      return;
-    }
-    const channelConfig =
-      channelType === "instagram"
-        ? (() => {
-            const {
-              pageId: _pageId,
-              appSecret: _legacy,
-              ...rest
-            } = config as Record<string, string> & {
-              pageId?: string;
-              appSecret?: string;
-            };
-            return { ...rest, pageId: null, appSecret: null };
-          })()
-        : config;
-    setPendingChannel(channelType);
-    setPendingAction("save");
-    updateInbox(
-      {
-        id: inbox.id,
-        body: {
-          channelConfig,
-          enabled: enabled ?? inbox.enabled,
-        },
-      },
-      {
-        onSuccess: () => setBanner({ tone: "ok", text: "Saved" }),
-        onError: (err) => setBanner({ tone: "err", text: err.message }),
-        onSettled: () => {
-          setPendingChannel(null);
-          setPendingAction(null);
-        },
-      },
-    );
-  };
-
-  const handleToggleEnabled = (
-    channelType: "whatsapp" | "instagram" | "email",
-    enabled: boolean,
-  ) => {
-    const inbox = inboxes?.find((i) => i.channelType === channelType);
-    if (!inbox) return;
-    setPendingChannel(channelType);
-    setPendingAction("toggle");
-    updateInbox(
-      { id: inbox.id, body: { enabled } },
-      {
-        onSuccess: () =>
-          setBanner({
-            tone: "ok",
-            text: `${channelType} ${enabled ? "enabled" : "disabled"}`,
-          }),
-        onError: (err) => setBanner({ tone: "err", text: err.message }),
-        onSettled: () => {
-          setPendingChannel(null);
-          setPendingAction(null);
-        },
-      },
-    );
-  };
-
-  const isSaving = (channel: "whatsapp" | "instagram" | "email") =>
-    pendingChannel === channel && pendingAction === "save";
-  const isChannelBusy = (channel: "whatsapp" | "instagram" | "email") =>
-    pendingChannel === channel;
-
-  const handleConnect = async (provider: "gmail" | "instagram") => {
-    const inbox = provider === "gmail" ? emailInbox : igInbox;
-    if (!inbox) {
-      setBanner({ tone: "err", text: "Channel is not available. Please try again later." });
-      return;
-    }
-    if (provider === "gmail" && !gmailCanConnect) {
-      setBanner({
-        tone: "err",
-        text: "Fill Client ID, Client Secret, and Pub/Sub Topic, then Save, before connecting Gmail.",
-      });
-      return;
-    }
-    if (provider === "instagram" && !igCanConnect) {
-      setBanner({
-        tone: "err",
-        text: "Fill Instagram App ID, App Secret, and Verify Token, then Save, before connecting Instagram.",
-      });
-      return;
-    }
+  const startOAuth = async (provider: "gmail" | "instagram", inboxId: string) => {
     setConnecting(provider);
+    setBanner({
+      tone: "ok",
+      text:
+        provider === "gmail"
+          ? "Opening Google to finish Gmail connection…"
+          : "Opening Instagram to finish connection…",
+    });
     try {
-      const { url } = await startChannelOAuth(provider, inbox.id);
-      // Prefer assign so unloading clears SPA state; still handle bfcache via pageshow
+      const { url } = await startChannelOAuth(provider, inboxId);
       window.location.assign(url);
-    } catch (err: any) {
-      setBanner({ tone: "err", text: err?.message ?? "Could not start connection" });
+    } catch (err: unknown) {
+      setBanner({
+        tone: "err",
+        text: err instanceof Error ? err.message : "Could not start connection",
+      });
       setConnecting(null);
+      throw err;
+    }
+  };
+
+  const publicPrefill = (config: Record<string, unknown> | undefined): Record<string, string> => {
+    const raw = asStringRecord(config);
+    const out: Record<string, string> = {};
+    for (const [key, value] of Object.entries(raw)) {
+      if (!PUBLIC_PREFILL_KEYS.has(key)) continue;
+      if (!hasText(value)) continue;
+      out[key] = value;
+    }
+    return out;
+  };
+
+  const modalConfig = useMemo(() => {
+    if (!modal) return null;
+    if (modal === "whatsapp") {
+      return {
+        title: "Connect WhatsApp",
+        description: "Enter your WhatsApp Business Cloud API credentials.",
+        fields: WA_FIELDS,
+        initialValues: publicPrefill(waInbox?.channelConfig as Record<string, unknown>),
+        submitLabel: waStatus.tone === "ok" ? "Reconnect" : "Connect",
+      };
+    }
+    if (modal === "instagram") {
+      return {
+        title: "Connect Instagram",
+        description: "Enter app credentials. CEP opens Instagram login to finish.",
+        fields: IG_FIELDS,
+        initialValues: publicPrefill(igInbox?.channelConfig as Record<string, unknown>),
+        submitLabel:
+          connecting === "instagram"
+            ? "Connecting…"
+            : igStatus.tone === "ok"
+              ? "Reconnect"
+              : "Connect",
+      };
+    }
+    if (modal === "email") {
+      return {
+        title: "Connect Gmail",
+        description: "Enter OAuth client details. CEP opens Google to fill tokens.",
+        fields: EMAIL_FIELDS,
+        initialValues: publicPrefill(emailInbox?.channelConfig as Record<string, unknown>),
+        submitLabel:
+          connecting === "gmail"
+            ? "Connecting…"
+            : emailStatus.tone === "ok" || emailStatus.tone === "warn"
+              ? "Reconnect"
+              : "Connect",
+      };
+    }
+    return {
+      title: "Connect Shopify",
+      description: "Connect your Shopify store for customer and order context.",
+      fields: SHOPIFY_FIELDS,
+      initialValues: {
+        shop: shopify?.shop || "",
+        clientId: shopify?.clientId || "",
+      },
+      submitLabel: shopifyConnected ? "Reconnect" : "Connect",
+    };
+  }, [
+    modal,
+    waInbox,
+    igInbox,
+    emailInbox,
+    shopify,
+    waStatus.tone,
+    igStatus.tone,
+    emailStatus.tone,
+    shopifyConnected,
+    connecting,
+  ]);
+
+  const handleConnectSubmit = async (values: Record<string, string>) => {
+    if (!modal) return;
+    setSubmitting(true);
+    try {
+      if (modal === "shopify") {
+        await updateShopifyAsync({
+          shop: values.shop,
+          clientId: values.clientId,
+          clientSecret: values.clientSecret,
+        });
+        setBanner({ tone: "ok", text: "Shopify connected" });
+        setModal(null);
+        return;
+      }
+
+      const inbox =
+        modal === "whatsapp" ? waInbox : modal === "instagram" ? igInbox : emailInbox;
+      if (!inbox) throw new Error("Channel is not available. Please try again later.");
+
+      const channelConfig =
+        modal === "instagram"
+          ? {
+              instagramAppId: values.instagramAppId,
+              instagramAppSecret: values.instagramAppSecret,
+              verifyToken: values.verifyToken,
+              pageId: null,
+              appSecret: null,
+            }
+          : values;
+
+      await updateInboxAsync({
+        id: inbox.id,
+        body: { channelConfig, enabled: true },
+      });
+
+      if (modal === "email") {
+        await startOAuth("gmail", inbox.id);
+        return;
+      }
+      if (modal === "instagram") {
+        await startOAuth("instagram", inbox.id);
+        return;
+      }
+
+      setBanner({ tone: "ok", text: "WhatsApp connected" });
+      setModal(null);
+    } finally {
+      setSubmitting(false);
     }
   };
 
   const handleStartWatch = async () => {
     if (!emailInbox) {
-      setBanner({ tone: "err", text: "Email channel is not available. Please try again later." });
+      setBanner({ tone: "err", text: "Email channel is not available." });
       return;
     }
     setWatching(true);
     try {
-      await startGmailWatch(emailInbox.id);
-      setBanner({ tone: "ok", text: "Gmail watch started" });
-    } catch (err: any) {
-      setBanner({ tone: "err", text: err?.message ?? "Could not start Gmail watch" });
+      const result = await startGmailWatch(emailInbox.id);
+      await queryClient.invalidateQueries({ queryKey: ["inboxes"] });
+      const expiresLabel = result.expiresAt
+        ? new Date(result.expiresAt).toLocaleString()
+        : null;
+      setBanner({
+        tone: "ok",
+        text: expiresLabel
+          ? `Gmail watch started · expires ${expiresLabel}`
+          : "Gmail watch started",
+      });
+    } catch (err: unknown) {
+      setBanner({
+        tone: "err",
+        text: err instanceof Error ? err.message : "Could not start Gmail watch",
+      });
     } finally {
       setWatching(false);
     }
   };
 
-  if (accountsLoading || inboxesLoading || (tab === "shopify" && shopifyLoading)) {
+  if (accountsLoading || inboxesLoading || shopifyLoading) {
     return (
       <div className="flex flex-1 items-center justify-center bg-background">
         <Loader2 className="h-8 w-8 animate-spin text-primary" />
@@ -496,18 +644,23 @@ export function SettingsPage() {
     );
   }
 
-  const tabs: { id: SettingsTab; label: string }[] = [
-    { id: "channels", label: "Channels" },
-    { id: "shopify", label: "Shopify" },
+  const callbackRows = [
+    { label: "WhatsApp webhook", value: oauthHints?.webhooks.whatsapp ?? waInbox?.webhookUrl },
+    { label: "Instagram webhook", value: oauthHints?.webhooks.instagram ?? igInbox?.webhookUrl },
+    { label: "Gmail push URL", value: oauthHints?.webhooks.emailPubSub ?? emailInbox?.webhookUrl },
+    { label: "Gmail OAuth redirect", value: oauthHints?.gmailRedirectUri },
+    { label: "Instagram OAuth redirect", value: oauthHints?.instagramRedirectUri },
   ];
 
   return (
     <div className="flex h-full flex-1 flex-col overflow-y-auto bg-background p-8">
-      <div className="mx-auto w-full max-w-4xl space-y-8 pb-12">
+      <div className="mx-auto w-full max-w-3xl space-y-8 pb-12">
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div>
             <h1 className="mb-1 text-3xl font-bold">Settings</h1>
-            <p className="text-muted-foreground">Manage channels and Shopify integration.</p>
+            <p className="text-muted-foreground">
+              Connect messaging and commerce channels. Secrets stay on the server.
+            </p>
           </div>
           <Button variant="outline" className="gap-2" asChild>
             <a href={setupGuidePdfUrl()} download="CEP-Channel-Setup-Guide.pdf">
@@ -515,23 +668,6 @@ export function SettingsPage() {
               Download setup guide
             </a>
           </Button>
-        </div>
-
-        <div className="flex gap-1 rounded-lg border border-border bg-muted/40 p-1 w-fit">
-          {tabs.map((t) => (
-            <button
-              key={t.id}
-              type="button"
-              onClick={() => setTab(t.id)}
-              className={`rounded-md px-4 py-1.5 text-sm font-medium transition-colors ${
-                tab === t.id
-                  ? "bg-background text-foreground shadow-sm"
-                  : "text-muted-foreground hover:text-foreground"
-              }`}
-            >
-              {t.label}
-            </button>
-          ))}
         </div>
 
         {banner && (
@@ -546,130 +682,52 @@ export function SettingsPage() {
           </div>
         )}
 
-        {tab === "channels" && (
-          <>
-            <Card>
-              <CardHeader className="pb-3">
-                <CardTitle className="text-base">Callback URLs</CardTitle>
-              </CardHeader>
-              <CardContent className="grid gap-2">
-                <CopyRow label="Agent UI" value={oauthHints?.webBaseUrl} />
-                <CopyRow label="API base URL" value={oauthHints?.apiBaseUrl} />
-                <CopyRow label="WhatsApp webhook" value={oauthHints?.webhooks.whatsapp ?? waInbox?.webhookUrl} />
-                <CopyRow label="Instagram webhook" value={oauthHints?.webhooks.instagram ?? igInbox?.webhookUrl} />
-                <CopyRow label="Gmail push URL" value={oauthHints?.webhooks.emailPubSub ?? emailInbox?.webhookUrl} />
-                <CopyRow label="Gmail OAuth redirect" value={oauthHints?.gmailRedirectUri} />
-                <CopyRow label="Instagram OAuth redirect" value={oauthHints?.instagramRedirectUri} />
-              </CardContent>
-            </Card>
+        <CallbackUrlsCard rows={callbackRows} />
 
-            <ChannelCard
-              title="WhatsApp"
-              description="Connect your WhatsApp Business number."
-              enabled={waInbox?.enabled ?? false}
-              health={waInbox?.health}
-              onToggleEnabled={(v) => handleToggleEnabled("whatsapp", v)}
-              saving={isSaving("whatsapp")}
-              busy={isChannelBusy("whatsapp")}
-              onSave={() => handleSave("whatsapp", waConfig, true)}
-            >
-              <FieldGrid
-                values={waConfig}
-                onChange={(key, value) => setWaConfig((prev) => ({ ...prev, [key]: value }))}
-                fields={[
-                  { key: "phoneNumberId", label: "Phone Number ID" },
-                  { key: "accessToken", label: "Access Token" },
-                  { key: "verifyToken", label: "Verify Token" },
-                  { key: "appSecret", label: "App Secret" },
-                  { key: "businessAccountId", label: "Business Account ID" },
-                ]}
-              />
-            </ChannelCard>
+        <section className="space-y-3">
+          <div className="flex items-end justify-between gap-3">
+            <div>
+              <h2 className="text-base font-semibold">Channels</h2>
+              <p className="mt-1 text-sm text-muted-foreground">
+                Connect a channel, then manage it from this list.
+              </p>
+            </div>
+            <p className="text-sm text-muted-foreground">{connectedCount} connected</p>
+          </div>
 
-            <ChannelCard
-              title="Instagram"
-              description="Use Instagram App ID/Secret from Meta > Instagram > API setup with Instagram login, then Connect."
-              enabled={igInbox?.enabled ?? false}
-              health={igInbox?.health}
-              onToggleEnabled={(v) => handleToggleEnabled("instagram", v)}
-              saving={isSaving("instagram")}
-              busy={isChannelBusy("instagram")}
-              onSave={() => handleSave("instagram", igConfig, true)}
-              footer={
-                <Button
-                  type="button"
-                  variant="secondary"
-                  disabled={
-                    !igCanConnect || connecting === "instagram" || isChannelBusy("instagram")
-                  }
-                  title={
-                    igCanConnect
-                      ? "Open Instagram OAuth to get access token"
-                      : "Fill App ID, App Secret, and Verify Token, then Save"
-                  }
-                  onClick={() => void handleConnect("instagram")}
-                >
-                  {connecting === "instagram" ? (
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  ) : (
-                    <Link2 className="mr-2 h-4 w-4" />
-                  )}
-                  Connect Instagram
-                </Button>
+          <div className="space-y-2">
+            <ChannelRow
+              name="WhatsApp"
+              status={waStatus}
+              busy={submitting && modal === "whatsapp"}
+              primaryLabel={waStatus.tone === "ok" ? "Reconnect" : "Connect"}
+              onPrimary={() => setModal("whatsapp")}
+            />
+            <ChannelRow
+              name="Instagram"
+              status={igStatus}
+              busy={connecting === "instagram" || (submitting && modal === "instagram")}
+              primaryLabel={igStatus.tone === "ok" ? "Reconnect" : "Connect"}
+              onPrimary={() => setModal("instagram")}
+            />
+            <ChannelRow
+              name="Gmail"
+              status={emailStatus}
+              busy={connecting === "gmail" || (submitting && modal === "email")}
+              primaryLabel={
+                emailStatus.tone === "ok" || emailStatus.tone === "warn" ? "Reconnect" : "Connect"
               }
-            >
-              <FieldGrid
-                values={igConfig}
-                onChange={(key, value) => setIgConfig((prev) => ({ ...prev, [key]: value }))}
-                fields={[
-                  { key: "instagramAppId", label: "Instagram App ID" },
-                  { key: "instagramAppSecret", label: "Instagram App Secret" },
-                  { key: "verifyToken", label: "Verify Token" },
-                  { key: "accessToken", label: "Access Token" },
-                  { key: "instagramUsername", label: "Username" },
-                ]}
-              />
-            </ChannelCard>
-
-            <ChannelCard
-              title="Gmail"
-              description="Connect Gmail for email conversations."
-              enabled={emailInbox?.enabled ?? false}
-              health={emailInbox?.health}
-              onToggleEnabled={(v) => handleToggleEnabled("email", v)}
-              saving={isSaving("email")}
-              busy={isChannelBusy("email")}
-              onSave={() => handleSave("email", emailConfig, true)}
-              footer={
-                <>
-                  <Button
-                    type="button"
-                    variant="secondary"
-                    disabled={
-                      !gmailCanConnect || connecting === "gmail" || isChannelBusy("email")
-                    }
-                    title={
-                      gmailCanConnect
-                        ? "Open Google OAuth to get tokens"
-                        : "Fill Client ID, Client Secret, and Pub/Sub Topic, then Save"
-                    }
-                    onClick={() => void handleConnect("gmail")}
-                  >
-                    {connecting === "gmail" ? (
-                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    ) : (
-                      <Link2 className="mr-2 h-4 w-4" />
-                    )}
-                    Connect Gmail
-                  </Button>
+              onPrimary={() => setModal("email")}
+              secondary={
+                (emailStatus.tone === "ok" || emailStatus.tone === "warn") && (
                   <Button
                     type="button"
                     variant="outline"
-                    disabled={!gmailCanWatch || watching || isChannelBusy("email")}
+                    disabled={!gmailCanWatch || watching || connecting === "gmail"}
                     title={
                       gmailCanWatch
                         ? "Start Gmail push notifications"
-                        : "Fill all fields, Connect Gmail for tokens, then Save"
+                        : "Connect Gmail first"
                     }
                     onClick={() => void handleStartWatch()}
                   >
@@ -680,69 +738,35 @@ export function SettingsPage() {
                     )}
                     Start watch
                   </Button>
-                </>
+                )
               }
-            >
-              <FieldGrid
-                values={emailConfig}
-                onChange={(key, value) => setEmailConfig((prev) => ({ ...prev, [key]: value }))}
-                fields={[
-                  { key: "clientId", label: "Client ID" },
-                  { key: "clientSecret", label: "Client Secret" },
-                  { key: "pubsubTopic", label: "Pub/Sub Topic", placeholder: "projects/…/topics/…" },
-                  { key: "refreshToken", label: "Refresh Token" },
-                  { key: "accessToken", label: "Access Token" },
-                ]}
-              />
-            </ChannelCard>
-          </>
-        )}
-
-        {tab === "shopify" && (
-          <Card>
-            <CardHeader>
-              <CardTitle>Shopify</CardTitle>
-              <CardDescription>
-                Connect your Shopify store to show customer and order details in the inbox.
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <FieldGrid
-                values={shopifyForm}
-                onChange={(key, value) => setShopifyForm((prev) => ({ ...prev, [key]: value }))}
-                fields={[
-                  { key: "shop", label: "Shop subdomain", placeholder: "mystore" },
-                  { key: "clientId", label: "Client ID" },
-                  { key: "clientSecret", label: "Client Secret" },
-                ]}
-              />
-              <Button
-                disabled={shopifySaving}
-                onClick={() =>
-                  updateShopify(
-                    {
-                      shop: shopifyForm.shop,
-                      clientId: shopifyForm.clientId,
-                      clientSecret: shopifyForm.clientSecret,
-                    },
-                    {
-                      onSuccess: () => setBanner({ tone: "ok", text: "Shopify settings saved" }),
-                      onError: (err) => setBanner({ tone: "err", text: err.message }),
-                    },
-                  )
-                }
-              >
-                {shopifySaving ? (
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                ) : (
-                  <Save className="mr-2 h-4 w-4" />
-                )}
-                Save
-              </Button>
-            </CardContent>
-          </Card>
-        )}
+            />
+            <ChannelRow
+              name="Shopify"
+              status={shopifyStatus}
+              busy={submitting && modal === "shopify"}
+              primaryLabel={shopifyConnected ? "Reconnect" : "Connect"}
+              onPrimary={() => setModal("shopify")}
+            />
+          </div>
+        </section>
       </div>
+
+      {modal && modalConfig && (
+        <ConnectModal
+          title={modalConfig.title}
+          description={modalConfig.description}
+          fields={modalConfig.fields}
+          initialValues={modalConfig.initialValues}
+          submitting={submitting || connecting !== null}
+          submitLabel={modalConfig.submitLabel}
+          onClose={() => {
+            if (submitting || connecting) return;
+            setModal(null);
+          }}
+          onSubmit={handleConnectSubmit}
+        />
+      )}
     </div>
   );
 }

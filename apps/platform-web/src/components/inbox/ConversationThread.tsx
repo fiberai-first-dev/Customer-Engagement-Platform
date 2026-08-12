@@ -3,8 +3,10 @@ import { format } from "date-fns";
 import {
   AlertCircle,
   CheckCircle2,
+  CheckSquare,
   Loader2,
   MessageSquare,
+  MoreVertical,
   PanelRight,
   Send,
   Trash2,
@@ -21,6 +23,50 @@ import {
   initials,
   isActiveStatus,
 } from "./utils";
+
+const LONG_MESSAGE_CHARS = 480;
+
+function MessageBody({
+  content,
+  showBodyLabel,
+  incoming,
+}: {
+  content: string;
+  showBodyLabel: boolean;
+  incoming: boolean;
+}) {
+  const [expanded, setExpanded] = useState(false);
+  const isLong = content.length > LONG_MESSAGE_CHARS;
+  const visible = !isLong || expanded ? content : `${content.slice(0, LONG_MESSAGE_CHARS).trimEnd()}…`;
+
+  return (
+    <div className="min-w-0">
+      {showBodyLabel && (
+        <span className="mb-1 mr-2 block text-[10px] font-bold uppercase tracking-wider opacity-60">
+          Body:
+        </span>
+      )}
+      <div className="whitespace-pre-wrap break-words leading-relaxed [overflow-wrap:anywhere]">
+        {visible}
+      </div>
+      {isLong && (
+        <button
+          type="button"
+          className={cn(
+            "mt-1 text-[11px] font-medium underline-offset-2 hover:underline",
+            incoming ? "text-primary" : "text-primary-foreground/90",
+          )}
+          onClick={(e) => {
+            e.stopPropagation();
+            setExpanded((v) => !v);
+          }}
+        >
+          {expanded ? "Show less" : "Read more"}
+        </button>
+      )}
+    </div>
+  );
+}
 
 type Props = {
   contactName: string;
@@ -69,24 +115,50 @@ export function ConversationThread({
   const [subject, setSubject] = useState("");
   const [selecting, setSelecting] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [menuOpen, setMenuOpen] = useState(false);
+  const menuRef = useRef<HTMLDivElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   const needsAttentionHere = Boolean(
     selectedConversation && isActiveStatus(selectedConversation.status),
   );
   const busy = resolving || clearingChat || deletingMessages;
+  const hasMessages = Boolean(messages?.length);
+  const showChatMenu =
+    Boolean(selectedConversation) &&
+    !selecting &&
+    (Boolean(onDeleteMessages && hasMessages) || Boolean(onClearChat));
 
   useEffect(() => {
     setDraft("");
     setSubject("");
     setSelecting(false);
     setSelectedIds(new Set());
+    setMenuOpen(false);
   }, [selectedConversation?.id, activeTab]);
 
   useEffect(() => {
     if (!messages?.length) return;
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages?.length, messages?.[messages.length - 1]?.id]);
+
+  useEffect(() => {
+    if (!menuOpen) return;
+    const onPointerDown = (e: MouseEvent) => {
+      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
+        setMenuOpen(false);
+      }
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setMenuOpen(false);
+    };
+    window.addEventListener("mousedown", onPointerDown);
+    window.addEventListener("keydown", onKey);
+    return () => {
+      window.removeEventListener("mousedown", onPointerDown);
+      window.removeEventListener("keydown", onKey);
+    };
+  }, [menuOpen]);
 
   const handleSend = async () => {
     const content = draft.trim();
@@ -127,75 +199,108 @@ export function ConversationThread({
   const identity = channelIds.length
     ? formatIdentities(channelIds, activeTab)
     : null;
-  const hasMessages = Boolean(messages?.length);
+  const canInitiateChannel = activeTab === "email" || activeTab === "whatsapp";
+  const isLinkedAwaitingFirst =
+    Boolean(selectedConversation) && !hasMessages && channelIds.length > 0;
 
   return (
     <div className="flex h-full min-w-0 flex-1 flex-col bg-background">
-      <div className="flex h-14 shrink-0 items-center justify-between border-b border-border bg-card px-5">
+      <div className="flex h-14 shrink-0 items-center justify-between gap-3 border-b border-border bg-card px-4 sm:px-5">
         <div className="flex min-w-0 items-center gap-3">
           <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-primary/10 text-sm font-semibold text-primary">
             {initials(contactName)}
           </div>
           <div className="min-w-0">
             <h2 className="truncate text-sm font-semibold text-foreground">{contactName}</h2>
-            <p className="text-xs text-muted-foreground">
+            <p className="truncate text-xs text-muted-foreground">
               {identity ? `${channelLabel(activeTab)}: ${identity}` : channelLabel(activeTab)}
             </p>
           </div>
         </div>
-        <div className="flex shrink-0 items-center gap-2">
-          {selectedConversation && hasMessages && onDeleteMessages && !selecting && (
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => setSelecting(true)}
-              disabled={busy}
-              className="gap-2 text-muted-foreground"
-              title="Select messages to delete"
-            >
-              Select
-            </Button>
-          )}
-          {selectedConversation && onClearChat && !selecting && (
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={onClearChat}
-              disabled={busy || !hasMessages}
-              className="gap-2 text-muted-foreground hover:text-destructive"
-              title="Clear every message in this channel thread"
-            >
-              {clearingChat ? (
-                <Loader2 className="h-4 w-4 animate-spin" />
-              ) : (
-                <Trash2 className="h-4 w-4" />
-              )}
-              <span className="hidden sm:inline">Clear chat</span>
-            </Button>
-          )}
+
+        <div className="flex shrink-0 items-center gap-1.5">
           {selectedConversation && needsAttentionHere && !selecting && (
             <Button
               variant="outline"
               size="sm"
               onClick={onResolve}
               disabled={busy}
-              className="gap-2 border-emerald-500/30 text-emerald-800 hover:bg-emerald-500/10"
+              className="gap-2 border-emerald-500/40 bg-emerald-500/5 text-emerald-800 hover:bg-emerald-500/10"
             >
               <CheckCircle2 className="h-4 w-4" />
-              Resolve {channelLabel(activeTab)}
+              <span className="hidden sm:inline">Resolve {channelLabel(activeTab)}</span>
+              <span className="sm:hidden">Resolve</span>
             </Button>
           )}
+
           <Button
-            variant={customerContextOpen ? "secondary" : "outline"}
-            size="sm"
+            variant={customerContextOpen ? "secondary" : "ghost"}
+            size="icon"
             onClick={onToggleCustomerContext}
-            className="gap-2"
+            className="h-9 w-9"
             aria-pressed={customerContextOpen}
             title={customerContextOpen ? "Hide customer context" : "Show customer context"}
           >
             <PanelRight className="h-4 w-4" />
-            <span className="hidden sm:inline">Customer</span>
           </Button>
+
+          {showChatMenu && (
+            <div className="relative" ref={menuRef}>
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                className="h-9 w-9"
+                disabled={busy}
+                aria-haspopup="menu"
+                aria-expanded={menuOpen}
+                title="More actions"
+                onClick={() => setMenuOpen((open) => !open)}
+              >
+                <MoreVertical className="h-4 w-4" />
+              </Button>
+              {menuOpen && (
+                <div
+                  role="menu"
+                  className="absolute right-0 top-full z-30 mt-1 w-52 overflow-hidden rounded-lg border border-border bg-card py-1 shadow-lg"
+                >
+                  {onDeleteMessages && hasMessages && (
+                    <button
+                      type="button"
+                      role="menuitem"
+                      className="flex w-full items-center gap-2.5 px-3 py-2.5 text-left text-sm text-foreground hover:bg-muted"
+                      onClick={() => {
+                        setMenuOpen(false);
+                        setSelecting(true);
+                      }}
+                    >
+                      <CheckSquare className="h-4 w-4 text-muted-foreground" />
+                      Select messages
+                    </button>
+                  )}
+                  {onClearChat && (
+                    <button
+                      type="button"
+                      role="menuitem"
+                      disabled={!hasMessages || busy}
+                      className="flex w-full items-center gap-2.5 px-3 py-2.5 text-left text-sm text-destructive hover:bg-destructive/10 disabled:pointer-events-none disabled:opacity-40"
+                      onClick={() => {
+                        setMenuOpen(false);
+                        onClearChat();
+                      }}
+                    >
+                      {clearingChat ? (
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                      ) : (
+                        <Trash2 className="h-4 w-4" />
+                      )}
+                      Clear chat
+                    </button>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
         </div>
       </div>
 
@@ -252,7 +357,13 @@ export function ConversationThread({
           : CHANNELS
         ).map((channel) => {
           const conversation = conversationsByChannel[channel.id];
+          const linkedIds = contact ? identitiesFor(contact, channel.id) : [];
+          const canStart =
+            channel.id === "email" || channel.id === "whatsapp"
+              ? linkedIds.length > 0
+              : false;
           const hasConversation = Boolean(conversation);
+          const tabAvailable = hasConversation || canStart;
           const channelNeedsAttention = conversation
             ? isActiveStatus(conversation.status)
             : false;
@@ -268,14 +379,16 @@ export function ConversationThread({
                 selected
                   ? "bg-muted/70 text-foreground"
                   : "text-muted-foreground hover:bg-muted/40 hover:text-foreground",
-                !hasConversation && !selected && "opacity-50",
+                !tabAvailable && !selected && "opacity-50",
               )}
               title={
                 conversation
                   ? `${channel.label} · ${conversation.status}${
                       channelNeedsAttention ? " · open" : ""
                     }`
-                  : `${channel.label} · no thread yet`
+                  : canStart
+                    ? `${channel.label} · linked · send first message`
+                    : `${channel.label} · no thread yet`
               }
             >
               {selected && (
@@ -300,11 +413,20 @@ export function ConversationThread({
           </div>
           <div>
             <p className="text-sm font-medium text-foreground">
-              No {channelLabel(activeTab)} conversation yet
+              {activeTab === "instagram"
+                ? "Waiting for the customer on Instagram"
+                : channelIds.length
+                  ? `${channelLabel(activeTab)} linked · waiting for first message`
+                  : `No ${channelLabel(activeTab)} on this contact`}
             </p>
             <p className="mt-1 max-w-sm text-xs text-muted-foreground">
-              The customer must message first on {channelLabel(activeTab)}. Use the tabs
-              above to open another thread if needed.
+              {activeTab === "instagram"
+                ? "Instagram only opens after the customer messages you first. Use another tab if they have WhatsApp or Email."
+                : channelIds.length
+                  ? canInitiateChannel
+                    ? "You can send the first message below once this thread is ready."
+                    : "Use the tabs above to open another channel."
+                  : "Add this channel on the contact, or wait until Shopify / inbound links it."}
             </p>
           </div>
         </div>
@@ -316,7 +438,23 @@ export function ConversationThread({
                 <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
               </div>
             )}
-            {!loadingMessages && (!messages || messages.length === 0) && (
+            {!loadingMessages && isLinkedAwaitingFirst && (
+              <div className="py-10 text-center">
+                <p className="text-sm font-medium text-foreground">
+                  {activeTab === "email"
+                    ? "Email linked · waiting for first message."
+                    : activeTab === "whatsapp"
+                      ? "WhatsApp linked · send the first message."
+                      : "No messages in this conversation yet."}
+                </p>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  {canInitiateChannel
+                    ? "Compose below to start the conversation."
+                    : "The customer must message first on this channel."}
+                </p>
+              </div>
+            )}
+            {!loadingMessages && !isLinkedAwaitingFirst && (!messages || messages.length === 0) && (
               <div className="py-10 text-center text-sm text-muted-foreground">
                 No messages in this conversation yet.
               </div>
@@ -329,11 +467,12 @@ export function ConversationThread({
                 <div
                   key={message.id}
                   className={cn(
-                    "flex max-w-[72%] flex-col",
-                    incoming ? "items-start" : "ml-auto items-end",
+                    // WhatsApp-style: shrink to content, cap width so long text wraps
+                    "flex w-fit max-w-[min(75%,32rem)] flex-col",
+                    incoming ? "mr-auto items-start" : "ml-auto items-end",
                   )}
                 >
-                  <div className="flex items-end gap-2">
+                  <div className="flex max-w-full items-end gap-2">
                     {selecting && (
                       <button
                         type="button"
@@ -354,7 +493,7 @@ export function ConversationThread({
                       disabled={!selecting}
                       onClick={() => selecting && toggleSelected(message.id)}
                       className={cn(
-                        "rounded-xl px-3.5 py-2.5 text-left text-sm transition-shadow",
+                        "min-w-0 max-w-full overflow-hidden rounded-xl px-3.5 py-2.5 text-left text-sm transition-shadow",
                         incoming
                           ? "rounded-tl-sm border border-border bg-card text-foreground"
                           : failed
@@ -370,19 +509,16 @@ export function ConversationThread({
                           <span className="mr-2 text-[10px] font-bold uppercase tracking-wider opacity-60">
                             Subject:
                           </span>
-                          <strong className="text-[13px] font-semibold opacity-90">
+                          <strong className="break-words text-[13px] font-semibold opacity-90 [overflow-wrap:anywhere]">
                             {message.subject}
                           </strong>
                         </div>
                       )}
-                      <div className="whitespace-pre-wrap break-words leading-relaxed">
-                        {message.subject && (
-                          <span className="mb-1 mr-2 block text-[10px] font-bold uppercase tracking-wider opacity-60">
-                            Body:
-                          </span>
-                        )}
-                        {message.content}
-                      </div>
+                      <MessageBody
+                        content={message.content}
+                        showBodyLabel={Boolean(message.subject)}
+                        incoming={incoming || failed}
+                      />
                       <div
                         className={cn(
                           "mt-1 flex items-center justify-end gap-1 text-[10px] opacity-70",
@@ -437,7 +573,11 @@ export function ConversationThread({
                         handleSend();
                       }
                     }}
-                    placeholder={`Reply on ${channelLabel(activeTab)}…`}
+                    placeholder={
+                      isLinkedAwaitingFirst && canInitiateChannel
+                        ? `Message on ${channelLabel(activeTab)}…`
+                        : `Reply on ${channelLabel(activeTab)}…`
+                    }
                     rows={1}
                     className="max-h-[120px] min-h-[40px] flex-1 resize-none bg-transparent px-2 py-2 text-sm leading-relaxed focus:outline-none"
                   />

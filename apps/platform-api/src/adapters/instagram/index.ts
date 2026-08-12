@@ -126,17 +126,30 @@ function pushFromEvent(
   ev: Record<string, unknown>,
   out: NormalizedInboundMessage[],
 ) {
-  // Ignore delivery/read/reaction webhooks — they are not inbound DMs
+  // Ignore delivery/read/reaction webhooks — they are not DMs
   if (ev.read || ev.delivery || ev.reaction || ev.optin) return;
 
   const sender = asRecord(ev.sender);
+  const recipient = asRecord(ev.recipient);
   const message = asRecord(ev.message);
-  if (!sender?.id || !message || message.is_echo) return;
+  if (!message) return;
+
+  const isEcho = Boolean(message.is_echo);
+  // Echo = business/page sent from IG app (or another client) — show as outgoing in CEP.
+  // Customer id is the recipient on echoes; sender on normal inbound.
+  const customerId = isEcho
+    ? recipient?.id
+      ? String(recipient.id)
+      : null
+    : sender?.id
+      ? String(sender.id)
+      : null;
+  if (!customerId) return;
 
   const { content, contentType } = extractText(ev);
   if (!content) return;
 
-  const mid = String(message.mid ?? message.id ?? `${sender.id}_${ev.timestamp ?? Date.now()}`);
+  const mid = String(message.mid ?? message.id ?? `${customerId}_${ev.timestamp ?? Date.now()}`);
   const ts = Number(ev.timestamp);
   // Instagram timestamps are usually ms; if clearly seconds, convert
   const occurredAt = Number.isFinite(ts)
@@ -145,8 +158,10 @@ function pushFromEvent(
 
   out.push({
     externalId: mid,
-    externalThreadId: String(sender.id),
-    senderId: String(sender.id),
+    externalThreadId: customerId,
+    senderId: customerId,
+    peerId: isEcho ? customerId : undefined,
+    direction: isEcho ? "outgoing" : "incoming",
     senderName: undefined,
     content,
     contentType,
@@ -203,7 +218,12 @@ export const instagramAdapter: ChannelAdapter<InstagramChannelConfig> = {
         const field = String(changeObj?.field ?? "");
         const value = asRecord(changeObj?.value);
         if (!value) continue;
-        if (field === "messages" || value.message || value.sender) {
+        if (
+          field === "messages" ||
+          field === "message_echoes" ||
+          value.message ||
+          value.sender
+        ) {
           pushFromEvent(value, out);
         }
       }

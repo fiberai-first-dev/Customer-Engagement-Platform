@@ -21,11 +21,13 @@ export class ApiError extends Error {
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const token = useAuthStore.getState().token;
+  const hasBody = init?.body != null && init.body !== "";
 
   const res = await fetch(`${API_BASE}${path}`, {
     ...init,
     headers: {
-      "Content-Type": "application/json",
+      // Fastify rejects empty body when Content-Type is application/json
+      ...(hasBody ? { "Content-Type": "application/json" } : {}),
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
       ...(init?.headers ?? {}),
     },
@@ -143,7 +145,9 @@ export interface ShopifyConfig {
   id: string;
   shop: string;
   clientId: string;
+  /** Always "***" when set in DB — never the real secret. */
   clientSecret: string;
+  hasClientSecret?: boolean;
   updatedAt: string;
 }
 
@@ -354,7 +358,12 @@ export async function startChannelOAuth(
   });
 }
 
-export async function startGmailWatch(inboxId: string): Promise<{ ok: boolean; error?: string }> {
+export async function startGmailWatch(inboxId: string): Promise<{
+  ok: boolean;
+  error?: string;
+  expiresAt?: string | null;
+  watchExpiration?: number;
+}> {
   return request(`/api/v1/gmail/watch`, {
     method: "POST",
     body: JSON.stringify({ inboxId }),
@@ -450,6 +459,21 @@ export const useMergeContacts = () => {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["contacts"] });
       queryClient.invalidateQueries({ queryKey: ["conversations"] });
+    },
+  });
+};
+
+export const useDeleteContact = () => {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) =>
+      request<{ ok: boolean; deletedMessages: number }>(`/api/v1/contacts/${id}`, {
+        method: "DELETE",
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["contacts"] });
+      queryClient.invalidateQueries({ queryKey: ["conversations"] });
+      queryClient.invalidateQueries({ queryKey: ["messages"] });
     },
   });
 };

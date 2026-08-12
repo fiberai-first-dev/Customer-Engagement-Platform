@@ -29,7 +29,8 @@ export function mergeChannelConfig(
       : {};
   for (const [key, value] of Object.entries(patch)) {
     if (key === "mock") continue;
-    if (value === "***") continue;
+    // "***" = redacted placeholder from client; never overwrite real secrets
+    if (typeof value === "string" && value.trim() === "***") continue;
     if (value === undefined) continue;
     if (value === null) {
       delete base[key];
@@ -490,6 +491,90 @@ export async function findOrCreateCustomerForInbound(input: {
   };
 }
 
+async function touchIdentityLastMessageAt(
+  channelType: ChannelType,
+  identityId: string,
+) {
+  const data = { lastMessageAt: new Date() };
+  if (channelType === "whatsapp") {
+    await prisma.whatsAppChannel.update({ where: { id: identityId }, data });
+  } else if (channelType === "instagram") {
+    await prisma.instagramChannel.update({ where: { id: identityId }, data });
+  } else {
+    await prisma.emailChannel.update({ where: { id: identityId }, data });
+  }
+}
+
+/**
+ * Link a provider-sourced *outgoing* message (device/app reply) to an existing identity.
+ * Does not mark the thread unresolved — agent already handled it outside CEP.
+ * Creates the identity only for email/whatsapp when the peer is new; Instagram requires a prior DM.
+ */
+async function resolveIdentityForOutgoing(input: {
+  channelType: ChannelType;
+  inbound: NormalizedInboundMessage;
+}): Promise<{
+  customerId: string;
+  channelId: string;
+  channelType: ChannelType;
+  externalId: string;
+} | null> {
+  const { channelType, inbound } = input;
+  const peerRaw = inbound.peerId ?? inbound.senderId;
+  const peerKey =
+    channelType === "email"
+      ? normalizeEmail(peerRaw) ?? peerRaw
+      : channelType === "whatsapp"
+        ? normalizeWhatsAppId(peerRaw) ?? peerRaw
+        : peerRaw;
+
+  const existing = await findIdentityByExternalId(channelType, peerKey);
+  if (existing) {
+    await touchIdentityLastMessageAt(channelType, existing.id);
+    return {
+      customerId: existing.customerId,
+      channelId: existing.id,
+      channelType,
+      externalId: existing.externalId,
+    };
+  }
+
+  if (channelType === "instagram") {
+    console.warn(
+      `[outbound-sync] instagram echo for unknown peer=${peerKey} — skipped (customer must message first)`,
+    );
+    return null;
+  }
+
+  // Email / WhatsApp: create contact from the peer so device replies still land in CEP.
+  const synthetic: NormalizedInboundMessage = {
+    ...inbound,
+    senderId: peerKey,
+    peerId: undefined,
+    direction: "incoming",
+    senderEmail: channelType === "email" ? peerKey : inbound.senderEmail,
+    senderPhone: channelType === "whatsapp" ? peerKey : inbound.senderPhone,
+  };
+  const link = await findOrCreateCustomerForInbound({
+    channelType,
+    inbound: synthetic,
+  });
+  // findOrCreate marks unresolved — undo for agent-originated outbound
+  if (channelType === "whatsapp") {
+    await prisma.whatsAppChannel.update({
+      where: { id: link.channelId },
+      data: { resolved: true, lastMessageAt: new Date() },
+    });
+  } else {
+    await prisma.emailChannel.update({
+      where: { id: link.channelId },
+      data: { resolved: true, lastMessageAt: new Date() },
+    });
+  }
+  await recomputeCustomerResolved(link.customerId);
+  return link;
+}
+
 export async function ingestInboundMessages(input: {
   channelConfigId: string;
   payload: unknown;
@@ -510,6 +595,7 @@ export async function ingestInboundMessages(input: {
 
   if (channelCfg.channelType === "instagram" && inboundMessages.length) {
     const { enrichInstagramInboundNames } = await import("../adapters/instagram/index.js");
+    // Enrich customer profiles for inbound; echoes already use customer IGSID as senderId
     inboundMessages = await enrichInstagramInboundNames(
       config as import("../adapters/shared/types.js").InstagramChannelConfig,
       inboundMessages,
@@ -551,8 +637,7 @@ export async function ingestInboundMessages(input: {
       continue;
     }
 
-    // Pub/Sub / catch-up re-delivers the same Gmail ids. Touching the identity
-    // would flip resolved→false and undo agent replies — skip known messages first.
+    // Pub/Sub / catch-up / echoes re-deliver the same provider ids.
     const alreadyStored = await prisma.message.findFirst({
       where: {
         channelType: channelCfg.channelType,
@@ -562,11 +647,20 @@ export async function ingestInboundMessages(input: {
     });
     if (alreadyStored) continue;
 
-    const link = await findOrCreateCustomerForInbound({
-      channelType: channelCfg.channelType,
-      inbound,
-    });
-    const receivedAt = new Date();
+    const direction = inbound.direction === "outgoing" ? "outgoing" : "incoming";
+    const link =
+      direction === "outgoing"
+        ? await resolveIdentityForOutgoing({
+            channelType: channelCfg.channelType,
+            inbound,
+          })
+        : await findOrCreateCustomerForInbound({
+            channelType: channelCfg.channelType,
+            inbound,
+          });
+    if (!link) continue;
+
+    const receivedAt = inbound.occurredAt instanceof Date ? inbound.occurredAt : new Date();
     try {
       const message = await prisma.message.create({
         data: {
@@ -574,12 +668,12 @@ export async function ingestInboundMessages(input: {
           channelType: link.channelType,
           channelId: link.channelId,
           customerId: link.customerId,
-          direction: "incoming",
+          direction,
           content: inbound.content,
           contentType: mapContentType(inbound.contentType),
           subject: inbound.subject,
           externalId: inbound.externalId,
-          status: "received",
+          status: direction === "outgoing" ? "sent" : "received",
           rawPayload: inbound.raw as Prisma.InputJsonValue,
           createdAt: receivedAt,
         },

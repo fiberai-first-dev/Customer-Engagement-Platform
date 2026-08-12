@@ -114,24 +114,58 @@ function buildRawEmail(input: {
 
 function parseGmailApiMessage(msg: gmail_v1.Schema$Message): NormalizedInboundMessage[] {
   const headers = msg.payload?.headers || [];
+  const labels = msg.labelIds ?? [];
   const from = getHeader(headers, "from");
-  if (!from) return [];
+  const toHeader = getHeader(headers, "to");
+  if (!from && !toHeader) return [];
 
   const subject = getHeader(headers, "subject");
-  const messageId = getHeader(headers, "message-id") || msg.id || "";
-  const threadId = msg.threadId || extractEmailAddress(from);
-  const senderEmail = extractEmailAddress(from);
+  // Prefer Gmail API id so CEP-sent mail (stored with users.messages.send id) dedupes on SENT sync.
+  const gmailId = msg.id?.trim() || "";
+  const headerMessageId = getHeader(headers, "message-id");
+  const messageId = gmailId || headerMessageId || "";
   const body = extractBody(msg.payload) || msg.snippet || "";
+
+  const isSentOnly = labels.includes("SENT") && !labels.includes("INBOX");
+  if (isSentOnly) {
+    const peerRaw = toHeader.split(",")[0]?.trim() || "";
+    if (!peerRaw) return [];
+    const peerEmail = extractEmailAddress(peerRaw);
+    if (!peerEmail) return [];
+    return [
+      {
+        externalId: messageId || `email_${Date.now()}`,
+        externalThreadId: msg.threadId || peerEmail,
+        senderId: peerEmail,
+        peerId: peerEmail,
+        senderEmail: peerEmail,
+        senderName: peerRaw.includes("<")
+          ? peerRaw.replace(/<[^>]+>/, "").replace(/"/g, "").trim() || undefined
+          : undefined,
+        direction: "outgoing",
+        content: body,
+        contentType: "text",
+        subject: subject || undefined,
+        occurredAt: new Date(Number(msg.internalDate || Date.now())),
+        raw: msg,
+      },
+    ];
+  }
+
+  if (!from) return [];
+  const senderEmail = extractEmailAddress(from);
+  const threadId = msg.threadId || senderEmail;
 
   return [
     {
-      externalId: messageId || `email_${msg.id ?? Date.now()}`,
+      externalId: messageId || `email_${Date.now()}`,
       externalThreadId: threadId,
       senderId: senderEmail,
       senderEmail,
       senderName: from.includes("<")
         ? from.replace(/<[^>]+>/, "").replace(/"/g, "").trim() || undefined
         : undefined,
+      direction: "incoming",
       content: body,
       contentType: "text",
       subject: subject || undefined,

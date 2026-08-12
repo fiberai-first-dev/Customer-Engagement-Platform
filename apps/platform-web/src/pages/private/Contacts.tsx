@@ -1,11 +1,19 @@
 import { Card, CardContent } from "../../components/ui/card";
 import { Button } from "../../components/ui/button";
 import { Input } from "../../components/ui/input";
+import { ConfirmDialog } from "../../components/ui/confirm-dialog";
 import { useState, useMemo } from "react";
-import { Search, MoreHorizontal, Plus, Edit2, Loader2 } from "lucide-react";
-import { useAccounts, useContacts, useEnabledChannelTypes } from "../../api";
+import { Search, MoreHorizontal, Plus, Edit2, Trash2, Loader2 } from "lucide-react";
+import { toast } from "sonner";
+import {
+  useAccounts,
+  useContacts,
+  useDeleteContact,
+  useEnabledChannelTypes,
+} from "../../api";
 import { ContactModal, type ContactFormData } from "../../components/contacts/ContactModal";
 import { formatWhatsAppDisplay } from "../../components/inbox/utils";
+import { useAppStore } from "../../store";
 
 function joinList(primary: string | null | undefined, list?: string[] | null): string {
   const seen = new Set<string>();
@@ -94,6 +102,8 @@ export function ContactsPage() {
   const accountId = accounts?.[0]?.id || "";
   const { data: contacts, isLoading: contactsLoading } = useContacts(accountId);
   const { enabledChannels, channelsReady } = useEnabledChannelTypes();
+  const deleteContact = useDeleteContact();
+  const { selectedContactId, setSelectedContactId } = useAppStore();
   const showEmail = !channelsReady || enabledChannels.includes("email");
   const showWa = !channelsReady || enabledChannels.includes("whatsapp");
   const showIg = !channelsReady || enabledChannels.includes("instagram");
@@ -101,6 +111,10 @@ export function ContactsPage() {
   const [openDropdownId, setOpenDropdownId] = useState<string | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingContact, setEditingContact] = useState<ContactFormData | null>(null);
+  const [pendingDelete, setPendingDelete] = useState<{
+    id: string;
+    name: string;
+  } | null>(null);
 
   const isLoading = accountsLoading || (!!accountId && contactsLoading);
 
@@ -145,8 +159,52 @@ export function ContactsPage() {
     setIsModalOpen(true);
   };
 
+  const openDelete = (c: (typeof filteredContacts)[number]) => {
+    setOpenDropdownId(null);
+    setPendingDelete({ id: c.id, name: c.name?.trim() || "this contact" });
+  };
+
+  const confirmDelete = () => {
+    if (!pendingDelete) return;
+    const { id, name } = pendingDelete;
+    deleteContact.mutate(id, {
+      onSuccess: (result) => {
+        if (selectedContactId === id) setSelectedContactId(null);
+        toast.success(
+          result.deletedMessages > 0
+            ? `Deleted ${name} and ${result.deletedMessages} message${
+                result.deletedMessages === 1 ? "" : "s"
+              }`
+            : `Deleted ${name}`,
+        );
+        setPendingDelete(null);
+      },
+      onError: (err) => {
+        toast.error(err.message || "Failed to delete contact");
+        setPendingDelete(null);
+      },
+    });
+  };
+
   return (
     <div className="flex h-full flex-1 flex-col overflow-hidden bg-background">
+      <ConfirmDialog
+        open={Boolean(pendingDelete)}
+        title="Delete contact?"
+        description={
+          <>
+            This permanently removes <strong>{pendingDelete?.name}</strong> and all of their
+            WhatsApp, Instagram, and Email conversations from CEP. This cannot be undone.
+          </>
+        }
+        confirmLabel="Delete contact"
+        cancelLabel="Cancel"
+        destructive
+        confirming={deleteContact.isPending}
+        onConfirm={confirmDelete}
+        onCancel={() => setPendingDelete(null)}
+      />
+
       <div className="border-b border-border bg-card/50 p-8 pb-4">
         <div className="mb-6 flex items-center justify-between gap-4">
           <h1 className="text-3xl font-bold tracking-tight">Contacts</h1>
@@ -252,7 +310,7 @@ export function ContactsPage() {
                             <MoreHorizontal className="h-4 w-4" />
                           </Button>
                           {openDropdownId === c.id && (
-                            <div className="absolute right-0 top-full z-50 mt-1 w-36 overflow-hidden rounded-md border border-border bg-card text-card-foreground shadow-md">
+                            <div className="absolute right-0 top-full z-50 mt-1 w-40 overflow-hidden rounded-md border border-border bg-card text-card-foreground shadow-md">
                               <button
                                 type="button"
                                 className="flex w-full items-center gap-2 px-4 py-2.5 text-left text-sm transition-colors hover:bg-muted"
@@ -263,6 +321,17 @@ export function ContactsPage() {
                               >
                                 <Edit2 className="h-3.5 w-3.5" />
                                 Edit
+                              </button>
+                              <button
+                                type="button"
+                                className="flex w-full items-center gap-2 px-4 py-2.5 text-left text-sm text-destructive transition-colors hover:bg-destructive/10"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  openDelete(c);
+                                }}
+                              >
+                                <Trash2 className="h-3.5 w-3.5" />
+                                Delete
                               </button>
                             </div>
                           )}

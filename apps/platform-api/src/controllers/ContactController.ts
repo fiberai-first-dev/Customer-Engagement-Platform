@@ -2,6 +2,7 @@ import type { FastifyRequest, FastifyReply } from "fastify";
 import { prisma } from "../config/db.js";
 import {
   createCustomer,
+  deleteCustomer,
   findMatchingCustomers,
   loadCustomerShaped,
   mergeCustomers,
@@ -185,5 +186,19 @@ export class ContactController {
     const shaped = await loadCustomerShaped(request.params.id);
     if (!shaped) return reply.code(404).send({ error: "not found" });
     return reply.send(shaped);
+  }
+
+  static async deleteContact(
+    request: FastifyRequest<{ Params: { id: string } }>,
+    reply: FastifyReply,
+  ) {
+    try {
+      const result = await deleteCustomer(request.params.id);
+      return reply.send(result);
+    } catch (err: any) {
+      const message = err?.message ?? "Failed to delete contact";
+      const code = message === "Customer not found" ? 404 : 400;
+      return reply.code(code).send({ error: message });
+    }
   }
 }

@@ -1,5 +1,6 @@
 import type { FastifyRequest, FastifyReply } from "fastify";
 import { prisma } from "../config/db.js";
+import { SECRET_PLACEHOLDER } from "../services/SecretRedaction.js";
 
 function shape(row: {
   id: string;
@@ -12,7 +13,9 @@ function shape(row: {
     id: row.id,
     shop: row.shop,
     clientId: row.clientId,
-    clientSecret: row.clientSecret,
+    // Never return the real secret to the browser (XSS / screenshare).
+    clientSecret: row.clientSecret?.trim() ? SECRET_PLACEHOLDER : "",
+    hasClientSecret: Boolean(row.clientSecret?.trim()),
     updatedAt: row.updatedAt,
   };
 }
@@ -37,6 +40,13 @@ export class ShopifyConfigController {
     await prisma.shopifyConfig.findUnique({ where: { id: "shopify_default" } }) ??
       (await prisma.shopifyConfig.create({ data: { id: "shopify_default" } }));
 
+    const nextSecret =
+      typeof body.clientSecret === "string" ? body.clientSecret.trim() : undefined;
+    const keepSecret =
+      nextSecret === undefined ||
+      nextSecret === "" ||
+      nextSecret === SECRET_PLACEHOLDER;
+
     const row = await prisma.shopifyConfig.update({
       where: { id: "shopify_default" },
       data: {
@@ -44,7 +54,7 @@ export class ShopifyConfigController {
           ? { shop: body.shop.trim().replace(/\.myshopify\.com$/i, "") }
           : {}),
         ...(body.clientId !== undefined ? { clientId: body.clientId.trim() } : {}),
-        ...(body.clientSecret !== undefined ? { clientSecret: body.clientSecret.trim() } : {}),
+        ...(!keepSecret ? { clientSecret: nextSecret } : {}),
       },
     });
 

@@ -74,18 +74,33 @@ async function resolveEmailInbox(emailAddress?: string) {
   return emailInboxes[0]!;
 }
 
-async function listRecentInboxMessageIds(
+async function listRecentLabeledMessageIds(
   gmail: ReturnType<typeof getEmailClient>,
+  labelIds: string[],
   maxResults = RECENT_INBOX_LIMIT,
 ): Promise<string[]> {
   const listRes = await gmail.users.messages.list({
     userId: "me",
-    labelIds: ["INBOX"],
+    labelIds,
     maxResults,
   });
   return (listRes.data.messages ?? [])
     .map((m) => m.id)
     .filter((id): id is string => !!id);
+}
+
+async function listRecentInboxMessageIds(
+  gmail: ReturnType<typeof getEmailClient>,
+  maxResults = RECENT_INBOX_LIMIT,
+): Promise<string[]> {
+  return listRecentLabeledMessageIds(gmail, ["INBOX"], maxResults);
+}
+
+async function listRecentSentMessageIds(
+  gmail: ReturnType<typeof getEmailClient>,
+  maxResults = RECENT_INBOX_LIMIT,
+): Promise<string[]> {
+  return listRecentLabeledMessageIds(gmail, ["SENT"], maxResults);
 }
 
 async function processGmailMessageIds(input: {
@@ -106,7 +121,12 @@ async function processGmailMessageIds(input: {
       });
       const msgData = msgRes.data;
       const labels = msgData.labelIds ?? [];
-      if (labels.includes("SENT") && !labels.includes("INBOX")) {
+      // Skip drafts / chat / trash noise; keep INBOX and SENT (device/app replies).
+      if (labels.includes("DRAFT") || labels.includes("TRASH") || labels.includes("SPAM")) {
+        skipped++;
+        continue;
+      }
+      if (!labels.includes("INBOX") && !labels.includes("SENT")) {
         skipped++;
         continue;
       }
@@ -118,7 +138,11 @@ async function processGmailMessageIds(input: {
         continue;
       }
 
-      const from = normalized[0]?.senderEmail ?? normalized[0]?.senderId ?? "?";
+      const first = normalized[0]!;
+      const peer =
+        first.direction === "outgoing"
+          ? first.peerId ?? first.senderEmail ?? first.senderId
+          : first.senderEmail ?? first.senderId;
       const result = await ingestInboundMessages({
         channelConfigId: input.inboxId,
         payload: msgData,
@@ -127,7 +151,7 @@ async function processGmailMessageIds(input: {
       if (result.created > 0) {
         processed += result.created;
         console.info(
-          `[email] ingested gmail=${msgId} from=${from} created=${result.created}`,
+          `[email] ingested gmail=${msgId} dir=${first.direction ?? "incoming"} peer=${peer ?? "?"} created=${result.created}`,
         );
       } else {
         skipped++;
@@ -193,6 +217,7 @@ async function handlePubSubNotificationLocked(
   let historyOk = false;
 
   // History since last cursor (can miss messages if the cursor advanced ahead of ingest).
+  // No labelId filter so SENT (agent replies from Gmail app) is included with INBOX.
   if (startHistoryId && !primed) {
     try {
       let pageToken: string | undefined;
@@ -201,7 +226,6 @@ async function handlePubSubNotificationLocked(
           userId: "me",
           startHistoryId,
           historyTypes: ["messageAdded"],
-          labelId: "INBOX",
           pageToken,
         });
         for (const h of historyRes.data.history ?? []) {
@@ -218,20 +242,24 @@ async function handlePubSubNotificationLocked(
     }
   }
 
-  // Only scan recent INBOX when history is empty/failed or watch was just primed.
+  // Only scan recent INBOX+SENT when history is empty/failed or watch was just primed.
   // Unioning 30 messages on every Pub/Sub push re-ran ingest under a 3-conn pool (P2024).
   if (!historyOk || messageIds.length === 0 || primed) {
     try {
-      const recentIds = await listRecentInboxMessageIds(gmail);
+      const [recentInbox, recentSent] = await Promise.all([
+        listRecentInboxMessageIds(gmail),
+        listRecentSentMessageIds(gmail),
+      ]);
+      const recentIds = [...recentInbox, ...recentSent];
       console.warn(
-        `[email] history empty/failed from ${startHistoryId || "(none)"}; using recent INBOX (${recentIds.length})`,
+        `[email] history empty/failed from ${startHistoryId || "(none)"}; using recent INBOX+SENT (${recentIds.length})`,
       );
       messageIds = [...messageIds, ...recentIds];
     } catch (err) {
-      console.error("[email] recent INBOX list failed:", err);
+      console.error("[email] recent INBOX/SENT list failed:", err);
     }
   } else {
-    console.info(`[email] history=${messageIds.length} (skipping recent INBOX union)`);
+    console.info(`[email] history=${messageIds.length} (skipping recent union)`);
   }
 
   messageIds = [...new Set(messageIds)];
@@ -262,7 +290,7 @@ async function handlePubSubNotificationLocked(
   return { processed, skipped, inboxId, primed };
 }
 
-/** After watch / redeploy: ingest recent INBOX so mail isn't stuck waiting for Pub/Sub. */
+/** After watch / redeploy: ingest recent INBOX + SENT so mail isn't stuck waiting for Pub/Sub. */
 export async function catchUpRecentEmailMessages(
   inboxId: string,
   maxResults = RECENT_INBOX_LIMIT,
@@ -274,8 +302,15 @@ export async function catchUpRecentEmailMessages(
     if (!config) return { processed: 0, skipped: 0 };
 
     const gmail = getEmailClient(config);
-    const messageIds = await listRecentInboxMessageIds(gmail, maxResults);
-    return processGmailMessageIds({ inboxId: inbox.id, config, messageIds });
+    const [inboxIds, sentIds] = await Promise.all([
+      listRecentInboxMessageIds(gmail, maxResults),
+      listRecentSentMessageIds(gmail, maxResults),
+    ]);
+    return processGmailMessageIds({
+      inboxId: inbox.id,
+      config,
+      messageIds: [...inboxIds, ...sentIds],
+    });
   });
 }
 
@@ -297,7 +332,8 @@ export async function setupEmailWatch(inboxId?: string) {
     userId: "me",
     requestBody: {
       topicName: config.pubsubTopic,
-      labelIds: ["INBOX"],
+      // INBOX = customer mail; SENT = agent replies from Gmail web/app outside CEP
+      labelIds: ["INBOX", "SENT"],
     },
   });
 

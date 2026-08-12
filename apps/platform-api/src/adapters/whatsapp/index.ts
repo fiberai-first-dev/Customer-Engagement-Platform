@@ -93,6 +93,36 @@ export const whatsappAdapter: ChannelAdapter<WhatsAppChannelConfig> = {
             senderId: from,
             senderName: contactNameByWaId.get(from),
             senderPhone: from.startsWith("+") ? from : `+${from}`,
+            direction: "incoming",
+            content,
+            contentType,
+            occurredAt: Number.isFinite(ts) ? new Date(ts * 1000) : new Date(),
+            raw: msg,
+          });
+        }
+
+        // Coexistence / Business App: agent replies from phone appear as smb_message_echoes
+        // (also accept message_echoes if Meta delivers that field name).
+        const echoBuckets = [
+          ...(Array.isArray(value.smb_message_echoes) ? value.smb_message_echoes : []),
+          ...(Array.isArray(value.message_echoes) ? value.message_echoes : []),
+        ];
+        for (const echo of echoBuckets) {
+          const msg = asRecord(echo);
+          if (!msg?.id) continue;
+          const to = String(msg.to ?? msg.recipient ?? "").replace(/\D/g, "");
+          if (!to) continue;
+          const { content, contentType } = textFromMessage(msg);
+          if (!content) continue;
+          const ts = Number(msg.timestamp);
+          out.push({
+            externalId: String(msg.id),
+            externalThreadId: to,
+            senderId: to,
+            peerId: to,
+            senderPhone: to.startsWith("+") ? to : `+${to}`,
+            senderName: contactNameByWaId.get(to),
+            direction: "outgoing",
             content,
             contentType,
             occurredAt: Number.isFinite(ts) ? new Date(ts * 1000) : new Date(),

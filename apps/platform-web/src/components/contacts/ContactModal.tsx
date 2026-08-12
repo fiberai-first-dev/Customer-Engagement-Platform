@@ -376,7 +376,7 @@ export function ContactModal({
       >
         <div className="flex items-center justify-between border-b border-border px-6 py-4">
           <h2 id="contact-modal-title" className="text-lg font-semibold tracking-tight">
-            {matches ? "Customer found with matching details" : isEditing ? "Edit contact" : "Add contact"}
+            {matches ? "Possible duplicate" : isEditing ? "Edit contact" : "Add contact"}
           </h2>
           <Button type="button" variant="ghost" size="icon" onClick={onClose} className="h-8 w-8 rounded-full">
             <X className="h-4 w-4" />
@@ -391,10 +391,13 @@ export function ContactModal({
                   {error}
                 </div>
               )}
-              <p className="text-sm text-muted-foreground">
-                An existing customer already has one of these channel ids. Merge into that
-                customer?
-              </p>
+              <div className="rounded-lg border border-amber-500/40 bg-amber-500/10 px-3 py-3">
+                <p className="text-sm font-semibold text-amber-950">Possible duplicate</p>
+                <p className="mt-1 text-sm text-amber-900/80">
+                  An existing customer already has one of these channel ids. Merge into that
+                  customer instead of creating a twin.
+                </p>
+              </div>
               <ul className="space-y-2 rounded-lg border border-border bg-muted/30 p-3 text-sm">
                 {matches.map((m) => (
                   <li key={m.id}>
@@ -451,7 +454,7 @@ export function ContactModal({
                 Back
               </Button>
               <Button type="button" onClick={() => void handleMerge()} disabled={isPending}>
-                {isPending ? "Merging…" : "Merge"}
+                {isPending ? "Merging…" : "Merge duplicate"}
               </Button>
             </div>
           </div>
@@ -471,6 +474,10 @@ export function ContactModal({
                   onChange={(e) => setFormData({ ...formData, name: e.target.value })}
                   placeholder="Jane Doe"
                 />
+                <p className="text-xs text-muted-foreground">
+                  If a channel id already exists on another contact, we&apos;ll flag a possible
+                  duplicate before saving.
+                </p>
               </div>
 
               {showEmail && (

@@ -7,6 +7,7 @@ import {
 } from "./MessagingService.js";
 import { recomputeCustomerResolved } from "./ResolveService.js";
 import { enrichCustomerFromShopify } from "./orders/shopify-contact.service.js";
+import { suppressInboundIds } from "./SuppressService.js";
 
 function normalizeEmail(raw?: string | null): string | null {
   if (!raw?.trim()) return null;
@@ -498,4 +499,49 @@ export async function mergeCustomers(input: {
   });
   await recomputeCustomerResolved(input.targetId);
   return loadCustomerShaped(input.targetId);
+}
+
+/**
+ * Delete a customer and all related chats across channels.
+ * Channel identity rows cascade via Prisma; messages are deleted explicitly
+ * (Message has no FK relation). Inbound external ids are tombstoned so sync
+ * cannot recreate threads for the same addresses.
+ */
+export async function deleteCustomer(customerId: string): Promise<{
+  ok: true;
+  deletedMessages: number;
+}> {
+  const existing = await prisma.customer.findUnique({ where: { id: customerId } });
+  if (!existing) throw new Error("Customer not found");
+
+  const messages = await prisma.message.findMany({
+    where: { customerId },
+    select: { channelType: true, externalId: true },
+  });
+
+  const byChannel = new Map<"whatsapp" | "instagram" | "email", string[]>();
+  for (const m of messages) {
+    if (!m.externalId) continue;
+    const list = byChannel.get(m.channelType) ?? [];
+    list.push(m.externalId);
+    byChannel.set(m.channelType, list);
+  }
+  for (const [channelType, externalIds] of byChannel) {
+    await suppressInboundIds({
+      channelType,
+      externalIds,
+      customerId,
+      reason: "customer_deleted",
+    });
+  }
+
+  const deleted = await prisma.message.deleteMany({ where: { customerId } });
+  await prisma.suppressedInbound.updateMany({
+    where: { customerId },
+    data: { customerId: null },
+  });
+  // Cascades whatsapp / instagram / email channel identity rows
+  await prisma.customer.delete({ where: { id: customerId } });
+
+  return { ok: true, deletedMessages: deleted.count };
 }

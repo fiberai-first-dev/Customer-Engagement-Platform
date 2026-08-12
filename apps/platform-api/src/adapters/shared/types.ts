@@ -75,6 +75,16 @@ export interface NormalizedInboundMessage {
   senderName?: string;
   senderEmail?: string;
   senderPhone?: string;
+  /**
+   * Provider-sourced direction. Default incoming (customer → business).
+   * Outgoing = agent reply from native app / device (IG echo, Gmail SENT, WA smb echo).
+   */
+  direction?: "incoming" | "outgoing";
+  /**
+   * For outgoing echoes: the customer peer id (IGSID, WA phone digits, email).
+   * When set, identity resolution uses peerId instead of senderId.
+   */
+  peerId?: string;
   content: string;
   contentType: MessageContentType;
   subject?: string;

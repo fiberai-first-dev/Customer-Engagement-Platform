@@ -7,4 +7,5 @@ export async function contactsRoutes(app: FastifyInstance) {
   app.post("/merge", ContactController.merge);
   app.get("/:id", ContactController.getOne);
   app.patch("/:id", ContactController.updateContact);
+  app.delete("/:id", ContactController.deleteContact);
 }

@@ -3,6 +3,7 @@ import { env } from "../config/env.js";
 import { mergeChannelConfig } from "./MessagingService.js";
 import { normalizeInstagramChannelConfigStored } from "../adapters/shared/index.js";
 import { computeChannelHealth } from "./ChannelHealth.js";
+import { redactChannelConfigForClient } from "./SecretRedaction.js";
 import type { ChannelType, Prisma } from "../generated/client/index.js";
 
 function shapeChannelConfig(row: {
@@ -24,18 +25,20 @@ function shapeChannelConfig(row: {
       channelConfig as Record<string, unknown>,
     ) as Prisma.JsonValue;
   }
+  // Health from real secrets; client only receives redacted config (anti-XSS).
+  const health = computeChannelHealth(row.channelType, channelConfig, row.enabled);
   return {
     id: row.id,
     accountId: "workspace",
     name: row.name,
     channelType: row.channelType,
-    channelConfig,
+    channelConfig: redactChannelConfigForClient(channelConfig),
     enabled: row.enabled,
     webhookUrl:
       row.channelType === "email"
         ? `${base}/webhooks/email/pubsub`
         : `${base}/webhooks/${row.channelType}`,
-    health: computeChannelHealth(row.channelType, channelConfig, row.enabled),
+    health,
   };
 }
 

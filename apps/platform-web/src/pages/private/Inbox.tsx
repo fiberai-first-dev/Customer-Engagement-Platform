@@ -23,14 +23,27 @@ import {
   cn,
   contactDisplayName,
   contactGlobalIsActive,
+  identitiesFor,
   pickPrimaryConversation,
 } from "../../components/inbox";
+import { ConfirmDialog } from "../../components/ui/confirm-dialog";
+
+type PendingDelete =
+  | { kind: "clear"; conversationId: string; channel: ChannelType }
+  | {
+      kind: "messages";
+      conversationId: string;
+      channel: ChannelType;
+      messageIds: string[];
+      resolve: (ok: boolean) => void;
+    };
 
 export function InboxPage() {
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState<"active" | "all">("active");
   const [activeTab, setActiveTab] = useState<ChannelType>("whatsapp");
   const [customerContextOpen, setCustomerContextOpen] = useState(true);
+  const [pendingDelete, setPendingDelete] = useState<PendingDelete | null>(null);
   const focusedContactRef = useRef<string | null>(null);
 
   const {
@@ -108,12 +121,6 @@ export function InboxPage() {
     });
   }, [conversationsByContact, statusFilter, searchQuery]);
 
-  const selectedListConversation =
-    listConversations.find((c) => c.contactId === selectedContactId) ??
-    (selectedContactId && conversationsByContact[selectedContactId]
-      ? pickPrimaryConversation(conversationsByContact[selectedContactId]!)
-      : null);
-
   const contactConversations = useMemo(() => {
     const map: Partial<Record<ChannelType, Conversation>> = {};
     if (!selectedContactId) return map;
@@ -127,14 +134,50 @@ export function InboxPage() {
     return map;
   }, [conversations, selectedContactId, enabledSet, channelsReady]);
 
-  const selectedConversation = selectedContactId
-    ? contactConversations[activeTab] ?? null
-    : null;
+  const selectedListConversation =
+    listConversations.find((c) => c.contactId === selectedContactId) ??
+    (selectedContactId && conversationsByContact[selectedContactId]
+      ? pickPrimaryConversation(conversationsByContact[selectedContactId]!)
+      : null);
 
   const selectedContact =
-    selectedConversation?.contact ??
+    contactConversations[activeTab]?.contact ??
     selectedListConversation?.contact ??
+    Object.values(contactConversations)[0]?.contact ??
     null;
+
+  /** Email / WhatsApp can start outbound when an identity exists (Shopify-linked email, etc.). Instagram cannot. */
+  const selectedConversation = useMemo(() => {
+    if (!selectedContactId || !selectedContact) return null;
+    const existing = contactConversations[activeTab];
+    if (existing) return existing;
+    if (activeTab === "instagram") return null;
+    if (channelsReady && !enabledSet.has(activeTab)) return null;
+    const ids = identitiesFor(selectedContact, activeTab);
+    if (!ids.length) return null;
+    return {
+      id: `${selectedContactId}:${activeTab}`,
+      contactId: selectedContactId,
+      accountId: "workspace",
+      status: "resolved" as const,
+      lastMessageAt: null,
+      channelType: activeTab,
+      inbox: {
+        id: `channel_${activeTab}`,
+        name: channelLabel(activeTab),
+        channelType: activeTab,
+      },
+      contact: selectedContact,
+      messages: [],
+    } satisfies Conversation;
+  }, [
+    selectedContactId,
+    selectedContact,
+    contactConversations,
+    activeTab,
+    channelsReady,
+    enabledSet,
+  ]);
 
   const {
     data: messages,
@@ -211,52 +254,105 @@ export function InboxPage() {
 
   const handleClearChat = () => {
     if (!selectedConversation || !selectedContactId) return;
-    const channel = selectedConversation.channelType;
-    const id = selectedConversation.id;
-    if (
-      !window.confirm(
-        `Clear all ${channelLabel(channel)} messages for this contact from CEP? They will not come back from sync.`,
-      )
-    ) {
-      return;
-    }
-    suppressConversation.mutate(id, {
-      onSuccess: () => {
-        toast.success(`${channelLabel(channel)} chat cleared`);
-      },
-      onError: (err) => toast.error(err.message || "Failed to clear chat"),
+    setPendingDelete({
+      kind: "clear",
+      conversationId: selectedConversation.id,
+      channel: selectedConversation.channelType,
     });
   };
 
-  const handleDeleteMessages = async (messageIds: string[]): Promise<boolean> => {
-    if (!selectedConversation || messageIds.length === 0) return false;
-    const channel = selectedConversation.channelType;
-    const id = selectedConversation.id;
-    if (
-      !window.confirm(
-        `Delete ${messageIds.length} selected ${channelLabel(channel)} message${
-          messageIds.length === 1 ? "" : "s"
-        }? They will not come back from sync.`,
-      )
-    ) {
-      return false;
+  const handleDeleteMessages = (messageIds: string[]): Promise<boolean> => {
+    if (!selectedConversation || messageIds.length === 0) return Promise.resolve(false);
+    return new Promise((resolve) => {
+      setPendingDelete({
+        kind: "messages",
+        conversationId: selectedConversation.id,
+        channel: selectedConversation.channelType,
+        messageIds,
+        resolve,
+      });
+    });
+  };
+
+  const closeDeleteDialog = (ok = false) => {
+    if (pendingDelete?.kind === "messages") pendingDelete.resolve(ok);
+    setPendingDelete(null);
+  };
+
+  const confirmPendingDelete = async () => {
+    if (!pendingDelete) return;
+
+    if (pendingDelete.kind === "clear") {
+      const { conversationId, channel } = pendingDelete;
+      suppressConversation.mutate(conversationId, {
+        onSuccess: () => {
+          toast.success(`${channelLabel(channel)} conversation cleared`);
+          setPendingDelete(null);
+        },
+        onError: (err) => {
+          toast.error(err.message || "Failed to clear conversation");
+          setPendingDelete(null);
+        },
+      });
+      return;
     }
+
+    const { conversationId, messageIds, resolve } = pendingDelete;
     try {
-      await deleteMessages.mutateAsync({ id, messageIds });
+      await deleteMessages.mutateAsync({ id: conversationId, messageIds });
       toast.success(
         messageIds.length === 1
           ? "Message deleted"
           : `${messageIds.length} messages deleted`,
       );
-      return true;
+      resolve(true);
+      setPendingDelete(null);
     } catch (err: any) {
       toast.error(err?.message || "Failed to delete messages");
-      return false;
+      resolve(false);
+      setPendingDelete(null);
     }
   };
 
+  const deleteDialogBusy =
+    (pendingDelete?.kind === "clear" && suppressConversation.isPending) ||
+    (pendingDelete?.kind === "messages" && deleteMessages.isPending);
+
+  const deleteDialogTitle =
+    pendingDelete?.kind === "clear"
+      ? `Clear ${channelLabel(pendingDelete.channel)} conversation?`
+      : pendingDelete?.kind === "messages"
+        ? `Delete ${pendingDelete.messageIds.length} ${channelLabel(pendingDelete.channel)} message${
+            pendingDelete.messageIds.length === 1 ? "" : "s"
+          }?`
+        : "";
+
+  const deleteDialogDescription =
+    pendingDelete?.kind === "clear" ? (
+      <>
+        This permanently removes every {channelLabel(pendingDelete.channel)} message for this
+        contact from CEP. New messages from the customer will still appear.
+      </>
+    ) : pendingDelete?.kind === "messages" ? (
+      <>
+        This permanently removes the selected message
+        {pendingDelete.messageIds.length === 1 ? "" : "s"} from CEP. This cannot be undone.
+      </>
+    ) : null;
+
   return (
     <div className="flex h-full flex-1 overflow-hidden bg-background">
+      <ConfirmDialog
+        open={Boolean(pendingDelete)}
+        title={deleteDialogTitle}
+        description={deleteDialogDescription}
+        confirmLabel={pendingDelete?.kind === "clear" ? "Clear conversation" : "Delete"}
+        cancelLabel="Cancel"
+        destructive
+        confirming={deleteDialogBusy}
+        onConfirm={() => void confirmPendingDelete()}
+        onCancel={() => closeDeleteDialog(false)}
+      />
       <section className="flex w-[360px] shrink-0 flex-col border-r border-border bg-card">
         <div className="space-y-3 border-b border-border p-4">
           <div className="flex items-center justify-between gap-2">
