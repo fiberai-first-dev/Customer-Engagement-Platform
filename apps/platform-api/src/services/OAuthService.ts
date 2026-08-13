@@ -391,6 +391,7 @@ export async function completeInstagramOAuth(input: {
     instagramAppId: appId,
     instagramAppSecret: appSecret,
     verifyToken: pending.verifyToken,
+    instagramTokenIssuedAt: Date.now(),
     ...(username ? { instagramUsername: username } : {}),
     appSecret: null,
     pageId: null,
@@ -405,4 +406,56 @@ export async function completeInstagramOAuth(input: {
       ...(username ? { username } : {}),
     }),
   };
+}
+
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+/** Meta long-lived tokens last ~60 days. Refreshing before expiry starts a new 60-day window. */
+async function refreshInstagramLongLivedToken(
+  accessToken: string,
+): Promise<{ accessToken: string; expiresIn: number } | null> {
+  const url = new URL("https://graph.instagram.com/refresh_access_token");
+  url.searchParams.set("grant_type", "ig_refresh_token");
+  url.searchParams.set("access_token", accessToken);
+  const res = await fetch(url);
+  const json = (await res.json()) as {
+    access_token?: string;
+    expires_in?: number;
+    error?: { message?: string };
+  };
+  if (!json.access_token) {
+    console.warn("[instagram] token refresh failed:", json.error?.message ?? `HTTP ${res.status}`);
+    return null;
+  }
+  return { accessToken: json.access_token, expiresIn: json.expires_in ?? 60 * 24 * 3600 };
+}
+
+export async function renewInstagramTokens(): Promise<void> {
+  const rows = await prisma.channelConfig.findMany({ where: { channelType: "instagram" } });
+  for (const row of rows) {
+    const cfg =
+      row.channelConfig && typeof row.channelConfig === "object" && !Array.isArray(row.channelConfig)
+        ? (row.channelConfig as Record<string, unknown>)
+        : {};
+    const token = nonEmpty(cfg.accessToken);
+    if (!token) continue;
+    const issuedAt = typeof cfg.instagramTokenIssuedAt === "number" ? cfg.instagramTokenIssuedAt : 0;
+    if (issuedAt && Date.now() - issuedAt < DAY_MS) continue;
+    const next = await refreshInstagramLongLivedToken(token);
+    if (!next) continue;
+    await patchInboxConfig(row.id, row.channelConfig, {
+      accessToken: next.accessToken,
+      instagramTokenIssuedAt: Date.now(),
+      instagramTokenExpiresIn: next.expiresIn,
+    });
+    console.log(`[instagram] token refreshed inbox=${row.id} expires_in=${next.expiresIn}s`);
+  }
+}
+
+export function startInstagramTokenScheduler(): void {
+  setInterval(() => {
+    void renewInstagramTokens().catch((err) => {
+      console.warn("[instagram] token scheduler:", err instanceof Error ? err.message : err);
+    });
+  }, DAY_MS);
 }

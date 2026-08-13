@@ -5,6 +5,7 @@ import { buildApp } from "./app.js";
 import { runDatabaseMigrations } from "./scripts/migrate.js";
 import { bootstrapRuntime } from "./services/StartupService.js";
 import { startGmailWatchScheduler } from "./services/EmailService.js";
+import { startInstagramTokenScheduler } from "./services/OAuthService.js";
 
 async function main() {
   // Schema first — creates tables when missing; no-op when current
@@ -22,6 +23,7 @@ async function main() {
       `webhooks: /webhooks/whatsapp | /webhooks/instagram | /webhooks/email/pubsub`,
     );
     startGmailWatchScheduler();
+    startInstagramTokenScheduler();
   } catch (err) {
     app.log.error(err);
     await prisma.$disconnect();

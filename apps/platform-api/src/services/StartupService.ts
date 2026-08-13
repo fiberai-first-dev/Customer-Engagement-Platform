@@ -8,7 +8,7 @@ import {
 } from "../adapters/shared/index.js";
 import { ensureWorkspace } from "./WorkspaceService.js";
 import { catchUpRecentEmailMessages, renewEmailWatch } from "./EmailService.js";
-import { subscribeInstagramMessaging } from "./OAuthService.js";
+import { renewInstagramTokens, subscribeInstagramMessaging } from "./OAuthService.js";
 import { isShopifyConfigured } from "./orders/shopify.client.js";
 import type { Prisma } from "../generated/client/index.js";
 
@@ -146,7 +146,14 @@ async function prepareInstagram() {
       await prisma.channelConfig.update({ where: { id: inbox.id }, data: { enabled: true } });
     }
 
-    const sub = await subscribeInstagramMessaging(cfg.accessToken);
+    await renewInstagramTokens();
+    const latest = await prisma.channelConfig.findUnique({ where: { id: inbox.id } });
+    const token =
+      latest && latest.channelConfig && typeof latest.channelConfig === "object" && !Array.isArray(latest.channelConfig)
+        ? String((latest.channelConfig as Record<string, unknown>).accessToken ?? cfg.accessToken)
+        : cfg.accessToken;
+
+    const sub = await subscribeInstagramMessaging(token);
     console.log(
       sub.ok
         ? "[boot:instagram] subscribed messaging"
