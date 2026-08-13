@@ -79,8 +79,8 @@ export function computeChannelHealth(
   if (!hasClient) details.push("Gmail OAuth clientId/clientSecret missing");
   if (!hasOAuth) details.push("Reconnect Gmail — OAuth tokens missing");
   if (!hasTopic) details.push("Pub/Sub topic missing");
-  if (watchExpired) details.push("Gmail watch expired — click Start watch");
-  else if (!exp && hasOAuth) details.push("Watch not started — click Start watch");
+  if (watchExpired) details.push("Gmail watch expired");
+  else if (!exp && hasOAuth) details.push("Watch not started");
   else if (watchSoon && watchExpiresAt) {
     details.push(`Watch expires soon (${new Date(exp).toLocaleString()})`);
   }

@@ -468,19 +468,19 @@ async function main() {
   const iy = doc.y;
   const iw = doc.page.width - PAGE.margin * 2;
   doc.save();
-  doc.roundedRect(ix, iy, iw, 44, 6).fill(C.tealSoft);
+  doc.roundedRect(ix, iy, iw, 52, 6).fill(C.tealSoft);
   doc.fillColor(C.navy).font("Helvetica-Bold").fontSize(10)
     .text("How to use this guide", ix + 14, iy + 10, { lineBreak: false });
   doc.fillColor(C.ink).font("Helvetica").fontSize(9)
     .text(
-      "Follow each channel in order. Create credentials in the provider console, then paste them into CEP Settings.",
+      "Copy Callback URLs from Settings. Save Instagram and Gmail login redirects in Meta and Google before you click Connect.",
       ix + 14,
       iy + 24,
       { width: iw - 28 },
     );
   doc.restore();
   doc.x = PAGE.margin;
-  doc.y = iy + 56;
+  doc.y = iy + 64;
 
   renderMarkdown(doc, md);
 

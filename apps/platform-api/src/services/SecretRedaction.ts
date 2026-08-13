@@ -15,17 +15,8 @@ export function isSecretPlaceholder(value: unknown): boolean {
 }
 
 export function redactChannelConfigForClient(
-  channelConfig: unknown,
+  _channelConfig: unknown,
 ): Record<string, unknown> {
-  if (!channelConfig || typeof channelConfig !== "object" || Array.isArray(channelConfig)) {
-    return {};
-  }
-  const out: Record<string, unknown> = { ...(channelConfig as Record<string, unknown>) };
-  for (const key of CHANNEL_SECRET_KEYS) {
-    const value = out[key];
-    if (typeof value === "string" && value.trim()) {
-      out[key] = SECRET_PLACEHOLDER;
-    }
-  }
-  return out;
+  // Credentials stay on the server. The UI uses health/status only.
+  return {};
 }

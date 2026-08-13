@@ -1,12 +1,10 @@
-import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
 import { Button } from "../../components/ui/button";
 import { Input } from "../../components/ui/input";
-import { Badge } from "../../components/ui/badge";
 import {
   startChannelOAuth,
-  startGmailWatch,
   useAccounts,
   useDisconnectInbox,
   useInboxes,
@@ -25,7 +23,6 @@ import {
   Eye,
   EyeOff,
   Loader2,
-  Radio,
   X,
 } from "lucide-react";
 
@@ -71,29 +68,8 @@ const SHOPIFY_FIELDS: FieldDef[] = [
   { key: "clientSecret", label: "Client Secret", secret: true, required: true },
 ];
 
-const PUBLIC_PREFILL_KEYS = new Set([
-  "phoneNumberId",
-  "businessAccountId",
-  "instagramAppId",
-  "instagramUsername",
-  "clientId",
-  "pubsubTopic",
-  "shop",
-]);
-
 function hasText(value?: string): boolean {
   return Boolean(value?.trim()) && value!.trim() !== "***";
-}
-
-function asStringRecord(config: Record<string, unknown> | undefined): Record<string, string> {
-  if (!config) return {};
-  const out: Record<string, string> = {};
-  for (const [key, value] of Object.entries(config)) {
-    if (value == null) continue;
-    if (typeof value === "string") out[key] = value;
-    else if (typeof value === "number" || typeof value === "boolean") out[key] = String(value);
-  }
-  return out;
 }
 
 function statusFromHealth(
@@ -122,99 +98,85 @@ function isLinkedStatus(tone: "ok" | "warn" | "error" | "idle") {
   return tone === "ok" || tone === "warn";
 }
 
-function StatusBadge({
-  label,
-  tone,
-  className,
-}: {
-  label: string;
-  tone: "ok" | "warn" | "error" | "idle";
-  className?: string;
-}) {
-  const toneClass =
-    tone === "ok"
-      ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-800"
-      : tone === "warn"
-        ? "border-amber-500/30 bg-amber-500/10 text-amber-900"
-        : tone === "error"
-          ? "border-destructive/30 bg-destructive/10 text-destructive"
-          : "border-border bg-muted text-muted-foreground";
+function CallbackUrlRow({ label, value }: { label: string; value: string }) {
+  const [copied, setCopied] = useState(false);
   return (
-    <Badge variant="outline" className={`font-medium ${toneClass} ${className ?? ""}`}>
-      {label}
-    </Badge>
+    <div className="space-y-1.5">
+      <p className="text-sm font-medium">{label}</p>
+      <div className="flex items-center gap-2">
+        <p className="flex h-10 min-w-0 flex-1 items-center overflow-x-auto whitespace-nowrap rounded-md border border-border bg-muted/40 px-3 font-mono text-xs text-foreground">
+          {value}
+        </p>
+        <Button
+          type="button"
+          variant="outline"
+          className="h-10 shrink-0 gap-2 px-3"
+          onClick={async () => {
+            await navigator.clipboard.writeText(value);
+            setCopied(true);
+            window.setTimeout(() => setCopied(false), 1500);
+          }}
+        >
+          {copied ? (
+            <CheckCircle2 className="h-4 w-4 text-emerald-600" />
+          ) : (
+            <Copy className="h-4 w-4" />
+          )}
+          {copied ? "Copied" : "Copy"}
+        </Button>
+      </div>
+    </div>
   );
 }
 
 function CallbackUrlsCard({
-  rows,
+  channels,
 }: {
-  rows: { label: string; value?: string }[];
+  channels: { name: string; urls: { label: string; value?: string }[] }[];
 }) {
-  const available = rows.filter((r) => Boolean(r.value));
-  const [selected, setSelected] = useState(available[0]?.label ?? "");
-  const [copied, setCopied] = useState(false);
+  const available = channels.filter((c) => c.urls.some((u) => u.value));
+  const [selected, setSelected] = useState(available[0]?.name ?? "");
 
   useEffect(() => {
-    if (!available.some((r) => r.label === selected) && available[0]) {
-      setSelected(available[0].label);
+    if (!available.some((c) => c.name === selected) && available[0]) {
+      setSelected(available[0].name);
     }
   }, [available, selected]);
 
-  const current = available.find((r) => r.label === selected) ?? available[0];
-  if (!available.length) return null;
+  const current = available.find((c) => c.name === selected) ?? available[0];
+  if (!current) return null;
 
   return (
     <div className="rounded-xl border border-border bg-card p-5 shadow-sm">
       <div className="mb-4">
         <h2 className="text-base font-semibold leading-none">Callback URLs</h2>
         <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
-          Copy these into Meta or Google. They already match this site — the setup guide has no
-          URLs of its own.
+          Paste into Meta or Google when you connect a channel.
         </p>
       </div>
-      <div className="space-y-3">
+      <div className="space-y-4">
         <div className="space-y-1.5">
           <label className="text-sm font-medium" htmlFor="callback-url-select">
-            Which URL
+            Channel
           </label>
           <select
             id="callback-url-select"
-            value={current?.label ?? ""}
+            value={current.name}
             onChange={(e) => setSelected(e.target.value)}
             className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
           >
-            {available.map((row) => (
-              <option key={row.label} value={row.label}>
-                {row.label}
+            {available.map((channel) => (
+              <option key={channel.name} value={channel.name}>
+                {channel.name}
               </option>
             ))}
           </select>
         </div>
-        {current?.value && (
-          <div className="flex items-center gap-2">
-            <p className="flex h-10 min-w-0 flex-1 items-center overflow-x-auto whitespace-nowrap rounded-md border border-border bg-muted/40 px-3 font-mono text-xs text-foreground">
-              {current.value}
-            </p>
-            <Button
-              type="button"
-              variant="outline"
-              className="h-10 shrink-0 gap-2 px-3"
-              onClick={async () => {
-                await navigator.clipboard.writeText(current.value!);
-                setCopied(true);
-                window.setTimeout(() => setCopied(false), 1500);
-              }}
-            >
-              {copied ? (
-                <CheckCircle2 className="h-4 w-4 text-emerald-600" />
-              ) : (
-                <Copy className="h-4 w-4" />
-              )}
-              {copied ? "Copied" : "Copy"}
-            </Button>
-          </div>
-        )}
+        {current.urls
+          .filter((u) => u.value)
+          .map((u) => (
+            <CallbackUrlRow key={u.label} label={u.label} value={u.value!} />
+          ))}
       </div>
     </div>
   );
@@ -335,7 +297,9 @@ function ConnectModal({
                 </div>
               );
             })}
-            <p className="text-xs text-muted-foreground">We’ll save these when you connect.</p>
+            <p className="text-xs text-muted-foreground">
+              Saved only after the connection succeeds.
+            </p>
           </div>
           <div className="flex items-center justify-end gap-3 border-t border-border bg-muted/40 px-6 py-4">
             <Button type="button" variant="ghost" onClick={onClose} disabled={submitting}>
@@ -354,29 +318,21 @@ function ConnectModal({
 
 function ChannelRow({
   name,
-  status,
   busy,
   linked,
   onConnect,
   onDisconnect,
-  secondary,
 }: {
   name: string;
-  status: { label: string; tone: "ok" | "warn" | "error" | "idle" };
   busy?: boolean;
   linked: boolean;
   onConnect: () => void;
   onDisconnect: () => void;
-  secondary?: ReactNode;
 }) {
   return (
     <div className="flex min-h-14 items-center justify-between gap-3 px-4 py-2.5">
-      <div className="flex min-w-0 items-center gap-3">
-        <span className="w-[7.5rem] shrink-0 text-sm font-semibold text-foreground">{name}</span>
-        <StatusBadge label={status.label} tone={status.tone} className="shrink-0" />
-      </div>
+      <span className="text-sm font-semibold text-foreground">{name}</span>
       <div className="flex shrink-0 items-center gap-2">
-        {secondary}
         {linked ? (
           <Button
             type="button"
@@ -416,7 +372,6 @@ export function SettingsPage() {
 
   const [banner, setBanner] = useState<{ tone: "ok" | "err"; text: string } | null>(null);
   const [connecting, setConnecting] = useState<"gmail" | "instagram" | null>(null);
-  const [watching, setWatching] = useState(false);
   const [modal, setModal] = useState<ChannelKey | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [disconnectTarget, setDisconnectTarget] = useState<ChannelKey | null>(null);
@@ -471,23 +426,13 @@ export function SettingsPage() {
   const waStatus = statusFromHealth(waInbox?.health);
   const igStatus = statusFromHealth(igInbox?.health);
   const emailStatus = statusFromHealth(emailInbox?.health);
-  const shopifyConnected = Boolean(
-    shopify?.shop?.trim() && shopify?.clientId?.trim() && shopify?.hasClientSecret,
-  );
-  const shopifyStatus = shopifyConnected
-    ? { label: "Connected", tone: "ok" as const }
-    : { label: "Not Connected", tone: "idle" as const };
+  const shopifyConnected = Boolean(shopify?.connected ?? shopify?.hasClientSecret);
 
-  const connectedCount = [waStatus, igStatus, emailStatus].filter(
-    (s) => s.tone === "ok",
-  ).length;
-
-  const gmailCanWatch =
-    emailInbox?.health?.level === "ok" ||
-    (emailInbox?.health?.level === "warn" &&
-      Boolean(emailInbox.health.details.some((d) => /watch/i.test(d))));
-
-  const startOAuth = async (provider: "gmail" | "instagram", inboxId: string) => {
+  const startOAuth = async (
+    provider: "gmail" | "instagram",
+    inboxId: string,
+    credentials: Record<string, string>,
+  ) => {
     setConnecting(provider);
     setBanner({
       tone: "ok",
@@ -497,7 +442,7 @@ export function SettingsPage() {
           : "Opening Instagram to finish connection…",
     });
     try {
-      const { url } = await startChannelOAuth(provider, inboxId);
+      const { url } = await startChannelOAuth(provider, inboxId, credentials);
       window.location.assign(url);
     } catch (err: unknown) {
       setBanner({
@@ -509,17 +454,6 @@ export function SettingsPage() {
     }
   };
 
-  const publicPrefill = (config: Record<string, unknown> | undefined): Record<string, string> => {
-    const raw = asStringRecord(config);
-    const out: Record<string, string> = {};
-    for (const [key, value] of Object.entries(raw)) {
-      if (!PUBLIC_PREFILL_KEYS.has(key)) continue;
-      if (!hasText(value)) continue;
-      out[key] = value;
-    }
-    return out;
-  };
-
   const modalConfig = useMemo(() => {
     if (!modal) return null;
     if (modal === "whatsapp") {
@@ -527,25 +461,27 @@ export function SettingsPage() {
         title: "Connect WhatsApp",
         description: "Enter your WhatsApp Business details to connect.",
         fields: WA_FIELDS,
-        initialValues: publicPrefill(waInbox?.channelConfig as Record<string, unknown>),
+        initialValues: {} as Record<string, string>,
         submitLabel: "Connect",
       };
     }
     if (modal === "instagram") {
       return {
         title: "Connect Instagram",
-        description: "Enter your Instagram app details. You’ll sign in with Instagram next.",
+        description:
+          "Save Login redirect in Meta (developers.facebook.com) first, then enter the app details here.",
         fields: IG_FIELDS,
-        initialValues: publicPrefill(igInbox?.channelConfig as Record<string, unknown>),
+        initialValues: {} as Record<string, string>,
         submitLabel: connecting === "instagram" ? "Connecting…" : "Connect",
       };
     }
     if (modal === "email") {
       return {
         title: "Connect Gmail",
-        description: "Enter your Google client details. You’ll sign in with Google next.",
+        description:
+          "Save Login redirect on the Google OAuth client first, then enter the client details here.",
         fields: EMAIL_FIELDS,
-        initialValues: publicPrefill(emailInbox?.channelConfig as Record<string, unknown>),
+        initialValues: {} as Record<string, string>,
         submitLabel: connecting === "gmail" ? "Connecting…" : "Connect",
       };
     }
@@ -553,20 +489,10 @@ export function SettingsPage() {
       title: "Connect Shopify",
       description: "Connect your store to show customers and orders in the inbox.",
       fields: SHOPIFY_FIELDS,
-      initialValues: {
-        shop: shopify?.shop || "",
-        clientId: shopify?.clientId || "",
-      },
+      initialValues: {} as Record<string, string>,
       submitLabel: "Connect",
     };
-  }, [
-    modal,
-    waInbox,
-    igInbox,
-    emailInbox,
-    shopify,
-    connecting,
-  ]);
+  }, [modal, connecting]);
 
   const disconnectLabel =
     disconnectTarget === "whatsapp"
@@ -627,63 +553,32 @@ export function SettingsPage() {
         modal === "whatsapp" ? waInbox : modal === "instagram" ? igInbox : emailInbox;
       if (!inbox) throw new Error("Channel is not available. Please try again later.");
 
-      const channelConfig =
-        modal === "instagram"
-          ? {
-              instagramAppId: values.instagramAppId,
-              instagramAppSecret: values.instagramAppSecret,
-              verifyToken: values.verifyToken,
-              pageId: null,
-              appSecret: null,
-            }
-          : values;
-
-      await updateInboxAsync({
-        id: inbox.id,
-        body: { channelConfig, enabled: true },
-      });
-
       if (modal === "email") {
-        await startOAuth("gmail", inbox.id);
+        await startOAuth("gmail", inbox.id, {
+          clientId: values.clientId,
+          clientSecret: values.clientSecret,
+          pubsubTopic: values.pubsubTopic,
+        });
         return;
       }
       if (modal === "instagram") {
-        await startOAuth("instagram", inbox.id);
+        await startOAuth("instagram", inbox.id, {
+          instagramAppId: values.instagramAppId,
+          instagramAppSecret: values.instagramAppSecret,
+          verifyToken: values.verifyToken,
+        });
         return;
       }
+
+      await updateInboxAsync({
+        id: inbox.id,
+        body: { channelConfig: values, enabled: true },
+      });
 
       setBanner({ tone: "ok", text: "WhatsApp connected" });
       setModal(null);
     } finally {
       setSubmitting(false);
-    }
-  };
-
-  const handleStartWatch = async () => {
-    if (!emailInbox) {
-      setBanner({ tone: "err", text: "Email channel is not available." });
-      return;
-    }
-    setWatching(true);
-    try {
-      const result = await startGmailWatch(emailInbox.id);
-      await queryClient.invalidateQueries({ queryKey: ["inboxes"] });
-      const expiresLabel = result.expiresAt
-        ? new Date(result.expiresAt).toLocaleString()
-        : null;
-      setBanner({
-        tone: "ok",
-        text: expiresLabel
-          ? `Gmail watch started · expires ${expiresLabel}`
-          : "Gmail watch started",
-      });
-    } catch (err: unknown) {
-      setBanner({
-        tone: "err",
-        text: err instanceof Error ? err.message : "Could not start Gmail watch",
-      });
-    } finally {
-      setWatching(false);
     }
   };
 
@@ -695,15 +590,25 @@ export function SettingsPage() {
     );
   }
 
-  const callbackRows = [
-    { label: "WhatsApp webhook", value: oauthHints?.webhooks.whatsapp ?? waInbox?.webhookUrl },
-    { label: "Instagram webhook", value: oauthHints?.webhooks.instagram ?? igInbox?.webhookUrl },
-    { label: "Gmail push URL", value: oauthHints?.webhooks.emailPubSub ?? emailInbox?.webhookUrl },
-    { label: "Gmail OAuth redirect", value: oauthHints?.gmailRedirectUri },
-    { label: "Instagram OAuth redirect", value: oauthHints?.instagramRedirectUri },
-    { label: "Instagram deauthorize", value: oauthHints?.instagramDeauthorizeUri },
-    { label: "Instagram data deletion", value: oauthHints?.instagramDataDeletionUri },
-    { label: "Privacy policy", value: oauthHints?.privacyUrl },
+  const callbackChannels = [
+    {
+      name: "WhatsApp",
+      urls: [{ label: "Webhook", value: oauthHints?.webhooks.whatsapp ?? waInbox?.webhookUrl }],
+    },
+    {
+      name: "Instagram",
+      urls: [
+        { label: "Webhook", value: oauthHints?.webhooks.instagram ?? igInbox?.webhookUrl },
+        { label: "Login redirect", value: oauthHints?.instagramRedirectUri },
+      ],
+    },
+    {
+      name: "Gmail",
+      urls: [
+        { label: "Push URL", value: oauthHints?.webhooks.emailPubSub ?? emailInbox?.webhookUrl },
+        { label: "Login redirect", value: oauthHints?.gmailRedirectUri },
+      ],
+    },
   ];
 
   return (
@@ -736,23 +641,19 @@ export function SettingsPage() {
           </div>
         )}
 
-        <CallbackUrlsCard rows={callbackRows} />
+        <CallbackUrlsCard channels={callbackChannels} />
 
         <section className="space-y-3">
-          <div className="flex items-center justify-between gap-3">
-            <div className="min-w-0">
-              <h2 className="text-base font-semibold leading-none">Channels</h2>
-              <p className="mt-2 text-sm text-muted-foreground">
-                WhatsApp, Instagram, and Gmail.
-              </p>
-            </div>
-            <p className="shrink-0 text-sm text-muted-foreground">{connectedCount} connected</p>
+          <div>
+            <h2 className="text-base font-semibold leading-none">Channels</h2>
+            <p className="mt-2 text-sm text-muted-foreground">
+              WhatsApp, Instagram, and Gmail.
+            </p>
           </div>
 
           <div className="divide-y divide-border overflow-hidden rounded-xl border border-border bg-card shadow-sm">
             <ChannelRow
               name="WhatsApp"
-              status={waStatus}
               linked={isLinkedStatus(waStatus.tone)}
               busy={
                 (submitting && modal === "whatsapp") ||
@@ -763,7 +664,6 @@ export function SettingsPage() {
             />
             <ChannelRow
               name="Instagram"
-              status={igStatus}
               linked={isLinkedStatus(igStatus.tone)}
               busy={
                 connecting === "instagram" ||
@@ -775,7 +675,6 @@ export function SettingsPage() {
             />
             <ChannelRow
               name="Gmail"
-              status={emailStatus}
               linked={isLinkedStatus(emailStatus.tone)}
               busy={
                 connecting === "gmail" ||
@@ -784,50 +683,20 @@ export function SettingsPage() {
               }
               onConnect={() => setModal("email")}
               onDisconnect={() => setDisconnectTarget("email")}
-              secondary={
-                isLinkedStatus(emailStatus.tone) && (
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    className="h-9"
-                    disabled={!gmailCanWatch || watching || connecting === "gmail"}
-                    title={
-                      gmailCanWatch
-                        ? "Start Gmail push notifications"
-                        : "Connect Gmail first"
-                    }
-                    onClick={() => void handleStartWatch()}
-                  >
-                    {watching ? (
-                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    ) : (
-                      <Radio className="mr-2 h-4 w-4" />
-                    )}
-                    Start watch
-                  </Button>
-                )
-              }
             />
           </div>
         </section>
 
         <section className="space-y-3">
-          <div className="flex items-center justify-between gap-3">
-            <div className="min-w-0">
-              <h2 className="text-base font-semibold leading-none">Shopify</h2>
-              <p className="mt-2 text-sm text-muted-foreground">
-                Customer and order details in the inbox.
-              </p>
-            </div>
-            <p className="shrink-0 text-sm text-muted-foreground">
-              {shopifyConnected ? "1 connected" : "0 connected"}
+          <div>
+            <h2 className="text-base font-semibold leading-none">Shopify</h2>
+            <p className="mt-2 text-sm text-muted-foreground">
+              Customer and order details in the inbox.
             </p>
           </div>
           <div className="overflow-hidden rounded-xl border border-border bg-card shadow-sm">
             <ChannelRow
               name="Shopify"
-              status={shopifyStatus}
               linked={shopifyConnected}
               busy={
                 (submitting && modal === "shopify") ||

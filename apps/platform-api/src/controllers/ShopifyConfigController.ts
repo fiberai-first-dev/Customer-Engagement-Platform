@@ -9,13 +9,16 @@ function shape(row: {
   clientSecret: string;
   updatedAt: Date;
 }) {
+  const connected = Boolean(
+    row.shop?.trim() && row.clientId?.trim() && row.clientSecret?.trim(),
+  );
   return {
     id: row.id,
-    shop: row.shop,
-    clientId: row.clientId,
-    // Never return the real secret to the browser (XSS / screenshare).
-    clientSecret: row.clientSecret?.trim() ? SECRET_PLACEHOLDER : "",
-    hasClientSecret: Boolean(row.clientSecret?.trim()),
+    connected,
+    shop: "",
+    clientId: "",
+    clientSecret: connected ? SECRET_PLACEHOLDER : "",
+    hasClientSecret: connected,
     updatedAt: row.updatedAt,
   };
 }

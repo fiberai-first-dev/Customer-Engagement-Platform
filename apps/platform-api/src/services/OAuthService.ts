@@ -1,8 +1,10 @@
+import { randomUUID } from "node:crypto";
 import jwt from "jsonwebtoken";
 import { google } from "googleapis";
 import { env } from "../config/env.js";
 import { prisma } from "../config/db.js";
 import { mergeChannelConfig } from "./MessagingService.js";
+import { setupEmailWatch } from "./EmailService.js";
 import type { Prisma } from "../generated/client/index.js";
 
 const GMAIL_SCOPES = [
@@ -22,13 +24,46 @@ type OAuthState = {
   purpose: "oauth";
   provider: OAuthProvider;
   inboxId: string;
+  nonce: string;
 };
 
-function asConfig(value: unknown): Record<string, unknown> {
-  if (value && typeof value === "object" && !Array.isArray(value)) {
-    return { ...(value as Record<string, unknown>) };
-  }
-  return {};
+type PendingGmail = {
+  provider: "gmail";
+  inboxId: string;
+  clientId: string;
+  clientSecret: string;
+  pubsubTopic: string;
+  expiresAt: number;
+};
+
+type PendingInstagram = {
+  provider: "instagram";
+  inboxId: string;
+  instagramAppId: string;
+  instagramAppSecret: string;
+  verifyToken: string;
+  expiresAt: number;
+};
+
+const PENDING_TTL_MS = 20 * 60 * 1000;
+const pendingOAuth = new Map<string, PendingGmail | PendingInstagram>();
+
+function putPending(entry: Omit<PendingGmail, "expiresAt"> | Omit<PendingInstagram, "expiresAt">): string {
+  const nonce = randomUUID();
+  pendingOAuth.set(nonce, { ...entry, expiresAt: Date.now() + PENDING_TTL_MS });
+  return nonce;
+}
+
+function takePending(
+  nonce: string,
+  provider: OAuthProvider,
+  inboxId: string,
+): PendingGmail | PendingInstagram | null {
+  const entry = pendingOAuth.get(nonce);
+  pendingOAuth.delete(nonce);
+  if (!entry || entry.provider !== provider || entry.inboxId !== inboxId) return null;
+  if (Date.now() > entry.expiresAt) return null;
+  return entry;
 }
 
 function nonEmpty(value: unknown): string | null {
@@ -61,7 +96,12 @@ function signState(payload: OAuthState): string {
 
 function verifyState(token: string, provider: OAuthProvider): OAuthState {
   const decoded = jwt.verify(token, env.jwtSecret) as OAuthState;
-  if (decoded.purpose !== "oauth" || decoded.provider !== provider || !decoded.inboxId) {
+  if (
+    decoded.purpose !== "oauth" ||
+    decoded.provider !== provider ||
+    !decoded.inboxId ||
+    !decoded.nonce
+  ) {
     throw new Error("invalid oauth state");
   }
   return decoded;
@@ -107,21 +147,28 @@ export function oauthRedirectHints() {
   };
 }
 
-/** Build Google consent URL using inbox (or env) OAuth client credentials. */
-export async function startGmailOAuth(inboxId: string): Promise<{ url: string; redirectUri: string }> {
-  const inbox = await loadInbox(inboxId, "email");
-  const cfg = asConfig(inbox.channelConfig);
-  const clientId = nonEmpty(cfg.clientId);
-  const clientSecret = nonEmpty(cfg.clientSecret);
-  if (!clientId || !clientSecret) {
-    throw new Error(
-      "Save Gmail Client ID and Client Secret in Settings first, then click Connect Gmail.",
-    );
+export async function startGmailOAuth(
+  inboxId: string,
+  creds: { clientId?: string; clientSecret?: string; pubsubTopic?: string },
+): Promise<{ url: string; redirectUri: string }> {
+  await loadInbox(inboxId, "email");
+  const clientId = nonEmpty(creds.clientId);
+  const clientSecret = nonEmpty(creds.clientSecret);
+  const pubsubTopic = nonEmpty(creds.pubsubTopic);
+  if (!clientId || !clientSecret || !pubsubTopic) {
+    throw new Error("Enter Client ID, Client Secret, and Pub/Sub Topic, then click Connect.");
   }
 
+  const nonce = putPending({
+    provider: "gmail",
+    inboxId,
+    clientId,
+    clientSecret,
+    pubsubTopic,
+  });
   const redirectUri = gmailRedirectUri();
   const oauth2 = new google.auth.OAuth2(clientId, clientSecret, redirectUri);
-  const state = signState({ purpose: "oauth", provider: "gmail", inboxId });
+  const state = signState({ purpose: "oauth", provider: "gmail", inboxId, nonce });
   const url = oauth2.generateAuthUrl({
     access_type: "offline",
     prompt: "consent",
@@ -135,14 +182,14 @@ export async function completeGmailOAuth(input: {
   code: string;
   state: string;
 }): Promise<{ returnUrl: string; email?: string }> {
-  const { inboxId } = verifyState(input.state, "gmail");
-  const inbox = await loadInbox(inboxId, "email");
-  const cfg = asConfig(inbox.channelConfig);
-  const clientId = nonEmpty(cfg.clientId);
-  const clientSecret = nonEmpty(cfg.clientSecret);
-  if (!clientId || !clientSecret) {
-    throw new Error("Gmail Client ID / Secret missing on channel config");
+  const { inboxId, nonce } = verifyState(input.state, "gmail");
+  const pending = takePending(nonce, "gmail", inboxId);
+  if (!pending || pending.provider !== "gmail") {
+    throw new Error("Connection expired. Click Connect again.");
   }
+  const inbox = await loadInbox(inboxId, "email");
+  const clientId = pending.clientId;
+  const clientSecret = pending.clientSecret;
 
   const redirectUri = gmailRedirectUri();
   const oauth2 = new google.auth.OAuth2(clientId, clientSecret, redirectUri);
@@ -166,10 +213,20 @@ export async function completeGmailOAuth(input: {
   await patchInboxConfig(inbox.id, inbox.channelConfig, {
     clientId,
     clientSecret,
+    pubsubTopic: pending.pubsubTopic,
     refreshToken: tokens.refresh_token,
     accessToken: tokens.access_token ?? "",
     ...(mailbox ? { email: mailbox } : {}),
   });
+
+  try {
+    await setupEmailWatch(inbox.id);
+  } catch (err) {
+    console.warn(
+      "[gmail] auto watch after Connect:",
+      err instanceof Error ? err.message : err,
+    );
+  }
 
   return {
     email: mailbox,
@@ -183,15 +240,14 @@ export async function completeGmailOAuth(input: {
 
 export async function startInstagramOAuth(
   inboxId: string,
+  creds: { instagramAppId?: string; instagramAppSecret?: string; verifyToken?: string },
 ): Promise<{ url: string; redirectUri: string }> {
-  const inbox = await loadInbox(inboxId, "instagram");
-  const cfg = asConfig(inbox.channelConfig);
-  const appId = nonEmpty(cfg.instagramAppId);
-  const appSecret = nonEmpty(cfg.instagramAppSecret) ?? nonEmpty(cfg.appSecret);
-  if (!appId || !appSecret) {
-    throw new Error(
-      "Save Instagram App ID and Instagram App Secret in Settings first, then click Connect Instagram.",
-    );
+  await loadInbox(inboxId, "instagram");
+  const appId = nonEmpty(creds.instagramAppId);
+  const appSecret = nonEmpty(creds.instagramAppSecret);
+  const verifyToken = nonEmpty(creds.verifyToken);
+  if (!appId || !appSecret || !verifyToken) {
+    throw new Error("Enter Instagram App ID, App Secret, and Verify Token, then click Connect.");
   }
 
   const redirectUri = instagramRedirectUri();
@@ -199,7 +255,14 @@ export async function startInstagramOAuth(
     throw new Error(`Instagram redirect must be HTTPS: ${redirectUri}`);
   }
 
-  const state = signState({ purpose: "oauth", provider: "instagram", inboxId });
+  const nonce = putPending({
+    provider: "instagram",
+    inboxId,
+    instagramAppId: appId,
+    instagramAppSecret: appSecret,
+    verifyToken,
+  });
+  const state = signState({ purpose: "oauth", provider: "instagram", inboxId, nonce });
   const authUrl = new URL("https://www.instagram.com/oauth/authorize");
   authUrl.searchParams.set("client_id", appId);
   authUrl.searchParams.set("redirect_uri", redirectUri);
@@ -257,25 +320,18 @@ export async function completeInstagramOAuth(input: {
   code: string;
   state?: string;
 }): Promise<{ returnUrl: string; username?: string; accessToken: string }> {
-  let inboxId: string | undefined;
-  if (input.state) {
-    inboxId = verifyState(input.state, "instagram").inboxId;
+  if (!input.state) {
+    throw new Error("Connection expired. Click Connect again.");
+  }
+  const { inboxId, nonce } = verifyState(input.state, "instagram");
+  const pending = takePending(nonce, "instagram", inboxId);
+  if (!pending || pending.provider !== "instagram") {
+    throw new Error("Connection expired. Click Connect again.");
   }
 
-  const inbox = inboxId
-    ? await loadInbox(inboxId, "instagram")
-    : await prisma.channelConfig.findFirst({
-        where: { channelType: "instagram" },
-        orderBy: { createdAt: "asc" },
-      });
-  if (!inbox) throw new Error("No Instagram inbox found to save token");
-
-  const cfg = asConfig(inbox.channelConfig);
-  const appId = nonEmpty(cfg.instagramAppId);
-  const appSecret = nonEmpty(cfg.instagramAppSecret) ?? nonEmpty(cfg.appSecret);
-  if (!appId || !appSecret) {
-    throw new Error("Instagram App ID / Instagram App Secret missing on channel config");
-  }
+  const inbox = await loadInbox(inboxId, "instagram");
+  const appId = pending.instagramAppId;
+  const appSecret = pending.instagramAppSecret;
 
   const redirectUri = instagramRedirectUri();
   const code = input.code.replace(/#_$/, "");
@@ -334,8 +390,8 @@ export async function completeInstagramOAuth(input: {
     accessToken: longJson.access_token,
     instagramAppId: appId,
     instagramAppSecret: appSecret,
+    verifyToken: pending.verifyToken,
     ...(username ? { instagramUsername: username } : {}),
-    // Drop legacy / unused keys
     appSecret: null,
     pageId: null,
   });

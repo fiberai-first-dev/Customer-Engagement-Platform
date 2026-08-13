@@ -13,12 +13,21 @@ export async function oauthConnectRoutes(app: FastifyInstance) {
   app.get("/hints", async () => oauthRedirectHints());
 
   app.post<{
-    Body: { inboxId?: string };
+    Body: {
+      inboxId?: string;
+      clientId?: string;
+      clientSecret?: string;
+      pubsubTopic?: string;
+    };
   }>("/gmail/start", async (request, reply) => {
     const inboxId = request.body?.inboxId;
     if (!inboxId) return reply.code(400).send({ error: "inboxId required" });
     try {
-      const result = await startGmailOAuth(inboxId);
+      const result = await startGmailOAuth(inboxId, {
+        clientId: request.body?.clientId,
+        clientSecret: request.body?.clientSecret,
+        pubsubTopic: request.body?.pubsubTopic,
+      });
       return reply.send(result);
     } catch (err: any) {
       return reply.code(400).send({ error: err?.message ?? "failed to start Gmail OAuth" });
@@ -26,12 +35,21 @@ export async function oauthConnectRoutes(app: FastifyInstance) {
   });
 
   app.post<{
-    Body: { inboxId?: string };
+    Body: {
+      inboxId?: string;
+      instagramAppId?: string;
+      instagramAppSecret?: string;
+      verifyToken?: string;
+    };
   }>("/instagram/start", async (request, reply) => {
     const inboxId = request.body?.inboxId;
     if (!inboxId) return reply.code(400).send({ error: "inboxId required" });
     try {
-      const result = await startInstagramOAuth(inboxId);
+      const result = await startInstagramOAuth(inboxId, {
+        instagramAppId: request.body?.instagramAppId,
+        instagramAppSecret: request.body?.instagramAppSecret,
+        verifyToken: request.body?.verifyToken,
+      });
       return reply.send(result);
     } catch (err: any) {
       return reply.code(400).send({ error: err?.message ?? "failed to start Instagram OAuth" });

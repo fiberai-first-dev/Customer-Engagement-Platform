@@ -123,7 +123,7 @@ Developers historically ran local OAuth CLIs. **Vendors only have the hosted UI*
 Settings → Channels: Connect WhatsApp | Instagram | Gmail (modal; required fields only)
         → Instagram: save App ID/Secret/Verify → OAuth → CEP auto-stores Access Token + Username
         → Gmail: save Client ID/Secret/Topic → OAuth → CEP auto-stores Refresh + Access Token
-        → (Gmail) Start watch once tokens exist
+        → (Gmail) watch starts after Connect and is renewed while the API is up
         → POST /api/v1/oauth/{gmail|instagram}/start   (JWT)
         → Redirect to Google / Meta consent
         → GET /oauth/{gmail|instagram}/callback          (public)

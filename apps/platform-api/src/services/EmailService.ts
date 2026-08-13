@@ -353,6 +353,28 @@ export async function setupEmailWatch(inboxId?: string) {
   };
 }
 
+/** Google caps a watch at ~7 days. Renew on a timer so mail keeps arriving. */
+const WATCH_RENEW_MS = 12 * 60 * 60 * 1000;
+
+export function startGmailWatchScheduler(): void {
+  const tick = () => {
+    void renewEmailWatch()
+      .then((results) => {
+        for (const r of results) {
+          if (r.ok) {
+            console.log(`[email] watch renewed inbox=${r.inboxId} expires=${r.expiresAt ?? "?"}`);
+          } else {
+            console.warn(`[email] watch renew failed inbox=${r.inboxId}: ${r.error}`);
+          }
+        }
+      })
+      .catch((err) => {
+        console.warn("[email] watch scheduler:", err instanceof Error ? err.message : err);
+      });
+  };
+  setInterval(tick, WATCH_RENEW_MS);
+}
+
 /** @deprecated use setupEmailWatch */
 export const setupGmailWatch = setupEmailWatch;
 

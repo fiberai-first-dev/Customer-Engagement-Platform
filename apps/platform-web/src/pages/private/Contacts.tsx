@@ -241,11 +241,10 @@ export function ContactsPage() {
         </div>
       </div>
 
-      <div className="flex-1 overflow-y-auto bg-muted/20 px-6 py-6 sm:px-8">
-        <Card className="overflow-hidden shadow-sm">
-          <CardContent className="p-0">
-            <div className="overflow-x-auto">
-              <table className="w-full min-w-[640px] text-left text-sm">
+      <div className="flex-1 overflow-y-auto scrollbar-hide bg-muted/20 px-6 py-6 sm:px-8">
+        <Card className="shadow-sm">
+          <CardContent className="overflow-visible p-0">
+              <table className="w-full table-fixed text-left text-sm">
                 <thead className="bg-muted/50 text-muted-foreground">
                   <tr>
                     <th className="border-b border-border px-5 py-3 font-medium">Name</th>
@@ -365,7 +364,6 @@ export function ContactsPage() {
                     ))}
                 </tbody>
               </table>
-            </div>
           </CardContent>
         </Card>
       </div>
