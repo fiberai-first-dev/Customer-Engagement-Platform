@@ -1,3 +1,5 @@
+name: cep-demo
+
 services:
   cep-postgres:
     image: postgres:16
@@ -47,3 +49,4 @@ services:
 
 volumes:
   cep_pg_data:
+    name: cep-demo-pg-data
