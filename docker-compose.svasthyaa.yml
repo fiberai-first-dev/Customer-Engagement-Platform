@@ -24,6 +24,8 @@ services:
     environment:
       PLATFORM_API_BASE_URL: https://api.cep-svasthyaa.fybud.com
       PLATFORM_WEB_BASE_URL: https://cep-svasthyaa.fybud.com
+      PLATFORM_DATABASE_URL: postgresql://cep:cep@cep-postgres:5432/cep_platform
+      PLATFORM_MIGRATE_DATABASE_URL: postgresql://cep:cep@cep-postgres:5432/cep_platform
     ports:
       - "4100:4100"
     depends_on:

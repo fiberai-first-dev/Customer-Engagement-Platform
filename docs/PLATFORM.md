@@ -39,7 +39,7 @@ Public URLs are set in the **compose file for that site**, not in `.env`:
 | `docker-compose.demo.yml` | `https://api.cep-demo.fybud.com` | `https://cep-demo.fybud.com` |
 | `docker-compose.svasthyaa.yml` | `https://api.cep-svasthyaa.fybud.com` | `https://cep-svasthyaa.fybud.com` |
 
-`environment` in compose overrides `apps/platform-api/.env`. Web `VITE_API_BASE_URL` is a build arg in the same file. `.env` stays for DB / JWT only.
+`environment` in compose sets public URLs **and** `PLATFORM_DATABASE_URL` (`cep-postgres:5432` on the compose network). `.env` is only for secrets (`JWT_SECRET`). Local `npm run` falls back to localhost if those vars are unset.
 
 - `PLATFORM_API_BASE_URL` — API origin (webhooks, OAuth callbacks)
 - `PLATFORM_WEB_BASE_URL` — agent UI origin (OAuth Connect returns here → `/settings`)
@@ -206,7 +206,7 @@ API client: `apps/platform-web/src/api/index.ts` (React Query + Zustand auth tok
 | Schema | `apps/platform-api/prisma/schema.prisma` |
 | Migrations | Run automatically on API boot (`server.ts` → `migrate.ts`). Optional CLI: `npm run db:deploy` |
 | Workspace | Boot `ensureWorkspace()` creates account + 3 inboxes and merges non-empty `.env` channel creds into `channelConfig` |
-| Docker | `docker-compose.demo.yml` / `docker-compose.svasthyaa.yml` — URLs baked in; `.env` is DB/JWT only |
+| Docker | `docker-compose.demo.yml` / `docker-compose.svasthyaa.yml` — URLs + DB baked in; `.env` is `JWT_SECRET` only |
 
 Secrets:
 
