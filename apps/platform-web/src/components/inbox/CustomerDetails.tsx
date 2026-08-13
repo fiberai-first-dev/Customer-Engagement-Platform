@@ -127,7 +127,7 @@ export function CustomerDetails({ contact, onClose }: Props) {
 
   if (!contact) {
     return (
-      <aside className="flex w-[400px] shrink-0 flex-col border-l border-border bg-card">
+      <aside className="flex w-[360px] shrink-0 flex-col border-l border-border bg-card">
         <Header onClose={onClose} />
         <div className="flex flex-1 items-center justify-center p-8 text-center">
           <div>
@@ -145,7 +145,7 @@ export function CustomerDetails({ contact, onClose }: Props) {
   // does not flash local contact UI with a spinner underneath.
   if (canLookup && isLoading) {
     return (
-      <aside className="flex w-[400px] shrink-0 flex-col border-l border-border bg-card">
+      <aside className="flex w-[360px] shrink-0 flex-col border-l border-border bg-card">
         <Header onClose={onClose} />
         <div className="flex flex-1 flex-col items-center justify-center gap-3 p-8 text-center">
           <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
@@ -161,7 +161,7 @@ export function CustomerDetails({ contact, onClose }: Props) {
   const shopifyCustomerId = commerce.customer?.id ?? null;
 
   return (
-    <aside className="flex w-[400px] shrink-0 flex-col border-l border-border bg-card">
+    <aside className="flex w-[360px] shrink-0 flex-col border-l border-border bg-card">
       <Header onClose={onClose} />
 
       <div className="border-b border-border px-4 pb-4 pt-3">
@@ -254,17 +254,17 @@ export function CustomerDetails({ contact, onClose }: Props) {
 
 function Header({ onClose }: { onClose: () => void }) {
   return (
-    <div className="flex items-center justify-between border-b border-border bg-card px-4 py-3.5">
-      <div>
-        <h3 className="text-sm font-semibold tracking-tight text-foreground">Customer context</h3>
+    <div className="flex h-14 shrink-0 items-center justify-between gap-3 border-b border-border bg-card px-4">
+      <div className="min-w-0">
+        <h3 className="text-sm font-semibold tracking-tight text-foreground">Customer</h3>
         <p className="text-[11px] text-muted-foreground">Profile and orders</p>
       </div>
       <Button
         variant="ghost"
         size="icon"
-        className="h-8 w-8"
+        className="h-9 w-9 shrink-0"
         onClick={onClose}
-        aria-label="Close customer context"
+        aria-label="Close customer panel"
       >
         <X className="h-4 w-4" />
       </Button>
@@ -288,7 +288,7 @@ function ProfileTab({
   const rows = [
     {
       label: "Shopify customer ID",
-      value: shopify?.id || (provider === "shopify" ? "Not found in Shopify" : "n/a"),
+      value: shopify?.id || (provider === "shopify" ? "Not found in Shopify" : "—"),
     },
     { label: "Name", value: shopify?.name || contact.name || "—" },
     {

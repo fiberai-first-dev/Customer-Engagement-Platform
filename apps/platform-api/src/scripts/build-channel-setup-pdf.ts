@@ -114,24 +114,22 @@ function drawCover(doc: PDFKit.PDFDocument) {
     const cardX = PAGE.margin;
     const cardY = 190;
     const cardW = width - PAGE.margin * 2;
-    const cardH = 72;
+    const cardH = 88;
     doc.save();
     doc.roundedRect(cardX, cardY, cardW, cardH, 8).fill(C.white);
     doc.restore();
-    doc.fillColor(C.muted).font("Helvetica").fontSize(9).text("Hosted platform", cardX + 16, cardY + 14, { lineBreak: false });
-    doc.fillColor(C.navy).font("Helvetica-Bold").fontSize(12)
-      .text("https://cep-svasthyaa.fybud.com", cardX + 16, cardY + 32, {
+    doc.fillColor(C.muted).font("Helvetica").fontSize(9).text("Need a URL?", cardX + 16, cardY + 16, { lineBreak: false });
+    doc.fillColor(C.navy).font("Helvetica-Bold").fontSize(13)
+      .text("Settings  >  Callback URLs", cardX + 16, cardY + 34, {
         width: cardW - 32,
         lineBreak: false,
       });
+    doc.fillColor(C.muted).font("Helvetica").fontSize(9)
+      .text("Copy the one you need and paste it into Meta or Google.", cardX + 16, cardY + 56, {
+        width: cardW - 32,
+      });
 
     doc.fillColor(C.tealSoft).font("Helvetica").fontSize(9);
-    doc.text(
-      "Credentials are created in Meta, Google Cloud, or Shopify, then entered under Settings.",
-      PAGE.margin,
-      height - 90,
-      { width: width - PAGE.margin * 2 },
-    );
     doc.text("Confidential · for brand operators", PAGE.margin, height - 36, {
       width: width - PAGE.margin * 2,
       lineBreak: false,

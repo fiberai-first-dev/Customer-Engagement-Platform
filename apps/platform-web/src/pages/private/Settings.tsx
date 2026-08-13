@@ -125,11 +125,13 @@ function isLinkedStatus(tone: "ok" | "warn" | "error" | "idle") {
 function StatusBadge({
   label,
   tone,
+  className,
 }: {
   label: string;
   tone: "ok" | "warn" | "error" | "idle";
+  className?: string;
 }) {
-  const className =
+  const toneClass =
     tone === "ok"
       ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-800"
       : tone === "warn"
@@ -138,7 +140,7 @@ function StatusBadge({
           ? "border-destructive/30 bg-destructive/10 text-destructive"
           : "border-border bg-muted text-muted-foreground";
   return (
-    <Badge variant="outline" className={`font-medium ${className}`}>
+    <Badge variant="outline" className={`font-medium ${toneClass} ${className ?? ""}`}>
       {label}
     </Badge>
   );
@@ -164,16 +166,17 @@ function CallbackUrlsCard({
 
   return (
     <div className="rounded-xl border border-border bg-card p-5 shadow-sm">
-      <div className="mb-3">
-        <h2 className="text-base font-semibold">Callback URLs</h2>
-        <p className="mt-1 text-sm text-muted-foreground">
-          Copy these into Meta or Google when you set up WhatsApp, Instagram, or Gmail.
+      <div className="mb-4">
+        <h2 className="text-base font-semibold leading-none">Callback URLs</h2>
+        <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
+          Copy these into Meta or Google. They already match this site — the setup guide has no
+          URLs of its own.
         </p>
       </div>
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
-        <div className="min-w-0 flex-1 space-y-1.5">
+      <div className="space-y-3">
+        <div className="space-y-1.5">
           <label className="text-sm font-medium" htmlFor="callback-url-select">
-            URL
+            Which URL
           </label>
           <select
             id="callback-url-select"
@@ -188,31 +191,31 @@ function CallbackUrlsCard({
             ))}
           </select>
         </div>
-        <Button
-          type="button"
-          variant="outline"
-          className="shrink-0 gap-2"
-          disabled={!current?.value}
-          onClick={async () => {
-            if (!current?.value) return;
-            await navigator.clipboard.writeText(current.value);
-            setCopied(true);
-            window.setTimeout(() => setCopied(false), 1500);
-          }}
-        >
-          {copied ? (
-            <CheckCircle2 className="h-4 w-4 text-emerald-600" />
-          ) : (
-            <Copy className="h-4 w-4" />
-          )}
-          {copied ? "Copied" : "Copy"}
-        </Button>
+        {current?.value && (
+          <div className="flex items-center gap-2">
+            <p className="flex h-10 min-w-0 flex-1 items-center overflow-x-auto whitespace-nowrap rounded-md border border-border bg-muted/40 px-3 font-mono text-xs text-foreground">
+              {current.value}
+            </p>
+            <Button
+              type="button"
+              variant="outline"
+              className="h-10 shrink-0 gap-2 px-3"
+              onClick={async () => {
+                await navigator.clipboard.writeText(current.value!);
+                setCopied(true);
+                window.setTimeout(() => setCopied(false), 1500);
+              }}
+            >
+              {copied ? (
+                <CheckCircle2 className="h-4 w-4 text-emerald-600" />
+              ) : (
+                <Copy className="h-4 w-4" />
+              )}
+              {copied ? "Copied" : "Copy"}
+            </Button>
+          </div>
+        )}
       </div>
-      {current?.value && (
-        <p className="mt-3 break-all rounded-lg border border-border bg-muted/40 px-3 py-2 font-mono text-xs text-foreground">
-          {current.value}
-        </p>
-      )}
     </div>
   );
 }
@@ -252,12 +255,12 @@ function ConnectModal({
         aria-modal="true"
         aria-labelledby="connect-modal-title"
       >
-        <div className="flex items-center justify-between border-b border-border px-6 py-4">
-          <div>
+        <div className="flex items-start justify-between gap-4 border-b border-border px-6 py-4">
+          <div className="min-w-0">
             <h2 id="connect-modal-title" className="text-lg font-semibold tracking-tight">
               {title}
             </h2>
-            <p className="mt-1 text-sm text-muted-foreground">{description}</p>
+            <p className="mt-1 text-sm leading-relaxed text-muted-foreground">{description}</p>
           </div>
           <Button
             type="button"
@@ -265,7 +268,7 @@ function ConnectModal({
             size="icon"
             onClick={onClose}
             disabled={submitting}
-            className="h-8 w-8 rounded-full"
+            className="h-9 w-9 shrink-0 rounded-full"
           >
             <X className="h-4 w-4" />
           </Button>
@@ -332,9 +335,7 @@ function ConnectModal({
                 </div>
               );
             })}
-            <p className="text-xs text-muted-foreground">
-              Details are stored securely after you connect.
-            </p>
+            <p className="text-xs text-muted-foreground">We’ll save these when you connect.</p>
           </div>
           <div className="flex items-center justify-end gap-3 border-t border-border bg-muted/40 px-6 py-4">
             <Button type="button" variant="ghost" onClick={onClose} disabled={submitting}>
@@ -369,26 +370,27 @@ function ChannelRow({
   secondary?: ReactNode;
 }) {
   return (
-    <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-border bg-card px-4 py-3.5 shadow-sm">
-      <div className="flex min-w-0 flex-col gap-1.5 sm:flex-row sm:items-center sm:gap-3">
-        <span className="text-sm font-semibold text-foreground">{name}</span>
-        <StatusBadge label={status.label} tone={status.tone} />
+    <div className="flex min-h-14 items-center justify-between gap-3 px-4 py-2.5">
+      <div className="flex min-w-0 items-center gap-3">
+        <span className="w-[7.5rem] shrink-0 text-sm font-semibold text-foreground">{name}</span>
+        <StatusBadge label={status.label} tone={status.tone} className="shrink-0" />
       </div>
-      <div className="flex flex-wrap items-center gap-2">
+      <div className="flex shrink-0 items-center gap-2">
         {secondary}
         {linked ? (
           <Button
             type="button"
             variant="outline"
+            size="sm"
             disabled={busy}
             onClick={onDisconnect}
-            className="min-w-[7.5rem] border-destructive/40 text-destructive hover:bg-destructive/10 hover:text-destructive"
+            className="h-9 min-w-[6.75rem] border-destructive/40 text-destructive hover:bg-destructive/10 hover:text-destructive"
           >
             {busy ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
             Disconnect
           </Button>
         ) : (
-          <Button type="button" onClick={onConnect} disabled={busy} className="min-w-[7.5rem]">
+          <Button type="button" size="sm" onClick={onConnect} disabled={busy} className="h-9 min-w-[6.75rem]">
             {busy ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
             Connect
           </Button>
@@ -699,19 +701,22 @@ export function SettingsPage() {
     { label: "Gmail push URL", value: oauthHints?.webhooks.emailPubSub ?? emailInbox?.webhookUrl },
     { label: "Gmail OAuth redirect", value: oauthHints?.gmailRedirectUri },
     { label: "Instagram OAuth redirect", value: oauthHints?.instagramRedirectUri },
+    { label: "Instagram deauthorize", value: oauthHints?.instagramDeauthorizeUri },
+    { label: "Instagram data deletion", value: oauthHints?.instagramDataDeletionUri },
+    { label: "Privacy policy", value: oauthHints?.privacyUrl },
   ];
 
   return (
-    <div className="flex h-full flex-1 flex-col overflow-y-auto bg-background p-8">
-      <div className="mx-auto w-full max-w-3xl space-y-8 pb-12">
-        <div className="flex flex-wrap items-start justify-between gap-4">
-          <div>
-            <h1 className="mb-1 text-3xl font-bold">Settings</h1>
-            <p className="text-muted-foreground">
+    <div className="flex h-full flex-1 flex-col overflow-y-auto bg-background">
+      <div className="mx-auto w-full max-w-3xl space-y-8 px-6 py-8 pb-16 sm:px-8">
+        <div className="flex flex-wrap items-center justify-between gap-4">
+          <div className="min-w-0">
+            <h1 className="text-3xl font-bold tracking-tight">Settings</h1>
+            <p className="mt-1 text-sm text-muted-foreground">
               Connect WhatsApp, Instagram, Gmail, and Shopify.
             </p>
           </div>
-          <Button variant="outline" className="gap-2" asChild>
+          <Button variant="outline" className="h-10 shrink-0 gap-2" asChild>
             <a href={setupGuidePdfUrl()} download="CEP-Channel-Setup-Guide.pdf">
               <Download className="h-4 w-4" />
               Download setup guide
@@ -734,17 +739,17 @@ export function SettingsPage() {
         <CallbackUrlsCard rows={callbackRows} />
 
         <section className="space-y-3">
-          <div className="flex items-end justify-between gap-3">
-            <div>
-              <h2 className="text-base font-semibold">Channels</h2>
-              <p className="mt-1 text-sm text-muted-foreground">
+          <div className="flex items-center justify-between gap-3">
+            <div className="min-w-0">
+              <h2 className="text-base font-semibold leading-none">Channels</h2>
+              <p className="mt-2 text-sm text-muted-foreground">
                 WhatsApp, Instagram, and Gmail.
               </p>
             </div>
-            <p className="text-sm text-muted-foreground">{connectedCount} connected</p>
+            <p className="shrink-0 text-sm text-muted-foreground">{connectedCount} connected</p>
           </div>
 
-          <div className="space-y-2">
+          <div className="divide-y divide-border overflow-hidden rounded-xl border border-border bg-card shadow-sm">
             <ChannelRow
               name="WhatsApp"
               status={waStatus}
@@ -784,6 +789,8 @@ export function SettingsPage() {
                   <Button
                     type="button"
                     variant="outline"
+                    size="sm"
+                    className="h-9"
                     disabled={!gmailCanWatch || watching || connecting === "gmail"}
                     title={
                       gmailCanWatch
@@ -806,28 +813,30 @@ export function SettingsPage() {
         </section>
 
         <section className="space-y-3">
-          <div className="flex items-end justify-between gap-3">
-            <div>
-              <h2 className="text-base font-semibold">Shopify</h2>
-              <p className="mt-1 text-sm text-muted-foreground">
+          <div className="flex items-center justify-between gap-3">
+            <div className="min-w-0">
+              <h2 className="text-base font-semibold leading-none">Shopify</h2>
+              <p className="mt-2 text-sm text-muted-foreground">
                 Customer and order details in the inbox.
               </p>
             </div>
-            <p className="text-sm text-muted-foreground">
+            <p className="shrink-0 text-sm text-muted-foreground">
               {shopifyConnected ? "1 connected" : "0 connected"}
             </p>
           </div>
-          <ChannelRow
-            name="Shopify"
-            status={shopifyStatus}
-            linked={shopifyConnected}
-            busy={
-              (submitting && modal === "shopify") ||
-              (shopifyBusy && disconnectTarget === "shopify")
-            }
-            onConnect={() => setModal("shopify")}
-            onDisconnect={() => setDisconnectTarget("shopify")}
-          />
+          <div className="overflow-hidden rounded-xl border border-border bg-card shadow-sm">
+            <ChannelRow
+              name="Shopify"
+              status={shopifyStatus}
+              linked={shopifyConnected}
+              busy={
+                (submitting && modal === "shopify") ||
+                (shopifyBusy && disconnectTarget === "shopify")
+              }
+              onConnect={() => setModal("shopify")}
+              onDisconnect={() => setDisconnectTarget("shopify")}
+            />
+          </div>
         </section>
       </div>
 

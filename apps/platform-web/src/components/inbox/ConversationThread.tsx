@@ -205,7 +205,7 @@ export function ConversationThread({
 
   return (
     <div className="flex h-full min-w-0 flex-1 flex-col bg-background">
-      <div className="flex h-14 shrink-0 items-center justify-between gap-3 border-b border-border bg-card px-4 sm:px-5">
+      <div className="flex h-14 shrink-0 items-center justify-between gap-3 border-b border-border bg-card px-4">
         <div className="flex min-w-0 items-center gap-3">
           <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-primary/10 text-sm font-semibold text-primary">
             {initials(contactName)}
@@ -351,7 +351,7 @@ export function ConversationThread({
         </div>
       )}
 
-      <div className="flex shrink-0 gap-1 border-b border-border bg-card px-2">
+      <div className="flex h-11 shrink-0 items-stretch gap-0 border-b border-border bg-card px-2">
         {(enabledChannels?.length
           ? CHANNELS.filter((c) => enabledChannels.includes(c.id))
           : CHANNELS
@@ -375,7 +375,7 @@ export function ConversationThread({
               type="button"
               onClick={() => onTabChange(channel.id)}
               className={cn(
-                "relative inline-flex items-center gap-2 rounded-t-md px-4 py-2.5 text-sm font-medium transition-colors",
+                "relative inline-flex items-center gap-2 px-3.5 text-sm font-medium transition-colors",
                 selected
                   ? "bg-muted/70 text-foreground"
                   : "text-muted-foreground hover:bg-muted/40 hover:text-foreground",
@@ -427,6 +427,7 @@ export function ConversationThread({
                     ? "You can send the first message from here."
                     : "Switch tabs to open another conversation."
                   : "Add this on the contact, then you can message from here."}
+            </p>
           </div>
         </div>
       ) : (
@@ -450,6 +451,7 @@ export function ConversationThread({
                   {canInitiateChannel
                     ? "Write a message below to get started."
                     : "Waiting for the customer to message first."}
+                </p>
               </div>
             )}
             {!loadingMessages && !isLinkedAwaitingFirst && (!messages || messages.length === 0) && (

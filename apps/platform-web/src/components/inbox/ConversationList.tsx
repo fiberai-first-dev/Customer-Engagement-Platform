@@ -72,7 +72,7 @@ export function ConversationList({
               type="button"
               onClick={() => onSelect(conversation)}
               className={cn(
-                "flex w-full gap-3 border-b border-border px-4 py-3 text-left transition-colors overflow-hidden",
+                "flex w-full items-center gap-3 overflow-hidden border-b border-border px-4 py-3 text-left transition-colors",
                 selected ? "bg-muted" : "bg-card hover:bg-muted/60",
               )}
             >

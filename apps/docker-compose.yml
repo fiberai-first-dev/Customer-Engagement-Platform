@@ -21,6 +21,9 @@ services:
       dockerfile: Dockerfile
     env_file:
       - ./platform-api/.env
+    environment:
+      PLATFORM_API_BASE_URL: https://api.cep-demo.fybud.com
+      PLATFORM_WEB_BASE_URL: https://cep-demo.fybud.com
     ports:
       - "4100:4100"
     depends_on:
@@ -32,7 +35,7 @@ services:
       context: ./platform-web
       dockerfile: Dockerfile
       args:
-        VITE_API_BASE_URL: ${VITE_API_BASE_URL:-https://api.cep-svasthyaa.fybud.com}
+        VITE_API_BASE_URL: https://api.cep-demo.fybud.com
     env_file:
       - ./platform-web/.env
     ports:

@@ -344,6 +344,9 @@ export const useDisconnectInbox = () => {
 export interface OAuthHints {
   gmailRedirectUri: string;
   instagramRedirectUri: string;
+  instagramDeauthorizeUri?: string;
+  instagramDataDeletionUri?: string;
+  privacyUrl?: string;
   webBaseUrl: string;
   apiBaseUrl: string;
   webhooks: {

@@ -90,15 +90,19 @@ async function patchInboxConfig(
 }
 
 export function oauthRedirectHints() {
+  const api = env.apiBaseUrl.replace(/\/$/, "");
   return {
     gmailRedirectUri: gmailRedirectUri(),
     instagramRedirectUri: instagramRedirectUri(),
+    instagramDeauthorizeUri: `${api}/oauth/instagram/deauthorize`,
+    instagramDataDeletionUri: `${api}/oauth/instagram/data-deletion`,
+    privacyUrl: `${api}/privacy`,
     webBaseUrl: env.webBaseUrl,
     apiBaseUrl: env.apiBaseUrl,
     webhooks: {
-      whatsapp: `${env.apiBaseUrl.replace(/\/$/, "")}/webhooks/whatsapp`,
-      instagram: `${env.apiBaseUrl.replace(/\/$/, "")}/webhooks/instagram`,
-      emailPubSub: `${env.apiBaseUrl.replace(/\/$/, "")}/webhooks/email/pubsub`,
+      whatsapp: `${api}/webhooks/whatsapp`,
+      instagram: `${api}/webhooks/instagram`,
+      emailPubSub: `${api}/webhooks/email/pubsub`,
     },
   };
 }

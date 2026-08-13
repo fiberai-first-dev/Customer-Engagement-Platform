@@ -384,41 +384,41 @@ export function InboxPage() {
         onConfirm={() => void confirmPendingDelete()}
         onCancel={() => closeDeleteDialog(false)}
       />
-      <section className="flex w-[360px] shrink-0 flex-col border-r border-border bg-card">
-        <div className="space-y-3 border-b border-border p-4">
-          <div className="flex items-center justify-between gap-2">
-            <div className="flex items-center gap-2.5">
-              <h1 className="text-lg font-semibold tracking-tight text-foreground">Inbox</h1>
-              <LivePulse active={conversationsFetching || !conversationsPending} />
-            </div>
-            <div className="flex rounded-md border border-border p-0.5">
-              <button
-                type="button"
-                onClick={() => setStatusFilter("active")}
-                className={cn(
-                  "rounded px-2 py-1 text-[11px] font-medium",
-                  statusFilter === "active"
-                    ? "bg-primary text-primary-foreground"
-                    : "text-muted-foreground hover:text-foreground",
-                )}
-              >
-                Unresolved
-              </button>
-              <button
-                type="button"
-                onClick={() => setStatusFilter("all")}
-                className={cn(
-                  "rounded px-2 py-1 text-[11px] font-medium",
-                  statusFilter === "all"
-                    ? "bg-primary text-primary-foreground"
-                    : "text-muted-foreground hover:text-foreground",
-                )}
-              >
-                All
-              </button>
-            </div>
+      <section className="flex w-[340px] shrink-0 flex-col border-r border-border bg-card">
+        <div className="flex h-14 shrink-0 items-center justify-between gap-2 border-b border-border px-4">
+          <div className="flex min-w-0 items-center gap-2.5">
+            <h1 className="text-base font-semibold tracking-tight text-foreground">Inbox</h1>
+            <LivePulse active={conversationsFetching || !conversationsPending} />
           </div>
+          <div className="flex h-8 shrink-0 items-center rounded-md border border-border p-0.5">
+            <button
+              type="button"
+              onClick={() => setStatusFilter("active")}
+              className={cn(
+                "h-full rounded px-2.5 text-[11px] font-medium leading-none",
+                statusFilter === "active"
+                  ? "bg-primary text-primary-foreground"
+                  : "text-muted-foreground hover:text-foreground",
+              )}
+            >
+              Unresolved
+            </button>
+            <button
+              type="button"
+              onClick={() => setStatusFilter("all")}
+              className={cn(
+                "h-full rounded px-2.5 text-[11px] font-medium leading-none",
+                statusFilter === "all"
+                  ? "bg-primary text-primary-foreground"
+                  : "text-muted-foreground hover:text-foreground",
+              )}
+            >
+              All
+            </button>
+          </div>
+        </div>
 
+        <div className="border-b border-border px-4 py-3">
           <div className="relative">
             <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
             <input
@@ -426,7 +426,7 @@ export function InboxPage() {
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               placeholder="Search contacts"
-              className="w-full rounded-lg border border-border bg-background py-2 pl-9 pr-3 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-primary"
+              className="h-9 w-full rounded-md border border-border bg-background py-0 pl-9 pr-3 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-primary"
             />
           </div>
         </div>

@@ -2,7 +2,7 @@
 
 Customer Engagement Platform (CEP) is an omnichannel agent inbox for **WhatsApp Cloud API**, **Instagram Messaging**, and **Gmail**. Stack: Fastify + Prisma API, React agent UI, PostgreSQL.
 
-Vendor-facing credential steps live in [`CHANNEL_SETUP_GUIDE.md`](./CHANNEL_SETUP_GUIDE.md).
+Vendor-facing credential steps live in [`CHANNEL_SETUP_GUIDE.md`](./CHANNEL_SETUP_GUIDE.md). That guide (and the PDF in Settings) has **no client hostnames** — operators copy live URLs from **Settings → Callback URLs** on each site.
 
 ---
 
@@ -25,23 +25,25 @@ Vendor-facing credential steps live in [`CHANNEL_SETUP_GUIDE.md`](./CHANNEL_SETU
 | API | `apps/platform-api` | Auth, accounts, inboxes, contacts, conversations, messages, webhooks, OAuth |
 | Web | `apps/platform-web` | Login, Inbox, Contacts, Dashboard, **Settings (channel setup)** |
 
-Public hosting:
+Public hosting (pattern `cep-<company>.fybud.com`). Examples below use **demo** — replace `demo` with the company slug:
 
-| Surface | Host |
-|---------|------|
-| Agent UI | `https://cep-svasthyaa.fybud.com` |
-| API + webhooks + OAuth callbacks | `https://api.cep-svasthyaa.fybud.com` |
+| Surface | Example |
+|---------|---------|
+| Agent UI | `https://cep-demo.fybud.com` |
+| API + webhooks + OAuth callbacks | `https://api.cep-demo.fybud.com` |
 
-Env (set in `apps/platform-api/.env` — not hardcoded in source):
+Public URLs are set in the **compose file for that site**, not in `.env`:
 
-```env
-PLATFORM_API_BASE_URL="https://api.cep-svasthyaa.fybud.com"
-PLATFORM_WEB_BASE_URL="https://cep-svasthyaa.fybud.com"
-```
+| Compose file | API | UI |
+|--------------|-----|-----|
+| `docker-compose.demo.yml` | `https://api.cep-demo.fybud.com` | `https://cep-demo.fybud.com` |
+| `docker-compose.svasthyaa.yml` | `https://api.cep-svasthyaa.fybud.com` | `https://cep-svasthyaa.fybud.com` |
+
+`environment` in compose overrides `apps/platform-api/.env`. Web `VITE_API_BASE_URL` is a build arg in the same file. `.env` stays for DB / JWT only.
 
 - `PLATFORM_API_BASE_URL` — API origin (webhooks, OAuth callbacks)
 - `PLATFORM_WEB_BASE_URL` — agent UI origin (OAuth Connect returns here → `/settings`)
-- Web `VITE_API_BASE_URL` — must point at the API origin  
+- Web `VITE_API_BASE_URL` — must match the API origin (baked in at image build)
 
 ---
 
@@ -92,12 +94,12 @@ Customer → Provider → POST /webhooks/{channel}
 | Instagram | `POST /webhooks/instagram` |
 | Gmail | Pub/Sub push → `POST /webhooks/email/pubsub` |
 
-Examples (hosted):
+Engineering examples use the demo host. Operators never copy these — they use **Settings → Callback URLs** on their own site:
 
 ```text
-https://api.cep-svasthyaa.fybud.com/webhooks/whatsapp
-https://api.cep-svasthyaa.fybud.com/webhooks/instagram
-https://api.cep-svasthyaa.fybud.com/webhooks/email/pubsub
+https://api.cep-demo.fybud.com/webhooks/whatsapp
+https://api.cep-demo.fybud.com/webhooks/instagram
+https://api.cep-demo.fybud.com/webhooks/email/pubsub
 ```
 
 There are **no** `/webhooks/whatsapp/:inboxId` or `/webhooks/instagram/:inboxId` routes. Meta callbacks use the channel-only URLs above; the API routes traffic to the first enabled inbox for that channel.
@@ -131,10 +133,10 @@ Settings → Disconnect clears that channel’s credentials
 Settings → Shopify is listed separately for store customers and orders
 ```
 
-After a successful Connect, the browser lands on:
+After a successful Connect, the browser lands on (demo example):
 
 ```text
-https://cep-svasthyaa.fybud.com/settings?oauth=gmail|instagram&status=success
+https://cep-demo.fybud.com/settings?oauth=gmail|instagram&status=success
 ```
 
 | Endpoint | Auth | Purpose |
@@ -204,7 +206,7 @@ API client: `apps/platform-web/src/api/index.ts` (React Query + Zustand auth tok
 | Schema | `apps/platform-api/prisma/schema.prisma` |
 | Migrations | Run automatically on API boot (`server.ts` → `migrate.ts`). Optional CLI: `npm run db:deploy` |
 | Workspace | Boot `ensureWorkspace()` creates account + 3 inboxes and merges non-empty `.env` channel creds into `channelConfig` |
-| Docker | `apps/docker-compose.yml` — API + web |
+| Docker | `docker-compose.demo.yml` / `docker-compose.svasthyaa.yml` — URLs baked in; `.env` is DB/JWT only |
 
 Secrets:
 
@@ -227,7 +229,7 @@ Secrets:
 | Mode | Public URL | OAuth |
 |------|------------|--------|
 | Local eng | Tunnel (`cloudflared` / ngrok) → `PLATFORM_API_BASE_URL` | Settings Connect **or** CLI scripts |
-| Hosted vendor | `api.cep-svasthyaa.fybud.com` API + `cep-svasthyaa.fybud.com` UI | **Settings Connect only** (recommended) |
+| Hosted vendor | `api.cep-<company>.fybud.com` API + `cep-<company>.fybud.com` UI | **Settings Connect only** (recommended) |
 
 Meta and Google **cannot** call `localhost`. Always point webhooks and OAuth redirects at the public API host.
 
