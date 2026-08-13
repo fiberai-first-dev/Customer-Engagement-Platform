@@ -1,249 +1,244 @@
 # Channel setup guide
 
-Use **Settings** to connect WhatsApp, Instagram, Gmail, and Shopify. Create credentials in Meta, Google Cloud, or Shopify Admin, then enter them in this product.
+This guide connects WhatsApp, Instagram, Gmail, and Shopify from **Settings**.
 
-**Callback URLs** live in Settings. Open **Settings → Callback URLs**, choose WhatsApp, Instagram, or Gmail, and copy. Paste those values into the provider console.
+Every URL you paste into Meta or Google comes from **Settings → Callback URLs**. Choose the channel, copy **Webhook**, **Login redirect**, or **Push URL**, and paste it exactly — do not add or remove a trailing slash.
 
-Recommended order: WhatsApp → Instagram → Gmail → Shopify.
-
----
+Work in this order: WhatsApp → Instagram → Gmail → Shopify.
 
 ## 1. Before you start
 
 You need:
 
-- Access to **Settings**
-- A Meta developer app (WhatsApp and Instagram)
+- A login to this site, with access to **Settings**
+- A Meta developer account and a Business-type app (WhatsApp and Instagram)
 - A Google Cloud project you can administer (Gmail)
-- Shopify Partner or store admin access (optional, for orders)
+- Shopify admin or Partner access (optional, for orders)
 
-**Do not click Connect for Instagram or Gmail until the login redirect URL is saved in the provider console.** Copy it from Settings first, then save it in Meta or Google, then return here and connect.
-
----
+Keep **Settings → Callback URLs** open in a second tab while you work in Meta or Google.
 
 ## 2. WhatsApp
 
-### Fields in Settings → Connect WhatsApp
+Settings → WhatsApp → **Connect** asks for four required fields. Gather them first, then paste them into the form in one step.
 
-| Field | Source |
-|-------|--------|
-| Phone Number ID | Meta → WhatsApp → API Setup |
-| Access Token | System User token (see below). Do not use the short-lived token on API Setup. |
-| Verify Token | You choose this value. Use the same string in the Meta webhook. |
-| App Secret | Meta App settings → Basic |
-| Business Account ID | WhatsApp Business Account ID (optional) |
+| Field | Required | Source |
+|-------|----------|--------|
+| Phone Number ID | Yes | Meta → WhatsApp → API Setup |
+| Access Token | Yes | System User token (step 2.4). Do not use the token shown on API Setup; it expires in about 24 hours. |
+| Verify Token | Yes | A string you invent. Write it down. You will enter the same value in the Meta webhook after Connect. |
+| App Secret | Yes | Meta → App settings → Basic, for the same app that has WhatsApp |
+| Business Account ID | No | WhatsApp Business Account ID, if Meta shows it |
 
-### 2.1 Meta app
+### 2.1 Create the Meta app
 
 1. Open https://developers.facebook.com/apps/
-2. Create a Business-type app, or open an existing app.
+2. Create an app of type **Business**, or open an existing Business app.
 3. Add the **WhatsApp** product.
 
-### 2.2 Phone Number ID and Business Account ID
+### 2.2 Phone Number ID
 
 1. Open WhatsApp → API Setup.
-2. Copy **Phone number ID** into Settings.
-3. Copy the WhatsApp Business Account ID if it is shown.
+2. Copy **Phone number ID**.
+3. If **WhatsApp Business Account ID** is shown, copy that too.
+
+Use a production WhatsApp Cloud API number for live customers. In Development mode, only numbers Meta lists as test numbers will work.
 
 ### 2.3 App Secret
 
 1. Open App settings → Basic.
-2. Copy **App Secret** into Settings.
+2. Show and copy **App Secret**.
 
-Instagram uses a different App ID and App Secret. Do not reuse these values for Instagram.
+This App Secret belongs to WhatsApp. Instagram uses a different App ID and App Secret (section 3).
 
-### 2.4 Verify Token
-
-1. Choose a string with no spaces.
-2. Enter it in Settings → Verify Token.
-3. Enter the same string when you configure the Meta webhook.
-
-### 2.5 Access Token
-
-Tokens on the API Setup page expire in about 24 hours. Create a System User token instead.
+### 2.4 System User access token
 
 1. Open https://business.facebook.com/latest/settings
-2. Users → System users → Add (Admin).
-3. Assign assets: the Meta app (Full control) and the WhatsApp account.
-4. Generate a token for that Meta app with:
+2. Users → System users → Add. Give the user Admin access.
+3. Assign assets: this Meta app (Full control) and the WhatsApp account.
+4. Generate a token for this Meta app with:
    - `whatsapp_business_messaging`
    - `whatsapp_business_management`
-   - `business_management` (if listed)
-5. Prefer a non-expiring token when Meta offers it.
-6. Paste the token into Settings → Access Token.
+   - `business_management` (if Meta lists it)
+5. Choose a non-expiring token when Meta offers it.
+6. Copy the token and store it securely until you paste it into Connect.
+
+### 2.5 Connect in Settings
+
+1. Settings → WhatsApp → **Connect**.
+2. Paste Phone Number ID, Access Token, Verify Token, and App Secret. Add Business Account ID if you have it.
+3. Click **Connect**.
+
+The webhook cannot be verified until this step succeeds, because Meta checks the Verify Token against what was just saved.
 
 ### 2.6 Webhook
 
-1. In the Meta app, open Webhooks or WhatsApp → Configuration.
-2. Callback URL: copy **Webhook** from Settings → Callback URLs → WhatsApp.
-3. Verify token: the same value as in Settings.
-4. Verify and save.
+1. In the Meta app, open WhatsApp → Configuration (or Webhooks).
+2. Callback URL: Settings → Callback URLs → WhatsApp → copy **Webhook**.
+3. Verify token: the same string you entered in step 2.5.
+4. Verify and save. If verification fails, Connect was not completed, or the Verify Token does not match exactly.
 5. Subscribe to **`messages`**.
 
-If agents also reply from the WhatsApp Business app on the phone, the number must be onboarded with Meta Coexistence, and you should also subscribe to **`smb_message_echoes`**. A Cloud API–only number will not send phone replies to this product.
+If agents will also reply from the WhatsApp Business app on the phone, the number must use Meta Coexistence, and you should also subscribe to **`smb_message_echoes`**. A Cloud API–only number will not show those phone replies.
 
-### 2.7 Connect
+### 2.7 Confirm
 
-When the required fields are filled, click **Connect** in Settings.
-
-Send a test message to the business number and confirm it appears in Inbox.
-
----
+Send a WhatsApp message from a customer phone to the business number. Open **Inbox** and reply from there.
 
 ## 3. Instagram
 
-You enter App ID, App Secret, and Verify Token only. Access Token and Username are filled after Instagram login. Do not paste a Page ID.
+Settings → Instagram → **Connect** asks only for Instagram App ID, Instagram App Secret, and Verify Token. Access Token and Username are created after Instagram login. Do not enter a Page ID.
 
-**Instagram App ID and Instagram App Secret are not the values from App settings → Basic.** Use the pair from Instagram → API setup with Instagram login.
+**Use the Instagram App ID and Instagram App Secret from Instagram → API setup with Instagram login.** They are not the App ID and App Secret under App settings → Basic.
 
-### Fields in Settings → Connect Instagram
-
-| Field | Who provides it |
-|-------|-----------------|
-| Instagram App ID | You, from Meta Instagram API setup |
-| Instagram App Secret | You, from the same page |
-| Verify Token | You choose this value |
-| Access Token | Filled after Instagram login |
-| Username | Filled after Instagram login |
-
-### 3.1 Product and scopes
+### 3.1 Add Instagram and copy credentials
 
 1. In the Meta app, add the **Instagram** product.
 2. Open **Instagram → API setup with Instagram login**.
-3. Copy **Instagram app ID** and **Instagram app secret** into Settings (do not click Connect yet).
-4. After Connect, this product requests:
-   - `instagram_business_basic`
-   - `instagram_business_manage_messages`
-   - `instagram_business_manage_comments`
-5. Complete Meta App Review for messaging permissions before production use.
+3. Copy **Instagram app ID** and **Instagram app secret**.
+4. Invent a Verify Token (no spaces) and write it down. You will use it in Connect and again in the webhook.
 
-### 3.2 Login redirect — save in Meta before Connect
+After Connect, login requests these scopes:
 
-Connect will fail if this URL is missing from the Meta app.
+- `instagram_business_basic`
+- `instagram_business_manage_messages`
+- `instagram_business_manage_comments`
 
-1. Open Settings → Callback URLs → Instagram and copy **Login redirect**.
-2. Open https://developers.facebook.com/apps/ and select your app.
-3. Go to **Instagram → API setup with Instagram login → Business login settings**.
-4. Paste the copied value into **OAuth redirect URIs**.
+For live customer DMs, complete Meta App Review for Instagram messaging. While the app is in Development mode, only Instagram accounts that have a role on the app can send DMs that appear in Inbox. Add those accounts as testers in Meta.
+
+### 3.2 Login redirect in Meta
+
+Instagram login will not complete unless this URL is saved in Meta first.
+
+1. Settings → Callback URLs → Instagram → copy **Login redirect**.
+2. Open https://developers.facebook.com/apps/ and select the same app.
+3. Open **Instagram → API setup with Instagram login → Business login settings**.
+4. Paste the copied value into **OAuth redirect URIs**. The host and path must match exactly.
 5. Save in Meta.
 
-### 3.3 Webhook
+If Meta also asks for a Deauthorize callback URL or a Data deletion request URL, use the same host as Login redirect, with `/oauth/instagram/deauthorize` and `/oauth/instagram/data-deletion`. If it asks for a Privacy policy URL, use the same host with `/privacy`.
 
-1. Open Meta Webhooks for Instagram messaging.
-2. Callback URL: copy **Webhook** from Settings → Callback URLs → Instagram.
-3. Verify token: the Instagram Verify Token from Settings.
-4. Subscribe to **`messages`**.
+### 3.3 Connect in Settings
 
-### 3.4 Connect
+1. Confirm step 3.2 is saved.
+2. Settings → Instagram → **Connect**.
+3. Enter Instagram App ID, Instagram App Secret, and Verify Token.
+4. Click **Connect**. Instagram login opens.
+5. Sign in as the **business Instagram account** that should receive DMs, and approve access.
+6. You return to Settings. Instagram is connected.
 
-Only after the login redirect is saved in Meta:
+If login fails with a redirect error, the URL in step 3.2 does not match Login redirect. If it fails with an app ID error, you used App settings → Basic instead of Instagram API setup.
 
-1. Settings → Instagram → **Connect**.
-2. Enter Instagram App ID, Instagram App Secret, and Verify Token.
-3. Click **Connect**. Instagram login opens.
-4. Approve as the business Instagram account that should receive DMs.
-5. You return to Settings with Instagram connected. Access Token and Username are stored for you.
+The webhook cannot be verified until this step succeeds.
 
-Replies sent in the Instagram app appear here automatically. No extra echo setting is required.
+### 3.4 Webhook
 
-Send a test DM from a customer account and confirm it in Inbox.
+1. In the Meta app, open Webhooks and subscribe the Instagram product (messaging).
+2. Callback URL: Settings → Callback URLs → Instagram → copy **Webhook**.
+3. Verify token: the same string you entered in step 3.3.
+4. Verify and save.
+5. Subscribe to **`messages`**.
 
----
+Replies sent in the Instagram app appear in Inbox automatically.
+
+### 3.5 Confirm
+
+From a customer Instagram account (a tester, if the app is still in Development), send a DM to the business account. Open **Inbox** → Instagram and reply.
+
+The business cannot start an Instagram thread. The customer must message first.
 
 ## 4. Gmail
 
-You enter Client ID, Client Secret, and Pub/Sub Topic only. Refresh Token and Access Token are filled after Google login.
-
-After Connect succeeds, mail watch starts automatically and is renewed in the background.
-
-### Fields in Settings → Connect Gmail
-
-| Field | Who provides it |
-|-------|-----------------|
-| Client ID | You, from the Google Cloud OAuth web client |
-| Client Secret | You, from the same client |
-| Pub/Sub Topic | You (`projects/{PROJECT_ID}/topics/{TOPIC}`) |
-| Refresh Token | Filled after Google login |
-| Access Token | Filled after Google login |
+Settings → Gmail → **Connect** asks for Client ID, Client Secret, and Pub/Sub Topic. Tokens are created after Google login. Mail watch starts automatically after Connect and is renewed while this site’s API is running.
 
 ### 4.1 Enable APIs
 
-Use a Google account that can administer the project.
+Use a Google account that can administer the project (Owner, or the ability to enable APIs and edit IAM).
 
 1. Open https://console.cloud.google.com/ and select or create a project.
 2. Enable **Gmail API**: https://console.cloud.google.com/apis/library/gmail.googleapis.com
 3. Enable **Cloud Pub/Sub API**: https://console.cloud.google.com/apis/library/pubsub.googleapis.com
 
-Both must show **Enabled**.
+Both must show **Enabled**. If either is off, Connect or mail delivery will fail.
 
-### 4.2 OAuth consent screen and scopes
+### 4.2 OAuth consent screen
 
 1. Open https://console.cloud.google.com/apis/credentials/consent
-2. Configure the app (External is typical) and a support email.
-3. Add scopes:
+2. Configure the app. External is typical. Add an app name and a support email.
+3. Add these scopes:
    - `https://www.googleapis.com/auth/gmail.modify`
    - `https://www.googleapis.com/auth/gmail.send`
-4. Publish the app, or add the support mailbox under **Test users** until it is published.
+4. Publish the app. If you leave it in Testing, add the support mailbox under **Test users**. Otherwise Google shows `access_denied` at login.
 
-### 4.3 Login redirect — save in Google before Connect
+### 4.3 OAuth client and login redirect
 
-Connect will fail with a redirect mismatch if this URL is missing from the OAuth client.
+Google login will not complete unless this URL is saved on the OAuth client first.
 
-1. Open Settings → Callback URLs → Gmail and copy **Login redirect**.
+1. Settings → Callback URLs → Gmail → copy **Login redirect**.
 2. Open https://console.cloud.google.com/apis/credentials
 3. Create credentials → OAuth client ID → **Web application**.
-4. Under **Authorized redirect URIs**, paste the copied value and save.
-5. Copy Client ID and Client Secret for Settings (do not click Connect yet).
+4. Under **Authorized redirect URIs**, paste the copied value. The host and path must match exactly.
+5. Save. Copy **Client ID** and **Client Secret**.
 
 ### 4.4 Pub/Sub topic and push subscription
 
 You need permission to create topics and edit topic IAM (Owner, or Pub/Sub Admin).
 
 1. Open https://console.cloud.google.com/cloudpubsub/topic/list
-2. Create a topic (for example `gmail-events`).
-3. Open the topic → Permissions.
-4. Grant **Pub/Sub Publisher** to `gmail-api-push@system.gserviceaccount.com` (Google’s Gmail push account, not your user).
-5. Create a **Push** subscription on that topic.
-6. Endpoint URL: copy **Push URL** from Settings → Callback URLs → Gmail.
-7. Copy the topic name into Settings: `projects/{PROJECT_ID}/topics/{TOPIC}`
+2. Create a topic. Example name: `gmail-events`.
+3. Open the topic → **Permissions**.
+4. Grant access:
+   - Principal: `gmail-api-push@system.gserviceaccount.com` (Google’s Gmail push account, not your user)
+   - Role: **Pub/Sub Publisher**
+5. Create a subscription on that topic:
+   - Delivery type: **Push**
+   - Endpoint URL: Settings → Callback URLs → Gmail → copy **Push URL**
+   - Leave authentication and payload unwrapping off
+6. Copy the topic resource name. It must look like `projects/YOUR_PROJECT_ID/topics/gmail-events`. Do not copy the subscription name.
 
-### 4.5 Connect
+Without the Publisher grant in step 4, mail watch will fail.
 
-Only after the login redirect is saved on the Google OAuth client:
+### 4.5 Connect in Settings
 
-1. Settings → Gmail → **Connect**.
-2. Enter Client ID, Client Secret, and Pub/Sub Topic.
-3. Click **Connect**. Google login opens.
-4. Sign in as the support mailbox and approve the scopes.
-5. You return to Settings with Gmail connected. Mail watch starts on its own.
+1. Confirm the login redirect from step 4.3 is saved.
+2. Settings → Gmail → **Connect**.
+3. Paste Client ID, Client Secret, and the Pub/Sub topic name from step 4.4.
+4. Click **Connect**. Google login opens.
+5. Sign in as the **support mailbox** that should receive customer email, and approve both scopes.
+6. You return to Settings. Gmail is connected and mail watch starts on its own.
 
-Send a test email to the mailbox and confirm it in Inbox.
+If Google shows `redirect_uri_mismatch`, the Authorized redirect URI does not match Login redirect. If Google does not issue a refresh token, revoke this app at https://myaccount.google.com/permissions and Connect again.
 
-Google’s push watch lasts up to seven days. This product renews it automatically while the API is running. Click **Connect** again only if Google revoked access.
+### 4.6 Confirm
 
----
+Send a test email to the support mailbox. Open **Inbox** → Email and reply.
+
+Replies sent in Gmail appear in Inbox automatically.
 
 ## 5. Shopify
 
-Connect Shopify to show customers and orders in the inbox.
+Shopify shows customer and order details in the inbox.
 
-### Fields in Settings → Shopify
+| Field | Required | Value |
+|-------|----------|--------|
+| Shop subdomain | Yes | The subdomain only. For `yourbrand.myshopify.com`, enter `yourbrand`. |
+| Client ID | Yes | App client ID |
+| Client Secret | Yes | App client secret |
 
-| Field | Value |
-|-------|--------|
-| Shop subdomain | Subdomain only (`yourbrand` from `yourbrand.myshopify.com`) |
-| Client ID | App client ID |
-| Client Secret | App client secret |
+### 5.1 App and scopes
 
-### Scopes
-
-Minimum:
+Create or open a custom app in the Shopify admin or Partner dashboard. Install it on the store with at least:
 
 - `read_customers`
 - `read_orders`
 
-1. Create or open the app in the Shopify Partner or Dev dashboard.
-2. Install it on the store with those scopes.
-3. Settings → Shopify → **Connect**.
+### 5.2 Connect in Settings
 
-WhatsApp and Email can match a Shopify customer by email or phone. Instagram cannot.
+1. Settings → Shopify → **Connect**.
+2. Enter shop subdomain, Client ID, and Client Secret.
+3. Click **Connect**.
+
+### 5.3 Confirm
+
+Open a contact in **Inbox** that has an email or WhatsApp number that exists on the Shopify customer. The customer panel should show profile and orders.
+
+Instagram threads have no email or phone, so Shopify cannot match those contacts.

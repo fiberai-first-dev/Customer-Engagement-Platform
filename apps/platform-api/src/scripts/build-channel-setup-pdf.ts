@@ -94,44 +94,33 @@ function drawFooter(doc: PDFKit.PDFDocument, pageNo: number) {
 
 function drawCover(doc: PDFKit.PDFDocument) {
   const { width, height } = doc.page;
+  const textW = width - PAGE.margin * 2;
+  const x = PAGE.margin;
+  const cx = width / 2;
+  const brandY = height / 2 - 48;
 
   withOpenMargins(doc, () => {
     doc.save();
-    doc.rect(0, 0, width, height).fill(C.navyDeep);
-    doc.path(`M 0 ${height * 0.62} L ${width} ${height * 0.42} L ${width} ${height} L 0 ${height} Z`).fill(C.navy);
-    doc.rect(0, 0, width, 10).fill(C.teal);
+    doc.rect(0, 0, width, 6).fill(C.teal);
+    doc.rect(0, height - 6, width, 6).fill(C.navy);
     doc.restore();
 
-    doc.fillColor(C.white);
-    doc.font("Helvetica").fontSize(11).text("FIBERAI", PAGE.margin, 72, { characterSpacing: 3, lineBreak: false });
-    doc.font("Helvetica-Bold").fontSize(28).fillColor(C.white).text("Channel setup guide", PAGE.margin, 100, {
-      width: width - PAGE.margin * 2,
-    });
-    doc.font("Helvetica").fontSize(12).fillColor(C.tealSoft).text("WhatsApp · Instagram · Gmail · Shopify", PAGE.margin, 145, {
-      width: width - PAGE.margin * 2,
-    });
+    doc.fillColor(C.navy).font("Helvetica-Bold").fontSize(32);
+    doc.text("FiberAI", x, brandY, { width: textW, align: "center", lineBreak: false });
 
-    const cardX = PAGE.margin;
-    const cardY = 190;
-    const cardW = width - PAGE.margin * 2;
-    const cardH = 88;
+    const ruleW = 48;
+    const ruleY = brandY + 44;
     doc.save();
-    doc.roundedRect(cardX, cardY, cardW, cardH, 8).fill(C.white);
+    doc.moveTo(cx - ruleW / 2, ruleY).lineTo(cx + ruleW / 2, ruleY).strokeColor(C.teal).lineWidth(2).stroke();
     doc.restore();
-    doc.fillColor(C.muted).font("Helvetica").fontSize(9).text("Need a URL?", cardX + 16, cardY + 16, { lineBreak: false });
-    doc.fillColor(C.navy).font("Helvetica-Bold").fontSize(13)
-      .text("Settings  >  Callback URLs", cardX + 16, cardY + 34, {
-        width: cardW - 32,
-        lineBreak: false,
-      });
-    doc.fillColor(C.muted).font("Helvetica").fontSize(9)
-      .text("Copy the one you need and paste it into Meta or Google.", cardX + 16, cardY + 56, {
-        width: cardW - 32,
-      });
 
-    doc.fillColor(C.tealSoft).font("Helvetica").fontSize(9);
-    doc.text("Confidential · for brand operators", PAGE.margin, height - 36, {
-      width: width - PAGE.margin * 2,
+    doc.fillColor(C.navy).font("Helvetica").fontSize(16);
+    doc.text("Channel setup guide", x, ruleY + 18, { width: textW, align: "center", lineBreak: false });
+
+    doc.fillColor(C.muted).font("Helvetica").fontSize(11);
+    doc.text("WhatsApp   Instagram   Gmail   Shopify", x, ruleY + 46, {
+      width: textW,
+      align: "center",
       lineBreak: false,
     });
   });
@@ -368,7 +357,7 @@ function renderMarkdown(doc: PDFKit.PDFDocument, md: string) {
       continue;
     }
 
-    if (!line.trim()) {
+    if (!line.trim() || /^---+$/.test(line.trim())) {
       if (doc.y + 10 < contentBottom(doc)) doc.y += 6;
       i++;
       continue;
@@ -473,7 +462,7 @@ async function main() {
     .text("How to use this guide", ix + 14, iy + 10, { lineBreak: false });
   doc.fillColor(C.ink).font("Helvetica").fontSize(9)
     .text(
-      "Copy Callback URLs from Settings. Save Instagram and Gmail login redirects in Meta and Google before you click Connect.",
+      "Copy URLs from Settings > Callback URLs into Meta or Google. Complete each provider console step, then Connect in Settings.",
       ix + 14,
       iy + 24,
       { width: iw - 28 },

@@ -468,8 +468,7 @@ export function SettingsPage() {
     if (modal === "instagram") {
       return {
         title: "Connect Instagram",
-        description:
-          "Save Login redirect in Meta (developers.facebook.com) first, then enter the app details here.",
+        description: "Enter your Instagram app details, then sign in with Instagram.",
         fields: IG_FIELDS,
         initialValues: {} as Record<string, string>,
         submitLabel: connecting === "instagram" ? "Connecting…" : "Connect",
@@ -478,8 +477,7 @@ export function SettingsPage() {
     if (modal === "email") {
       return {
         title: "Connect Gmail",
-        description:
-          "Save Login redirect on the Google OAuth client first, then enter the client details here.",
+        description: "Enter your Google client details, then sign in with Google.",
         fields: EMAIL_FIELDS,
         initialValues: {} as Record<string, string>,
         submitLabel: connecting === "gmail" ? "Connecting…" : "Connect",
