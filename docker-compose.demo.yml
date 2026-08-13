@@ -1,0 +1,44 @@
+services:
+  cep-postgres:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: cep
+      POSTGRES_PASSWORD: cep
+      POSTGRES_DB: cep_platform
+    ports:
+      - "5435:5432"
+    volumes:
+      - cep_pg_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U cep -d cep_platform"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  platform-api:
+    build:
+      context: ./platform-api
+      dockerfile: Dockerfile
+    env_file:
+      - ./platform-api/.env
+    ports:
+      - "4101:4100"
+    depends_on:
+      cep-postgres:
+        condition: service_healthy
+
+  platform-web:
+    build:
+      context: ./platform-web
+      dockerfile: Dockerfile
+      args:
+        VITE_API_BASE_URL: ${VITE_API_BASE_URL:-https://api.cep-svasthyaa.fybud.com}
+    env_file:
+      - ./platform-web/.env
+    ports:
+      - "9001:5173"
+    depends_on:
+      - platform-api
+
+volumes:
+  cep_pg_data:

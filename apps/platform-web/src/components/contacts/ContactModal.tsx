@@ -394,8 +394,8 @@ export function ContactModal({
               <div className="rounded-lg border border-amber-500/40 bg-amber-500/10 px-3 py-3">
                 <p className="text-sm font-semibold text-amber-950">Possible duplicate</p>
                 <p className="mt-1 text-sm text-amber-900/80">
-                  An existing customer already has one of these channel ids. Merge into that
-                  customer instead of creating a twin.
+                  This email, WhatsApp, or Instagram already belongs to another contact. Merge
+                  them instead of creating a second record.
                 </p>
               </div>
               <ul className="space-y-2 rounded-lg border border-border bg-muted/30 p-3 text-sm">
@@ -475,8 +475,8 @@ export function ContactModal({
                   placeholder="Jane Doe"
                 />
                 <p className="text-xs text-muted-foreground">
-                  If a channel id already exists on another contact, we&apos;ll flag a possible
-                  duplicate before saving.
+                  We’ll warn you if this email, WhatsApp, or Instagram is already on another
+                  contact.
                 </p>
               </div>
 

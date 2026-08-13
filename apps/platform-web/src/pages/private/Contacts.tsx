@@ -202,7 +202,7 @@ export function ContactsPage() {
         description={
           <>
             This permanently removes <strong>{pendingDelete?.name}</strong> and all of their
-            WhatsApp, Instagram, and Email conversations from CEP. This cannot be undone.
+            WhatsApp, Instagram, and Email conversations. This cannot be undone.
           </>
         }
         confirmLabel="Delete contact"

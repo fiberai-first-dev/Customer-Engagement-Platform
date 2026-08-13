@@ -25,7 +25,7 @@ export function DashboardPage() {
             Welcome to FiberAI
           </h1>
           <p className="text-lg text-muted-foreground max-w-2xl leading-relaxed">
-            Here's what's happening with your customer engagement today. Monitor your inbound traffic, active contacts, and channel performance.
+            Messages, contacts, and channels at a glance.
           </p>
         </div>
       </div>
@@ -63,7 +63,7 @@ export function DashboardPage() {
                   <div className="flex items-center justify-between">
                     <div>
                       <CardTitle className="text-xl">Recent Activity</CardTitle>
-                      <CardDescription className="mt-1">Latest inbound messages across your channels.</CardDescription>
+                      <CardDescription className="mt-1">Latest messages across your channels.</CardDescription>
                     </div>
                     <div className="p-2 bg-primary/10 rounded-full text-primary">
                       <Inbox className="w-5 h-5" />

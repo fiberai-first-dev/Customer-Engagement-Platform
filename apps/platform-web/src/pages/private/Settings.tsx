@@ -167,7 +167,7 @@ function CallbackUrlsCard({
       <div className="mb-3">
         <h2 className="text-base font-semibold">Callback URLs</h2>
         <p className="mt-1 text-sm text-muted-foreground">
-          Pick a URL to copy into Meta / Google when setting up channels.
+          Copy these into Meta or Google when you set up WhatsApp, Instagram, or Gmail.
         </p>
       </div>
       <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
@@ -284,7 +284,7 @@ function ConnectModal({
         >
           <div className="flex-1 space-y-4 overflow-y-auto p-6">
             <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
-              Channel credentials
+              Details
             </p>
             {error && (
               <div className="rounded-lg border border-rose-500/30 bg-rose-500/10 px-3 py-2 text-sm text-rose-800">
@@ -333,8 +333,7 @@ function ConnectModal({
               );
             })}
             <p className="text-xs text-muted-foreground">
-              Credentials are saved only on the server. They are never kept in the browser after
-              Connect.
+              Details are stored securely after you connect.
             </p>
           </div>
           <div className="flex items-center justify-end gap-3 border-t border-border bg-muted/40 px-6 py-4">
@@ -524,7 +523,7 @@ export function SettingsPage() {
     if (modal === "whatsapp") {
       return {
         title: "Connect WhatsApp",
-        description: "Enter your WhatsApp Business Cloud API credentials.",
+        description: "Enter your WhatsApp Business details to connect.",
         fields: WA_FIELDS,
         initialValues: publicPrefill(waInbox?.channelConfig as Record<string, unknown>),
         submitLabel: "Connect",
@@ -533,7 +532,7 @@ export function SettingsPage() {
     if (modal === "instagram") {
       return {
         title: "Connect Instagram",
-        description: "Enter app credentials. CEP opens Instagram login to finish.",
+        description: "Enter your Instagram app details. You’ll sign in with Instagram next.",
         fields: IG_FIELDS,
         initialValues: publicPrefill(igInbox?.channelConfig as Record<string, unknown>),
         submitLabel: connecting === "instagram" ? "Connecting…" : "Connect",
@@ -542,7 +541,7 @@ export function SettingsPage() {
     if (modal === "email") {
       return {
         title: "Connect Gmail",
-        description: "Enter OAuth client details. CEP opens Google to fill tokens.",
+        description: "Enter your Google client details. You’ll sign in with Google next.",
         fields: EMAIL_FIELDS,
         initialValues: publicPrefill(emailInbox?.channelConfig as Record<string, unknown>),
         submitLabel: connecting === "gmail" ? "Connecting…" : "Connect",
@@ -550,7 +549,7 @@ export function SettingsPage() {
     }
     return {
       title: "Connect Shopify",
-      description: "Connect your Shopify store for customer and order context.",
+      description: "Connect your store to show customers and orders in the inbox.",
       fields: SHOPIFY_FIELDS,
       initialValues: {
         shop: shopify?.shop || "",
@@ -595,7 +594,7 @@ export function SettingsPage() {
       }
       setBanner({
         tone: "ok",
-        text: `${disconnectLabel} disconnected · credentials removed`,
+        text: `${disconnectLabel} disconnected`,
       });
       setDisconnectTarget(null);
     } catch (err: unknown) {
@@ -709,8 +708,7 @@ export function SettingsPage() {
           <div>
             <h1 className="mb-1 text-3xl font-bold">Settings</h1>
             <p className="text-muted-foreground">
-              Connect messaging channels and Shopify for order context. Secrets stay on the
-              server.
+              Connect WhatsApp, Instagram, Gmail, and Shopify.
             </p>
           </div>
           <Button variant="outline" className="gap-2" asChild>
@@ -740,7 +738,7 @@ export function SettingsPage() {
             <div>
               <h2 className="text-base font-semibold">Channels</h2>
               <p className="mt-1 text-sm text-muted-foreground">
-                WhatsApp, Instagram, and Gmail for conversations.
+                WhatsApp, Instagram, and Gmail.
               </p>
             </div>
             <p className="text-sm text-muted-foreground">{connectedCount} connected</p>
@@ -812,8 +810,7 @@ export function SettingsPage() {
             <div>
               <h2 className="text-base font-semibold">Shopify</h2>
               <p className="mt-1 text-sm text-muted-foreground">
-                Store credentials for customer and order details in the inbox — not a messaging
-                channel.
+                Customer and order details in the inbox.
               </p>
             </div>
             <p className="text-sm text-muted-foreground">
@@ -853,7 +850,7 @@ export function SettingsPage() {
       <ConfirmDialog
         open={Boolean(disconnectTarget)}
         title={`Disconnect ${disconnectLabel}?`}
-        description={`This removes credentials for ${disconnectLabel}. You can connect again anytime.`}
+        description={`This disconnects ${disconnectLabel}. You can connect again anytime.`}
         confirmLabel="Disconnect"
         cancelLabel="Cancel"
         destructive

@@ -421,13 +421,12 @@ export function ConversationThread({
             </p>
             <p className="mt-1 max-w-sm text-xs text-muted-foreground">
               {activeTab === "instagram"
-                ? "Instagram only opens after the customer messages you first. Use another tab if they have WhatsApp or Email."
+                ? "The customer needs to message first on Instagram. Switch tabs for WhatsApp or Email."
                 : channelIds.length
                   ? canInitiateChannel
-                    ? "You can send the first message below once this thread is ready."
-                    : "Use the tabs above to open another channel."
-                  : "Add this channel on the contact, or wait until Shopify / inbound links it."}
-            </p>
+                    ? "You can send the first message from here."
+                    : "Switch tabs to open another conversation."
+                  : "Add this on the contact, then you can message from here."}
           </div>
         </div>
       ) : (
@@ -449,9 +448,8 @@ export function ConversationThread({
                 </p>
                 <p className="mt-1 text-xs text-muted-foreground">
                   {canInitiateChannel
-                    ? "Compose below to start the conversation."
-                    : "The customer must message first on this channel."}
-                </p>
+                    ? "Write a message below to get started."
+                    : "Waiting for the customer to message first."}
               </div>
             )}
             {!loadingMessages && !isLinkedAwaitingFirst && (!messages || messages.length === 0) && (
@@ -615,8 +613,7 @@ export function ConversationEmptyState() {
       <div>
         <h2 className="text-base font-semibold text-foreground">Select a conversation</h2>
         <p className="mt-1 max-w-sm text-sm text-muted-foreground">
-          Open a contact from Unresolved — we&apos;ll open an unresolved channel if one
-          needs attention.
+          Pick a contact from the list to open the conversation.
         </p>
       </div>
     </div>

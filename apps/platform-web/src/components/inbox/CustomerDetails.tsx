@@ -244,8 +244,8 @@ export function CustomerDetails({ contact, onClose }: Props) {
           {commerce.provider === "shopify"
             ? "Order data from Shopify"
             : commerce.provider === "mock"
-              ? "Demo mock orders (configure SHOPIFY_* in API .env)"
-              : "No commerce provider"}
+              ? "Sample order data"
+              : "Shopify is not connected"}
         </p>
       </div>
     </aside>
@@ -257,7 +257,7 @@ function Header({ onClose }: { onClose: () => void }) {
     <div className="flex items-center justify-between border-b border-border bg-card px-4 py-3.5">
       <div>
         <h3 className="text-sm font-semibold tracking-tight text-foreground">Customer context</h3>
-        <p className="text-[11px] text-muted-foreground">Profile & order intelligence</p>
+        <p className="text-[11px] text-muted-foreground">Profile and orders</p>
       </div>
       <Button
         variant="ghost"
@@ -300,7 +300,7 @@ function ProfileTab({
       value: shopify?.phone || (whatsappIds.length ? whatsappIds.join(", ") : "—"),
     },
     { label: "Location", value: shopify?.location || "—" },
-    { label: "CEP contact ID", value: contact.id },
+    { label: "Contact ID", value: contact.id },
   ];
 
   return (

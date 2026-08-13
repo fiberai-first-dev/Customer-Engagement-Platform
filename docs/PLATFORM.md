@@ -118,14 +118,17 @@ Agent UI → POST /api/v1/conversations/:id/messages
 Developers historically ran local OAuth CLIs. **Vendors only have the hosted UI**, so OAuth is browser-native:
 
 ```text
-Settings → Save App / Client credentials (required fields)
-        → Connect Gmail | Connect Instagram (enabled only after Save)
+Settings → Channels: Connect WhatsApp | Instagram | Gmail (modal; required fields only)
+        → Instagram: save App ID/Secret/Verify → OAuth → CEP auto-stores Access Token + Username
+        → Gmail: save Client ID/Secret/Topic → OAuth → CEP auto-stores Refresh + Access Token
         → (Gmail) Start watch once tokens exist
         → POST /api/v1/oauth/{gmail|instagram}/start   (JWT)
         → Redirect to Google / Meta consent
         → GET /oauth/{gmail|instagram}/callback          (public)
-        → Exchange code → write tokens into inbox.channelConfig
+        → Exchange code → write tokens into inbox.channelConfig (server only; redacted to UI)
         → Redirect → PLATFORM_WEB_BASE_URL/settings?oauth=…&status=success
+Settings → Disconnect clears that channel’s credentials
+Settings → Shopify is listed separately for store customers and orders
 ```
 
 After a successful Connect, the browser lands on:
@@ -188,7 +191,7 @@ Shared types: `NormalizedInboundMessage`, per-channel config interfaces in `adap
 | `/inbox` | Omnichannel thread UI (list + channel tabs + customer panel). **Clear chat** removes a whole channel thread; **Select → Delete** removes chosen messages. Both tombstone provider ids so sync cannot resurrect them. |
 | `/contacts` | Contact directory (multi email / WhatsApp) |
 | `/dashboard` | Lightweight metrics |
-| `/settings` | Channel credentials, webhook/OAuth URLs. **Connect Instagram / Connect Gmail** stay disabled until required fields are filled and Saved (OAuth then writes tokens). **Start Gmail watch** unlocks after tokens are present and saved. |
+| `/settings` | Channel + Shopify credentials, Callback URLs. **Connect** opens a modal (disabled until required fields are filled); OAuth for Gmail/Instagram runs after Connect. **Disconnect** clears that channel’s credentials. **Start Gmail watch** after Gmail is connected. |
 
 API client: `apps/platform-web/src/api/index.ts` (React Query + Zustand auth token).
 

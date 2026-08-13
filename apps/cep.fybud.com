@@ -2,10 +2,10 @@ server {
     listen 80;
     listen [::]:80;
 
-    server_name cep-demo.fybud.com;
+    server_name cep.fybud.com;
 
     location / {
-        proxy_pass http://127.0.0.1:9001;
+        proxy_pass http://127.0.0.1:9000;
 
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
@@ -18,13 +18,13 @@ server {
     listen 80;
     listen [::]:80;
 
-    server_name api.cep-demo.fybud.com;
+    server_name api.cep.fybud.com;
 
     client_max_body_size 25m;
     proxy_read_timeout 120s;
 
     location / {
-        proxy_pass http://127.0.0.1:4101;
+        proxy_pass http://127.0.0.1:4100;
 
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;

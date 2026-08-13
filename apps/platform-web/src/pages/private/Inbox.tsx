@@ -361,13 +361,13 @@ export function InboxPage() {
   const deleteDialogDescription =
     pendingDelete?.kind === "clear" ? (
       <>
-        This permanently removes every {channelLabel(pendingDelete.channel)} message for this
-        contact from CEP. New messages from the customer will still appear.
+        This removes every {channelLabel(pendingDelete.channel)} message for this contact.
+        New messages from the customer will still appear.
       </>
     ) : pendingDelete?.kind === "messages" ? (
       <>
-        This permanently removes the selected message
-        {pendingDelete.messageIds.length === 1 ? "" : "s"} from CEP. This cannot be undone.
+        This removes the selected message
+        {pendingDelete.messageIds.length === 1 ? "" : "s"}. This cannot be undone.
       </>
     ) : null;
 
