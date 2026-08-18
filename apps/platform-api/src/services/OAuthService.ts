@@ -136,6 +136,7 @@ export function oauthRedirectHints() {
     instagramRedirectUri: instagramRedirectUri(),
     instagramDeauthorizeUri: `${api}/oauth/instagram/deauthorize`,
     instagramDataDeletionUri: `${api}/oauth/instagram/data-deletion`,
+    shopifyRedirectUri: `${api}/oauth/shopify/callback`,
     privacyUrl: `${api}/privacy`,
     webBaseUrl: env.webBaseUrl,
     apiBaseUrl: env.apiBaseUrl,

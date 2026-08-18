@@ -5,6 +5,7 @@ import {
   completeInstagramOAuth,
   settingsReturnUrl,
 } from "../../services/OAuthService.js";
+import { completeShopifyOAuth } from "../../services/orders/ShopifyOAuth.js";
 
 function htmlPage(title: string, body: string) {
   return `<!doctype html>
@@ -87,6 +88,33 @@ export async function publicOAuthRoutes(app: FastifyInstance) {
              <p>Ensure App ID / Secret are saved in Settings and the redirect URI matches Meta.</p>`,
           ),
         );
+    }
+  });
+
+  app.get("/shopify/callback", async (request, reply) => {
+    const q = request.query as Record<string, unknown>;
+    const errVal = q.error;
+    if (typeof errVal === "string" && errVal) {
+      return reply.redirect(
+        settingsReturnUrl({
+          oauth: "shopify",
+          status: "error",
+          message: String(q.error_description || errVal),
+        }),
+      );
+    }
+    try {
+      const result = await completeShopifyOAuth(q);
+      return reply.redirect(result.returnUrl);
+    } catch (err: any) {
+      request.log.error(err, "shopify oauth callback failed");
+      return reply.redirect(
+        settingsReturnUrl({
+          oauth: "shopify",
+          status: "error",
+          message: err?.message ?? "oauth failed",
+        }),
+      );
     }
   });
 

@@ -4,6 +4,7 @@ import {
   startGmailOAuth,
   startInstagramOAuth,
 } from "../../services/OAuthService.js";
+import { startShopifyOAuth } from "../../services/orders/ShopifyOAuth.js";
 
 /**
  * Authenticated OAuth helpers for the Settings UI.
@@ -53,6 +54,25 @@ export async function oauthConnectRoutes(app: FastifyInstance) {
       return reply.send(result);
     } catch (err: any) {
       return reply.code(400).send({ error: err?.message ?? "failed to start Instagram OAuth" });
+    }
+  });
+
+  app.post<{
+    Body: {
+      shop?: string;
+      clientId?: string;
+      clientSecret?: string;
+    };
+  }>("/shopify/start", async (request, reply) => {
+    try {
+      const result = await startShopifyOAuth({
+        shop: request.body?.shop,
+        clientId: request.body?.clientId,
+        clientSecret: request.body?.clientSecret,
+      });
+      return reply.send(result);
+    } catch (err: any) {
+      return reply.code(400).send({ error: err?.message ?? "failed to start Shopify OAuth" });
     }
   });
 }

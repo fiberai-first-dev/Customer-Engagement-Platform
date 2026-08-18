@@ -5,6 +5,7 @@ import { Button } from "../../components/ui/button";
 import { Input } from "../../components/ui/input";
 import {
   startChannelOAuth,
+  startShopifyOAuth,
   useAccounts,
   useDisconnectInbox,
   useInboxes,
@@ -151,7 +152,7 @@ function CallbackUrlsCard({
       <div className="mb-4">
         <h2 className="text-base font-semibold leading-none">Callback URLs</h2>
         <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
-          Paste into Meta or Google when you connect a channel.
+          Paste into Meta, Google, or Shopify when you connect a channel.
         </p>
       </div>
       <div className="space-y-4">
@@ -371,7 +372,7 @@ export function SettingsPage() {
   const { mutateAsync: updateShopifyAsync, isPending: shopifyBusy } = useUpdateShopifyConfig();
 
   const [banner, setBanner] = useState<{ tone: "ok" | "err"; text: string } | null>(null);
-  const [connecting, setConnecting] = useState<"gmail" | "instagram" | null>(null);
+  const [connecting, setConnecting] = useState<"gmail" | "instagram" | "shopify" | null>(null);
   const [modal, setModal] = useState<ChannelKey | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [disconnectTarget, setDisconnectTarget] = useState<ChannelKey | null>(null);
@@ -395,17 +396,18 @@ export function SettingsPage() {
 
     if (status === "success") {
       void queryClient.invalidateQueries({ queryKey: ["inboxes"] });
+      void queryClient.invalidateQueries({ queryKey: ["shopify-config"] });
       const who =
         oauth === "gmail"
           ? searchParams.get("email")
           : searchParams.get("username")
             ? `@${searchParams.get("username")}`
             : null;
+      const label =
+        oauth === "gmail" ? "Gmail" : oauth === "instagram" ? "Instagram" : "Shopify";
       setBanner({
         tone: "ok",
-        text: who
-          ? `${oauth === "gmail" ? "Gmail" : "Instagram"} connected · ${who}`
-          : `${oauth === "gmail" ? "Gmail" : "Instagram"} connected`,
+        text: who ? `${label} connected · ${who}` : `${label} connected`,
       });
     } else {
       setBanner({
@@ -485,10 +487,10 @@ export function SettingsPage() {
     }
     return {
       title: "Connect Shopify",
-      description: "Connect your store to show customers and orders in the inbox.",
+      description: "Enter the store, then approve access in Shopify.",
       fields: SHOPIFY_FIELDS,
       initialValues: {} as Record<string, string>,
-      submitLabel: "Connect",
+      submitLabel: connecting === "shopify" ? "Connecting…" : "Connect",
     };
   }, [modal, connecting]);
 
@@ -537,14 +539,30 @@ export function SettingsPage() {
     setSubmitting(true);
     try {
       if (modal === "shopify") {
-        await updateShopifyAsync({
-          shop: values.shop,
-          clientId: values.clientId,
-          clientSecret: values.clientSecret,
-        });
-        setBanner({ tone: "ok", text: "Shopify connected" });
-        setModal(null);
-        return;
+        setConnecting("shopify");
+        try {
+          const result = await startShopifyOAuth({
+            shop: values.shop,
+            clientId: values.clientId,
+            clientSecret: values.clientSecret,
+          });
+          if (result.url) {
+            setBanner({ tone: "ok", text: "Opening Shopify to finish connection…" });
+            window.location.assign(result.url);
+            return;
+          }
+          setBanner({ tone: "ok", text: "Shopify connected" });
+          setModal(null);
+          setConnecting(null);
+          return;
+        } catch (err: unknown) {
+          setConnecting(null);
+          setBanner({
+            tone: "err",
+            text: err instanceof Error ? err.message : "Could not start Shopify connection",
+          });
+          return;
+        }
       }
 
       const inbox =
@@ -606,6 +624,10 @@ export function SettingsPage() {
         { label: "Push URL", value: oauthHints?.webhooks.emailPubSub ?? emailInbox?.webhookUrl },
         { label: "Login redirect", value: oauthHints?.gmailRedirectUri },
       ],
+    },
+    {
+      name: "Shopify",
+      urls: [{ label: "Login redirect", value: oauthHints?.shopifyRedirectUri }],
     },
   ];
 
@@ -697,6 +719,7 @@ export function SettingsPage() {
               name="Shopify"
               linked={shopifyConnected}
               busy={
+                connecting === "shopify" ||
                 (submitting && modal === "shopify") ||
                 (shopifyBusy && disconnectTarget === "shopify")
               }

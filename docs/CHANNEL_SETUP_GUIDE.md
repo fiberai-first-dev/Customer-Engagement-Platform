@@ -231,13 +231,26 @@ Create or open a custom app in the Shopify admin or Partner dashboard. Install i
 - `read_customers`
 - `read_orders`
 
-### 5.2 Connect in Settings
+### 5.2 Login redirect in Shopify
 
-1. Settings → Shopify → **Connect**.
-2. Enter shop subdomain, Client ID, and Client Secret.
-3. Click **Connect**.
+Shopify login will not complete unless this URL is saved on the app first.
 
-### 5.3 Confirm
+1. Settings → Callback URLs → Shopify → copy **Login redirect**.
+2. Open the app in the Shopify Dev Dashboard → **Settings**.
+3. Paste the copied value into **Allowed redirection URL(s)**. The host and path must match exactly.
+4. Save in Shopify.
+
+### 5.3 Connect in Settings
+
+1. Confirm step 5.2 is saved. The app must already be installed on the store (`read_customers`, `read_orders`).
+2. Settings → Shopify → **Connect**.
+3. Enter shop subdomain, Client ID, and Client Secret.
+4. Click **Connect**. Shopify may open for you to approve access. Approve while logged into that store.
+5. You return to Settings. Shopify is connected.
+
+If Connect fails with a redirect error, the URL in step 5.2 does not match Login redirect.
+
+### 5.4 Confirm
 
 Open a contact in **Inbox** that has an email or WhatsApp number that exists on the Shopify customer. The customer panel should show profile and orders.
 

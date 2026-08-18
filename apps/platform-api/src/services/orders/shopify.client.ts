@@ -33,6 +33,17 @@ export function toE164Phone(value?: string | null): string | null {
   return national ? `+${dial}${national}` : `+${digits}`;
 }
 
+function asMeta(value: unknown): Record<string, unknown> {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : {};
+}
+
+function storedAccessToken(metadata: unknown): string {
+  const token = asMeta(metadata).accessToken;
+  return typeof token === "string" ? token.trim() : "";
+}
+
 /** DB / Settings only — never falls back to .env. */
 export async function resolveShopifyCredentials(): Promise<ShopifyCreds | null> {
   try {
@@ -49,7 +60,21 @@ export async function resolveShopifyCredentials(): Promise<ShopifyCreds | null> 
 }
 
 export async function isShopifyConfigured(): Promise<boolean> {
-  return Boolean(await resolveShopifyCredentials());
+  try {
+    const row = await prisma.shopifyConfig.findUnique({ where: { id: "shopify_default" } });
+    if (!row) return false;
+    const shop = normalizeShop(row.shop?.trim() || "");
+    const clientId = row.clientId?.trim() || "";
+    const clientSecret = row.clientSecret?.trim() || "";
+    if (!shop || !clientId || !clientSecret) return false;
+    return Boolean(storedAccessToken(row.metadata));
+  } catch {
+    return false;
+  }
+}
+
+export function clearShopifyTokenCache() {
+  tokenCache = null;
 }
 
 /** @deprecated Prefer isShopifyConfigured() — sync helper no longer reads .env. */
@@ -68,6 +93,13 @@ async function fetchAccessToken(creds: ShopifyCreds): Promise<string> {
   const key = `${creds.shop}:${creds.clientId}`;
   if (tokenCache && tokenCache.key === key && tokenCache.expiresAt > now + 60_000) {
     return tokenCache.accessToken;
+  }
+
+  const row = await prisma.shopifyConfig.findUnique({ where: { id: "shopify_default" } });
+  const installed = storedAccessToken(row?.metadata);
+  if (installed) {
+    tokenCache = { key, accessToken: installed, expiresAt: now + 24 * 60 * 60 * 1000 };
+    return installed;
   }
 
   const res = await fetch(`https://${shopifyShopDomain(creds.shop)}/admin/oauth/access_token`, {

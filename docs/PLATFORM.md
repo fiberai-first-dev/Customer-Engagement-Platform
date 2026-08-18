@@ -124,19 +124,20 @@ Settings → Channels: Connect WhatsApp | Instagram | Gmail (modal; required fie
         → Instagram: save App ID/Secret/Verify → OAuth → CEP auto-stores Access Token + Username
         → Gmail: save Client ID/Secret/Topic → OAuth → CEP auto-stores Refresh + Access Token
         → (Gmail) watch starts after Connect and is renewed while the API is up
-        → POST /api/v1/oauth/{gmail|instagram}/start   (JWT)
-        → Redirect to Google / Meta consent
-        → GET /oauth/{gmail|instagram}/callback          (public)
-        → Exchange code → write tokens into inbox.channelConfig (server only; redacted to UI)
+        → Shopify: save shop / Client ID / Secret → OAuth (merchant stores) or client credentials (same-org shop)
+        → POST /api/v1/oauth/{gmail|instagram|shopify}/start   (JWT)
+        → Redirect to Google / Meta / Shopify consent
+        → GET /oauth/{gmail|instagram|shopify}/callback          (public)
+        → Exchange code → write tokens (server only; redacted to UI)
         → Redirect → PLATFORM_WEB_BASE_URL/settings?oauth=…&status=success
 Settings → Disconnect clears that channel’s credentials
-Settings → Shopify is listed separately for store customers and orders
+Settings → Callback URLs includes Shopify **Login redirect** (`/oauth/shopify/callback`)
 ```
 
 After a successful Connect, the browser lands on (demo example):
 
 ```text
-https://cep-demo.fybud.com/settings?oauth=gmail|instagram&status=success
+https://cep-demo.fybud.com/settings?oauth=gmail|instagram|shopify&status=success
 ```
 
 | Endpoint | Auth | Purpose |
@@ -144,8 +145,10 @@ https://cep-demo.fybud.com/settings?oauth=gmail|instagram&status=success
 | `GET /api/v1/oauth/hints` | JWT | Redirect URIs + webhook bases to paste in consoles |
 | `POST /api/v1/oauth/gmail/start` | JWT | Returns Google consent URL |
 | `POST /api/v1/oauth/instagram/start` | JWT | Returns Instagram consent URL |
+| `POST /api/v1/oauth/shopify/start` | JWT | Client credentials if allowed; otherwise Shopify consent URL |
 | `GET /oauth/gmail/callback` | Public | Code exchange → save refresh/access tokens |
 | `GET /oauth/instagram/callback` | Public | Code exchange → save long-lived token + subscribe apps |
+| `GET /oauth/shopify/callback` | Public | Code exchange → save shop access token |
 
 Signed JWT `state` binds the callback to the correct inbox (20 min TTL).
 
@@ -193,7 +196,7 @@ Shared types: `NormalizedInboundMessage`, per-channel config interfaces in `adap
 | `/inbox` | Omnichannel thread UI (list + channel tabs + customer panel). **Clear chat** removes a whole channel thread; **Select → Delete** removes chosen messages. Both tombstone provider ids so sync cannot resurrect them. |
 | `/contacts` | Contact directory (multi email / WhatsApp) |
 | `/dashboard` | Lightweight metrics |
-| `/settings` | Channel + Shopify credentials, Callback URLs. **Connect** opens a modal (disabled until required fields are filled); OAuth for Gmail/Instagram runs after Connect. **Disconnect** clears that channel’s credentials. **Start Gmail watch** after Gmail is connected. |
+| `/settings` | Channel + Shopify credentials, Callback URLs (WhatsApp, Instagram, Gmail, Shopify). **Connect** opens a modal (disabled until required fields are filled); OAuth for Gmail, Instagram, and Shopify runs after Connect. **Disconnect** clears that channel’s credentials. |
 
 API client: `apps/platform-web/src/api/index.ts` (React Query + Zustand auth token).
 

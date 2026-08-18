@@ -347,6 +347,7 @@ export interface OAuthHints {
   instagramRedirectUri: string;
   instagramDeauthorizeUri?: string;
   instagramDataDeletionUri?: string;
+  shopifyRedirectUri?: string;
   privacyUrl?: string;
   webBaseUrl: string;
   apiBaseUrl: string;
@@ -371,6 +372,17 @@ export async function startChannelOAuth(
   return request<{ url: string; redirectUri: string }>(`/api/v1/oauth/${provider}/start`, {
     method: "POST",
     body: JSON.stringify({ inboxId, ...credentials }),
+  });
+}
+
+export async function startShopifyOAuth(credentials: {
+  shop: string;
+  clientId: string;
+  clientSecret: string;
+}): Promise<{ url?: string; redirectUri: string; connected?: boolean }> {
+  return request(`/api/v1/oauth/shopify/start`, {
+    method: "POST",
+    body: JSON.stringify(credentials),
   });
 }
 

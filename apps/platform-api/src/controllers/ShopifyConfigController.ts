@@ -1,16 +1,29 @@
 import type { FastifyRequest, FastifyReply } from "fastify";
 import { prisma } from "../config/db.js";
 import { SECRET_PLACEHOLDER } from "../services/SecretRedaction.js";
+import { clearShopifyTokenCache } from "../services/orders/shopify.client.js";
+
+function asMeta(value: unknown): Record<string, unknown> {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : {};
+}
 
 function shape(row: {
   id: string;
   shop: string;
   clientId: string;
   clientSecret: string;
+  metadata?: unknown;
   updatedAt: Date;
 }) {
+  const meta = asMeta(row.metadata);
+  const hasToken = typeof meta.accessToken === "string" && meta.accessToken.trim().length > 0;
   const connected = Boolean(
-    row.shop?.trim() && row.clientId?.trim() && row.clientSecret?.trim(),
+    row.shop?.trim() &&
+      row.clientId?.trim() &&
+      row.clientSecret?.trim() &&
+      (hasToken || meta.authMode === "client_credentials"),
   );
   return {
     id: row.id,
@@ -45,9 +58,10 @@ export class ShopifyConfigController {
       (await prisma.shopifyConfig.create({ data: { id: "shopify_default" } }));
 
     if (body.disconnect) {
+      clearShopifyTokenCache();
       const row = await prisma.shopifyConfig.update({
         where: { id: "shopify_default" },
-        data: { shop: "", clientId: "", clientSecret: "" },
+        data: { shop: "", clientId: "", clientSecret: "", metadata: {} },
       });
       return reply.send(shape(row));
     }
