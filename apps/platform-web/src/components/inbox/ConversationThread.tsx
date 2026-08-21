@@ -1,5 +1,4 @@
-import { useEffect, useRef, useState } from "react";
-import { format } from "date-fns";
+import { Fragment, useEffect, useRef, useState } from "react";
 import {
   AlertCircle,
   CheckCircle2,
@@ -18,10 +17,14 @@ import {
   CHANNELS,
   channelLabel,
   cn,
+  emailThreadLabel,
+  formatBubbleTime,
+  formatDaySeparator,
   formatIdentities,
   identitiesFor,
   initials,
   isActiveStatus,
+  isSameCalendarDay,
 } from "./utils";
 
 const LONG_MESSAGE_CHARS = 480;
@@ -58,8 +61,10 @@ function MessageBody({
           )}
           onClick={(e) => {
             e.stopPropagation();
+            e.preventDefault();
             setExpanded((v) => !v);
           }}
+          onKeyDown={(e) => e.stopPropagation()}
         >
           {expanded ? "Show less" : "Read more"}
         </button>
@@ -75,6 +80,11 @@ type Props = {
   onTabChange: (channel: ChannelType) => void;
   conversationsByChannel: Partial<Record<ChannelType, Conversation>>;
   selectedConversation: Conversation | null;
+  /** All Gmail threads for this contact (email channel only). */
+  emailThreads?: Conversation[];
+  composingNewEmail?: boolean;
+  onSelectEmailThread?: (conversationId: string) => void;
+  onComposeNewEmail?: () => void;
   messages: Message[] | undefined;
   loadingMessages: boolean;
   onResolve: () => void;
@@ -97,6 +107,10 @@ export function ConversationThread({
   onTabChange,
   conversationsByChannel,
   selectedConversation,
+  emailThreads = [],
+  composingNewEmail = false,
+  onSelectEmailThread,
+  onComposeNewEmail,
   messages,
   loadingMessages,
   onResolve,
@@ -124,18 +138,30 @@ export function ConversationThread({
   );
   const busy = resolving || clearingChat || deletingMessages;
   const hasMessages = Boolean(messages?.length);
+  const isNewEmailCompose =
+    activeTab === "email" &&
+    (composingNewEmail || selectedConversation?.id.endsWith(":email:new"));
   const showChatMenu =
     Boolean(selectedConversation) &&
     !selecting &&
+    !isNewEmailCompose &&
     (Boolean(onDeleteMessages && hasMessages) || Boolean(onClearChat));
 
   useEffect(() => {
     setDraft("");
-    setSubject("");
     setSelecting(false);
     setSelectedIds(new Set());
     setMenuOpen(false);
-  }, [selectedConversation?.id, activeTab]);
+    if (isNewEmailCompose) {
+      setSubject("");
+    } else if (activeTab === "email" && selectedConversation?.threadSubject) {
+      // Prefill reply subject from the selected thread; agent can still edit.
+      const base = selectedConversation.threadSubject;
+      setSubject(base.toLowerCase().startsWith("re:") ? base : `Re: ${base}`);
+    } else {
+      setSubject("");
+    }
+  }, [selectedConversation?.id, activeTab, isNewEmailCompose, selectedConversation?.threadSubject]);
 
   useEffect(() => {
     if (!messages?.length) return;
@@ -356,13 +382,19 @@ export function ConversationThread({
           ? CHANNELS.filter((c) => enabledChannels.includes(c.id))
           : CHANNELS
         ).map((channel) => {
-          const conversation = conversationsByChannel[channel.id];
+          const conversation =
+            channel.id === "email"
+              ? emailThreads[0] || conversationsByChannel[channel.id]
+              : conversationsByChannel[channel.id];
           const linkedIds = contact ? identitiesFor(contact, channel.id) : [];
           const canStart =
             channel.id === "email" || channel.id === "whatsapp"
               ? linkedIds.length > 0
               : false;
-          const hasConversation = Boolean(conversation);
+          const hasConversation =
+            channel.id === "email"
+              ? emailThreads.length > 0 || Boolean(conversationsByChannel.email)
+              : Boolean(conversation);
           const tabAvailable = hasConversation || canStart;
           const channelNeedsAttention = conversation
             ? isActiveStatus(conversation.status)
@@ -405,6 +437,56 @@ export function ConversationThread({
           );
         })}
       </div>
+
+      {activeTab === "email" && (emailThreads.length > 0 || onComposeNewEmail) && (
+        <div className="flex shrink-0 items-center gap-2 border-b border-border bg-muted/20 px-3 py-2">
+          <div
+            className="flex min-w-0 flex-1 gap-1.5 overflow-x-auto scrollbar-hide"
+            role="tablist"
+            aria-label="Email threads"
+          >
+            {emailThreads.map((thread) => {
+              const selected =
+                !isNewEmailCompose && selectedConversation?.id === thread.id;
+              const label = emailThreadLabel(thread);
+              return (
+                <button
+                  key={thread.id}
+                  type="button"
+                  role="tab"
+                  aria-selected={selected}
+                  title={label}
+                  onClick={() => onSelectEmailThread?.(thread.id)}
+                  className={cn(
+                    "max-w-[200px] shrink-0 truncate rounded-md border px-2.5 py-1.5 text-left text-xs font-medium transition-colors",
+                    selected
+                      ? "border-primary/40 bg-primary/10 text-foreground"
+                      : "border-border bg-card text-muted-foreground hover:bg-muted/60 hover:text-foreground",
+                  )}
+                >
+                  {label}
+                </button>
+              );
+            })}
+            {onComposeNewEmail && (
+              <button
+                type="button"
+                role="tab"
+                aria-selected={isNewEmailCompose}
+                onClick={() => onComposeNewEmail()}
+                className={cn(
+                  "shrink-0 rounded-md border px-2.5 py-1.5 text-xs font-medium transition-colors",
+                  isNewEmailCompose
+                    ? "border-primary/40 bg-primary/10 text-foreground"
+                    : "border-dashed border-border bg-card text-muted-foreground hover:bg-muted/60 hover:text-foreground",
+                )}
+              >
+                + New email
+              </button>
+            )}
+          </div>
+        </div>
+      )}
 
       {!selectedConversation ? (
         <div className="flex flex-1 flex-col items-center justify-center gap-3 px-6 text-center">
@@ -459,88 +541,113 @@ export function ConversationThread({
                 No messages in this conversation yet.
               </div>
             )}
-            {messages?.map((message) => {
+            {messages?.map((message, index) => {
               const incoming = message.direction === "incoming";
               const failed = !incoming && message.status === "failed";
               const isSelected = selectedIds.has(message.id);
+              const prev = index > 0 ? messages[index - 1] : null;
+              const showDaySeparator =
+                !prev || !isSameCalendarDay(prev.createdAt, message.createdAt);
+              const dayLabel = showDaySeparator
+                ? formatDaySeparator(message.createdAt)
+                : null;
               return (
-                <div
-                  key={message.id}
-                  className={cn(
-                    // WhatsApp-style: shrink to content, cap width so long text wraps
-                    "flex w-fit max-w-[min(75%,32rem)] flex-col",
-                    incoming ? "mr-auto items-start" : "ml-auto items-end",
+                <Fragment key={message.id}>
+                  {dayLabel && (
+                    <div className="flex justify-center py-1">
+                      <span className="rounded-full bg-muted px-2.5 py-0.5 text-[11px] font-medium text-muted-foreground">
+                        {dayLabel}
+                      </span>
+                    </div>
                   )}
-                >
-                  <div className="flex max-w-full items-end gap-2">
-                    {selecting && (
-                      <button
-                        type="button"
-                        aria-label={isSelected ? "Deselect message" : "Select message"}
-                        onClick={() => toggleSelected(message.id)}
-                        className={cn(
-                          "mb-1 flex h-5 w-5 shrink-0 items-center justify-center rounded border text-[10px]",
-                          isSelected
-                            ? "border-primary bg-primary text-primary-foreground"
-                            : "border-border bg-background text-transparent",
-                        )}
-                      >
-                        ✓
-                      </button>
+                  <div
+                    className={cn(
+                      // WhatsApp-style: shrink to content, cap width so long text wraps
+                      "flex w-fit max-w-[min(75%,32rem)] flex-col",
+                      incoming ? "mr-auto items-start" : "ml-auto items-end",
                     )}
-                    <button
-                      type="button"
-                      disabled={!selecting}
-                      onClick={() => selecting && toggleSelected(message.id)}
-                      className={cn(
-                        "min-w-0 max-w-full overflow-hidden rounded-xl px-3.5 py-2.5 text-left text-sm transition-shadow",
-                        incoming
-                          ? "rounded-tl-sm border border-border bg-card text-foreground"
-                          : failed
-                            ? "rounded-tr-sm border border-destructive/40 bg-destructive/10 text-foreground"
-                            : "rounded-tr-sm bg-primary text-primary-foreground",
-                        selecting && "cursor-pointer",
-                        selecting && isSelected && "ring-2 ring-primary ring-offset-1",
-                        !selecting && "cursor-default",
+                  >
+                    <div className="flex max-w-full items-end gap-2">
+                      {selecting && (
+                        <button
+                          type="button"
+                          aria-label={isSelected ? "Deselect message" : "Select message"}
+                          onClick={() => toggleSelected(message.id)}
+                          className={cn(
+                            "mb-1 flex h-5 w-5 shrink-0 items-center justify-center rounded border text-[10px]",
+                            isSelected
+                              ? "border-primary bg-primary text-primary-foreground"
+                              : "border-border bg-background text-transparent",
+                          )}
+                        >
+                          ✓
+                        </button>
                       )}
-                    >
-                      {message.subject && (
-                        <div className="mb-2 border-b border-border/50 pb-2">
-                          <span className="mr-2 text-[10px] font-bold uppercase tracking-wider opacity-60">
-                            Subject:
-                          </span>
-                          <strong className="break-words text-[13px] font-semibold opacity-90 [overflow-wrap:anywhere]">
-                            {message.subject}
-                          </strong>
-                        </div>
-                      )}
-                      <MessageBody
-                        content={message.content}
-                        showBodyLabel={Boolean(message.subject)}
-                        incoming={incoming || failed}
-                      />
                       <div
+                        role={selecting ? "button" : undefined}
+                        tabIndex={selecting ? 0 : undefined}
+                        onClick={() => selecting && toggleSelected(message.id)}
+                        onKeyDown={(e) => {
+                          if (!selecting) return;
+                          if (e.key === "Enter" || e.key === " ") {
+                            e.preventDefault();
+                            toggleSelected(message.id);
+                          }
+                        }}
                         className={cn(
-                          "mt-1 flex items-center justify-end gap-1 text-[10px] opacity-70",
-                          incoming || failed ? "text-muted-foreground" : "text-primary-foreground",
+                          "min-w-0 max-w-full overflow-hidden rounded-xl px-3.5 py-2.5 text-left text-sm transition-shadow",
+                          incoming
+                            ? "rounded-tl-sm border border-border bg-card text-foreground"
+                            : failed
+                              ? "rounded-tr-sm border border-destructive/40 bg-destructive/10 text-foreground"
+                              : "rounded-tr-sm bg-primary text-primary-foreground",
+                          selecting && "cursor-pointer",
+                          selecting && isSelected && "ring-2 ring-primary ring-offset-1",
+                          !selecting && "cursor-default",
                         )}
                       >
-                        <span>{format(new Date(message.createdAt), "h:mm a")}</span>
-                        {!incoming &&
-                          (failed ? (
-                            <AlertCircle className="h-3 w-3 text-destructive" />
-                          ) : message.status === "queued" ? (
-                            <Loader2 className="h-3 w-3 animate-spin" />
-                          ) : (
-                            <CheckCircle2 className="h-3 w-3" />
-                          ))}
+                        {message.subject && (
+                          <div className="mb-2 border-b border-border/50 pb-2">
+                            <span className="mr-2 text-[10px] font-bold uppercase tracking-wider opacity-60">
+                              Subject:
+                            </span>
+                            <strong className="break-words text-[13px] font-semibold opacity-90 [overflow-wrap:anywhere]">
+                              {message.subject}
+                            </strong>
+                          </div>
+                        )}
+                        <MessageBody
+                          content={message.content}
+                          showBodyLabel={Boolean(message.subject)}
+                          incoming={incoming || failed}
+                        />
+                        <div
+                          className={cn(
+                            "mt-1 flex items-center justify-end gap-1 text-[10px] opacity-70",
+                            incoming || failed
+                              ? "text-muted-foreground"
+                              : "text-primary-foreground",
+                          )}
+                        >
+                          <span title={new Date(message.createdAt).toLocaleString()}>
+                            {formatBubbleTime(message.createdAt)}
+                          </span>
+                          {!incoming &&
+                            (failed ? (
+                              <AlertCircle className="h-3 w-3 text-destructive" />
+                            ) : message.status === "queued" ? (
+                              <Loader2 className="h-3 w-3 animate-spin" />
+                            ) : (
+                              <CheckCircle2 className="h-3 w-3" />
+                            ))}
+                        </div>
                       </div>
-                    </button>
+                    </div>
+                    {failed && (
+                      <p className="mt-1 text-[11px] text-destructive">Failed to send</p>
+                    )}
                   </div>
-                  {failed && (
-                    <p className="mt-1 text-[11px] text-destructive">Failed to send</p>
-                  )}
-                </div>
+                </Fragment>
               );
             })}
             <div ref={messagesEndRef} />
@@ -557,7 +664,9 @@ export function ConversationThread({
                 {activeTab === "email" && (
                   <input
                     type="text"
-                    placeholder="Subject (optional)"
+                    placeholder={
+                      isNewEmailCompose ? "Subject" : "Subject (reply keeps this thread)"
+                    }
                     value={subject}
                     onChange={(e) => setSubject(e.target.value)}
                     className="w-full border-b border-border bg-transparent px-2 py-2 text-sm font-semibold placeholder:font-normal focus:outline-none"
@@ -574,9 +683,11 @@ export function ConversationThread({
                       }
                     }}
                     placeholder={
-                      isLinkedAwaitingFirst && canInitiateChannel
-                        ? `Message on ${channelLabel(activeTab)}…`
-                        : `Reply on ${channelLabel(activeTab)}…`
+                      isNewEmailCompose
+                        ? "Write a new email…"
+                        : isLinkedAwaitingFirst && canInitiateChannel
+                          ? `Message on ${channelLabel(activeTab)}…`
+                          : `Reply on ${channelLabel(activeTab)}…`
                     }
                     rows={1}
                     className="max-h-[120px] min-h-[40px] flex-1 resize-none bg-transparent px-2 py-2 text-sm leading-relaxed focus:outline-none"

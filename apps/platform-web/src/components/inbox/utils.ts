@@ -157,6 +157,67 @@ export function formatMessageTime(dateString: string | null | undefined): string
   }
 }
 
+function calendarDayKey(date: Date): string {
+  return `${date.getFullYear()}-${date.getMonth()}-${date.getDate()}`;
+}
+
+export function isSameCalendarDay(
+  a: string | Date | null | undefined,
+  b: string | Date | null | undefined,
+): boolean {
+  if (!a || !b) return false;
+  try {
+    return calendarDayKey(new Date(a)) === calendarDayKey(new Date(b));
+  } catch {
+    return false;
+  }
+}
+
+/** Bubble footer: time today; date + time when older. */
+export function formatBubbleTime(dateString: string | null | undefined): string {
+  if (!dateString) return "";
+  try {
+    const date = new Date(dateString);
+    const now = new Date();
+    const time = date.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+    if (isSameCalendarDay(date, now)) return time;
+
+    const sameYear = date.getFullYear() === now.getFullYear();
+    const day = date.toLocaleDateString([], {
+      month: "short",
+      day: "numeric",
+      ...(sameYear ? {} : { year: "numeric" }),
+    });
+    return `${day}, ${time}`;
+  } catch {
+    return "";
+  }
+}
+
+/** Day-break label between messages: Today / Yesterday / Wed, Aug 19. */
+export function formatDaySeparator(dateString: string | null | undefined): string {
+  if (!dateString) return "";
+  try {
+    const date = new Date(dateString);
+    const now = new Date();
+    if (isSameCalendarDay(date, now)) return "Today";
+
+    const yesterday = new Date(now);
+    yesterday.setDate(now.getDate() - 1);
+    if (isSameCalendarDay(date, yesterday)) return "Yesterday";
+
+    const sameYear = date.getFullYear() === now.getFullYear();
+    return date.toLocaleDateString([], {
+      weekday: "short",
+      month: "short",
+      day: "numeric",
+      ...(sameYear ? {} : { year: "numeric" }),
+    });
+  } catch {
+    return "";
+  }
+}
+
 export function statusTone(status: ConversationStatus): string {
   if (status === "open") return "bg-blue-500/10 text-blue-600 border-blue-500/20";
   if (status === "pending") return "bg-amber-500/10 text-amber-700 border-amber-500/20";
@@ -219,7 +280,10 @@ export function contactDisplayName(contact: {
 }
 
 export function initials(name: string): string {
-  return name.trim().charAt(0).toUpperCase() || "?";
+  // Skip leading @ / + so Instagram handles and phone-style labels use a real letter.
+  const cleaned = name.trim().replace(/^[@+\s]+/, "");
+  const match = cleaned.match(/[A-Za-z0-9]/);
+  return match ? match[0]!.toUpperCase() : "?";
 }
 
 export function isActiveStatus(status: ConversationStatus): boolean {
@@ -256,6 +320,49 @@ export function pickPrimaryConversation<
     return bTime - aTime;
   });
   return sorted.find((c) => isActiveStatus(c.status)) ?? sorted[0]!;
+}
+
+/** List row for inbox: scoped channel when filtered, else primary across channels. */
+export function pickListConversation<
+  T extends {
+    status: ConversationStatus;
+    lastMessageAt?: string | null;
+    channelType: ChannelType;
+  },
+>(conversations: T[], channelFilter: "all" | ChannelType): T | null {
+  if (!conversations.length) return null;
+  if (channelFilter === "all") return pickPrimaryConversation(conversations);
+  const scoped = conversations.filter((c) => c.channelType === channelFilter);
+  if (!scoped.length) return null;
+  return pickPrimaryConversation(scoped);
+}
+
+/** Newest email thread for a contact (or null). */
+export function pickPrimaryEmailThread<
+  T extends {
+    channelType: ChannelType;
+    status: ConversationStatus;
+    lastMessageAt?: string | null;
+  },
+>(conversations: T[]): T | null {
+  const email = conversations.filter((c) => c.channelType === "email");
+  if (!email.length) return null;
+  return pickPrimaryConversation(email);
+}
+
+/** Subject label for email thread chips. */
+export function emailThreadLabel(conversation: {
+  threadSubject?: string | null;
+  messages?: { subject?: string | null; content?: string }[];
+}): string {
+  if (conversation.threadSubject?.trim()) return conversation.threadSubject.trim();
+  const subject = conversation.messages?.[0]?.subject?.trim();
+  if (subject) {
+    return subject.replace(/^(?:(?:re|fw|fwd)\s*:\s*)+/i, "").trim() || "(no subject)";
+  }
+  const preview = conversation.messages?.[0]?.content?.trim();
+  if (preview) return preview.length > 40 ? `${preview.slice(0, 37)}…` : preview;
+  return "(no subject)";
 }
 
 export function unresolvedChannels<

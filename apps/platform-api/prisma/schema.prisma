@@ -168,6 +168,8 @@ model Message {
   contentType ContentType      @default(text) @map("content_type")
   subject     String?
   externalId  String?          @map("external_id")
+  /// Gmail thread id (email). Null for WhatsApp / Instagram.
+  externalThreadId String?     @map("external_thread_id")
   status      MessageStatus    @default(received)
   rawPayload  Json?            @map("raw_payload")
   createdAt   DateTime         @default(now()) @map("created_at")
@@ -176,6 +178,7 @@ model Message {
   @@index([customerId, createdAt])
   @@index([channelType, channelId, createdAt])
   @@index([customerId, channelType])
+  @@index([customerId, channelType, externalThreadId, createdAt])
   @@map("messages")
 }
 

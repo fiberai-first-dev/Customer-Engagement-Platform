@@ -112,6 +112,51 @@ function buildRawEmail(input: {
   return Buffer.from(lines.join("\r\n")).toString("base64url");
 }
 
+/** True for RFC Message-IDs; false for Gmail API opaque ids used as Message.externalId. */
+export function looksLikeRfcMessageId(value: string): boolean {
+  const v = value.trim();
+  return v.includes("@") || (v.startsWith("<") && v.endsWith(">"));
+}
+
+/**
+ * Pull email-client threading fields from a stored Gmail API message (rawPayload).
+ * Gmail API `id` / `threadId` are separate from RFC Message-ID headers.
+ */
+export function extractEmailThreading(raw: unknown): {
+  rfcMessageId?: string;
+  references?: string;
+  gmailThreadId?: string;
+} {
+  const msg = asRecord(raw);
+  if (!msg) return {};
+
+  const gmailThreadId =
+    typeof msg.threadId === "string" && msg.threadId.trim()
+      ? msg.threadId.trim()
+      : undefined;
+
+  const payload = asRecord(msg.payload);
+  const headers = Array.isArray(payload?.headers)
+    ? (payload.headers as gmail_v1.Schema$MessagePartHeader[])
+    : undefined;
+
+  const rfcMessageId = getHeader(headers, "message-id").trim() || undefined;
+  const references = getHeader(headers, "references").trim() || undefined;
+
+  return { rfcMessageId, references, gmailThreadId };
+}
+
+/** Build References for a reply: prior chain + parent Message-ID. */
+export function buildReplyReferences(
+  parentMessageId?: string,
+  parentReferences?: string,
+): string | undefined {
+  if (!parentMessageId) return parentReferences || undefined;
+  if (!parentReferences) return parentMessageId;
+  if (parentReferences.includes(parentMessageId)) return parentReferences;
+  return `${parentReferences} ${parentMessageId}`;
+}
+
 function parseGmailApiMessage(msg: gmail_v1.Schema$Message): NormalizedInboundMessage[] {
   const headers = msg.payload?.headers || [];
   const labels = msg.labelIds ?? [];
@@ -245,12 +290,25 @@ export const emailAdapter: ChannelAdapter<EmailChannelConfig> = {
     try {
       const gmail = getEmailClient(config);
       const to = extractEmailAddress(message.to);
+
+      // Only put RFC Message-IDs in MIME headers. Gmail API ids break client threading.
+      const inReplyTo =
+        message.replyToExternalId && looksLikeRfcMessageId(message.replyToExternalId)
+          ? message.replyToExternalId
+          : undefined;
+      const references =
+        message.references &&
+        (looksLikeRfcMessageId(message.references.split(/\s+/).pop() || "") ||
+          message.references.includes("@"))
+          ? message.references
+          : inReplyTo;
+
       const raw = buildRawEmail({
         to,
         subject: message.subject || "Message from FiberAI",
         content: message.content,
-        inReplyTo: message.replyToExternalId,
-        references: message.replyToExternalId ?? message.threadId,
+        inReplyTo,
+        references,
       });
 
       const res = await gmail.users.messages.send({
@@ -261,11 +319,27 @@ export const emailAdapter: ChannelAdapter<EmailChannelConfig> = {
         },
       });
 
+      // Enrich with Message-ID so later CEP replies can chain In-Reply-To correctly.
+      let sentRaw: gmail_v1.Schema$Message = res.data;
+      if (res.data.id) {
+        try {
+          const full = await gmail.users.messages.get({
+            userId: "me",
+            id: res.data.id,
+            format: "metadata",
+            metadataHeaders: ["Message-ID", "References", "In-Reply-To", "Subject"],
+          });
+          if (full.data) sentRaw = full.data;
+        } catch {
+          // send already succeeded; metadata fetch is best-effort
+        }
+      }
+
       return {
         ok: true,
         externalId: res.data.id || undefined,
         status: "sent",
-        raw: res.data,
+        raw: sentRaw,
       };
     } catch (err) {
       return {

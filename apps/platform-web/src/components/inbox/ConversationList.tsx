@@ -14,6 +14,8 @@ type Props = {
   channelConversationsByContact?: Record<string, Conversation[]>;
   selectedContactId: string | null;
   onSelect: (conversation: Conversation) => void;
+  /** Shown when the filtered list is empty. */
+  emptyHint?: string;
 };
 
 function unresolvedChannelCount(
@@ -36,13 +38,15 @@ export function ConversationList({
   channelConversationsByContact,
   selectedContactId,
   onSelect,
+  emptyHint,
 }: Props) {
   if (conversations.length === 0) {
     return (
       <div className="flex flex-1 flex-col items-center justify-center gap-2 p-8 text-center">
         <p className="text-sm font-medium text-foreground">No conversations</p>
         <p className="text-xs text-muted-foreground">
-          Unresolved contacts appear here until every thread is resolved.
+          {emptyHint ??
+            "Unresolved contacts appear here until every thread is resolved."}
         </p>
       </div>
     );
@@ -53,7 +57,16 @@ export function ConversationList({
       <AnimatePresence initial={false}>
         {conversations.map((conversation) => {
           const name = contactDisplayName(conversation.contact);
-          const preview = conversation.messages?.[0]?.content ?? "No messages yet";
+          const subjectHint =
+            conversation.channelType === "email"
+              ? conversation.threadSubject || conversation.messages?.[0]?.subject
+              : null;
+          const bodyPreview = conversation.messages?.[0]?.content;
+          const preview = subjectHint
+            ? bodyPreview
+              ? `${subjectHint} — ${bodyPreview}`
+              : subjectHint
+            : bodyPreview ?? "No messages yet";
           const selected = selectedContactId === conversation.contactId;
           const isActive = conversation.contact.globalStatus !== "resolved";
           const openCount = unresolvedChannelCount(
