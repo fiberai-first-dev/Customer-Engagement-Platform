@@ -1,5 +1,4 @@
-import { useEffect, useRef, useState } from "react";
-import { format } from "date-fns";
+import { Fragment, useEffect, useRef, useState } from "react";
 import {
   AlertCircle,
   CheckCircle2,
@@ -18,10 +17,13 @@ import {
   CHANNELS,
   channelLabel,
   cn,
+  formatBubbleTime,
+  formatDaySeparator,
   formatIdentities,
   identitiesFor,
   initials,
   isActiveStatus,
+  isSameCalendarDay,
 } from "./utils";
 
 const LONG_MESSAGE_CHARS = 480;
@@ -58,8 +60,10 @@ function MessageBody({
           )}
           onClick={(e) => {
             e.stopPropagation();
+            e.preventDefault();
             setExpanded((v) => !v);
           }}
+          onKeyDown={(e) => e.stopPropagation()}
         >
           {expanded ? "Show less" : "Read more"}
         </button>
@@ -459,88 +463,113 @@ export function ConversationThread({
                 No messages in this conversation yet.
               </div>
             )}
-            {messages?.map((message) => {
+            {messages?.map((message, index) => {
               const incoming = message.direction === "incoming";
               const failed = !incoming && message.status === "failed";
               const isSelected = selectedIds.has(message.id);
+              const prev = index > 0 ? messages[index - 1] : null;
+              const showDaySeparator =
+                !prev || !isSameCalendarDay(prev.createdAt, message.createdAt);
+              const dayLabel = showDaySeparator
+                ? formatDaySeparator(message.createdAt)
+                : null;
               return (
-                <div
-                  key={message.id}
-                  className={cn(
-                    // WhatsApp-style: shrink to content, cap width so long text wraps
-                    "flex w-fit max-w-[min(75%,32rem)] flex-col",
-                    incoming ? "mr-auto items-start" : "ml-auto items-end",
+                <Fragment key={message.id}>
+                  {dayLabel && (
+                    <div className="flex justify-center py-1">
+                      <span className="rounded-full bg-muted px-2.5 py-0.5 text-[11px] font-medium text-muted-foreground">
+                        {dayLabel}
+                      </span>
+                    </div>
                   )}
-                >
-                  <div className="flex max-w-full items-end gap-2">
-                    {selecting && (
-                      <button
-                        type="button"
-                        aria-label={isSelected ? "Deselect message" : "Select message"}
-                        onClick={() => toggleSelected(message.id)}
-                        className={cn(
-                          "mb-1 flex h-5 w-5 shrink-0 items-center justify-center rounded border text-[10px]",
-                          isSelected
-                            ? "border-primary bg-primary text-primary-foreground"
-                            : "border-border bg-background text-transparent",
-                        )}
-                      >
-                        ✓
-                      </button>
+                  <div
+                    className={cn(
+                      // WhatsApp-style: shrink to content, cap width so long text wraps
+                      "flex w-fit max-w-[min(75%,32rem)] flex-col",
+                      incoming ? "mr-auto items-start" : "ml-auto items-end",
                     )}
-                    <button
-                      type="button"
-                      disabled={!selecting}
-                      onClick={() => selecting && toggleSelected(message.id)}
-                      className={cn(
-                        "min-w-0 max-w-full overflow-hidden rounded-xl px-3.5 py-2.5 text-left text-sm transition-shadow",
-                        incoming
-                          ? "rounded-tl-sm border border-border bg-card text-foreground"
-                          : failed
-                            ? "rounded-tr-sm border border-destructive/40 bg-destructive/10 text-foreground"
-                            : "rounded-tr-sm bg-primary text-primary-foreground",
-                        selecting && "cursor-pointer",
-                        selecting && isSelected && "ring-2 ring-primary ring-offset-1",
-                        !selecting && "cursor-default",
+                  >
+                    <div className="flex max-w-full items-end gap-2">
+                      {selecting && (
+                        <button
+                          type="button"
+                          aria-label={isSelected ? "Deselect message" : "Select message"}
+                          onClick={() => toggleSelected(message.id)}
+                          className={cn(
+                            "mb-1 flex h-5 w-5 shrink-0 items-center justify-center rounded border text-[10px]",
+                            isSelected
+                              ? "border-primary bg-primary text-primary-foreground"
+                              : "border-border bg-background text-transparent",
+                          )}
+                        >
+                          ✓
+                        </button>
                       )}
-                    >
-                      {message.subject && (
-                        <div className="mb-2 border-b border-border/50 pb-2">
-                          <span className="mr-2 text-[10px] font-bold uppercase tracking-wider opacity-60">
-                            Subject:
-                          </span>
-                          <strong className="break-words text-[13px] font-semibold opacity-90 [overflow-wrap:anywhere]">
-                            {message.subject}
-                          </strong>
-                        </div>
-                      )}
-                      <MessageBody
-                        content={message.content}
-                        showBodyLabel={Boolean(message.subject)}
-                        incoming={incoming || failed}
-                      />
                       <div
+                        role={selecting ? "button" : undefined}
+                        tabIndex={selecting ? 0 : undefined}
+                        onClick={() => selecting && toggleSelected(message.id)}
+                        onKeyDown={(e) => {
+                          if (!selecting) return;
+                          if (e.key === "Enter" || e.key === " ") {
+                            e.preventDefault();
+                            toggleSelected(message.id);
+                          }
+                        }}
                         className={cn(
-                          "mt-1 flex items-center justify-end gap-1 text-[10px] opacity-70",
-                          incoming || failed ? "text-muted-foreground" : "text-primary-foreground",
+                          "min-w-0 max-w-full overflow-hidden rounded-xl px-3.5 py-2.5 text-left text-sm transition-shadow",
+                          incoming
+                            ? "rounded-tl-sm border border-border bg-card text-foreground"
+                            : failed
+                              ? "rounded-tr-sm border border-destructive/40 bg-destructive/10 text-foreground"
+                              : "rounded-tr-sm bg-primary text-primary-foreground",
+                          selecting && "cursor-pointer",
+                          selecting && isSelected && "ring-2 ring-primary ring-offset-1",
+                          !selecting && "cursor-default",
                         )}
                       >
-                        <span>{format(new Date(message.createdAt), "h:mm a")}</span>
-                        {!incoming &&
-                          (failed ? (
-                            <AlertCircle className="h-3 w-3 text-destructive" />
-                          ) : message.status === "queued" ? (
-                            <Loader2 className="h-3 w-3 animate-spin" />
-                          ) : (
-                            <CheckCircle2 className="h-3 w-3" />
-                          ))}
+                        {message.subject && (
+                          <div className="mb-2 border-b border-border/50 pb-2">
+                            <span className="mr-2 text-[10px] font-bold uppercase tracking-wider opacity-60">
+                              Subject:
+                            </span>
+                            <strong className="break-words text-[13px] font-semibold opacity-90 [overflow-wrap:anywhere]">
+                              {message.subject}
+                            </strong>
+                          </div>
+                        )}
+                        <MessageBody
+                          content={message.content}
+                          showBodyLabel={Boolean(message.subject)}
+                          incoming={incoming || failed}
+                        />
+                        <div
+                          className={cn(
+                            "mt-1 flex items-center justify-end gap-1 text-[10px] opacity-70",
+                            incoming || failed
+                              ? "text-muted-foreground"
+                              : "text-primary-foreground",
+                          )}
+                        >
+                          <span title={new Date(message.createdAt).toLocaleString()}>
+                            {formatBubbleTime(message.createdAt)}
+                          </span>
+                          {!incoming &&
+                            (failed ? (
+                              <AlertCircle className="h-3 w-3 text-destructive" />
+                            ) : message.status === "queued" ? (
+                              <Loader2 className="h-3 w-3 animate-spin" />
+                            ) : (
+                              <CheckCircle2 className="h-3 w-3" />
+                            ))}
+                        </div>
                       </div>
-                    </button>
+                    </div>
+                    {failed && (
+                      <p className="mt-1 text-[11px] text-destructive">Failed to send</p>
+                    )}
                   </div>
-                  {failed && (
-                    <p className="mt-1 text-[11px] text-destructive">Failed to send</p>
-                  )}
-                </div>
+                </Fragment>
               );
             })}
             <div ref={messagesEndRef} />

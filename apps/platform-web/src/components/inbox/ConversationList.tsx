@@ -14,6 +14,8 @@ type Props = {
   channelConversationsByContact?: Record<string, Conversation[]>;
   selectedContactId: string | null;
   onSelect: (conversation: Conversation) => void;
+  /** Shown when the filtered list is empty. */
+  emptyHint?: string;
 };
 
 function unresolvedChannelCount(
@@ -36,13 +38,15 @@ export function ConversationList({
   channelConversationsByContact,
   selectedContactId,
   onSelect,
+  emptyHint,
 }: Props) {
   if (conversations.length === 0) {
     return (
       <div className="flex flex-1 flex-col items-center justify-center gap-2 p-8 text-center">
         <p className="text-sm font-medium text-foreground">No conversations</p>
         <p className="text-xs text-muted-foreground">
-          Unresolved contacts appear here until every thread is resolved.
+          {emptyHint ??
+            "Unresolved contacts appear here until every thread is resolved."}
         </p>
       </div>
     );
