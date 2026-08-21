@@ -57,7 +57,16 @@ export function ConversationList({
       <AnimatePresence initial={false}>
         {conversations.map((conversation) => {
           const name = contactDisplayName(conversation.contact);
-          const preview = conversation.messages?.[0]?.content ?? "No messages yet";
+          const subjectHint =
+            conversation.channelType === "email"
+              ? conversation.threadSubject || conversation.messages?.[0]?.subject
+              : null;
+          const bodyPreview = conversation.messages?.[0]?.content;
+          const preview = subjectHint
+            ? bodyPreview
+              ? `${subjectHint} — ${bodyPreview}`
+              : subjectHint
+            : bodyPreview ?? "No messages yet";
           const selected = selectedContactId === conversation.contactId;
           const isActive = conversation.contact.globalStatus !== "resolved";
           const openCount = unresolvedChannelCount(

@@ -47,9 +47,15 @@ export interface OutboundTextMessage {
   to: string;
   content: string;
   contentType?: MessageContentType;
-  /** WhatsApp/IG template or reply-to metadata */
+  /**
+   * Email: RFC Message-ID of the parent message (In-Reply-To).
+   * Must be the header Message-ID (e.g. `<CABx…@mail.gmail.com>`), never a Gmail API id.
+   */
   replyToExternalId?: string;
+  /** Email: space-separated RFC Message-ID chain for the References header */
+  references?: string;
   subject?: string;
+  /** Email: Gmail API thread id so the send stays in the same Gmail conversation */
   threadId?: string;
 }
 

@@ -45,26 +45,41 @@ export async function suppressInboundIds(input: {
 /**
  * Remove channel messages from CEP and tombstone their external ids so
  * Gmail Pub/Sub / catch-up cannot bring them back.
+ * When externalThreadId is set (email), only that Gmail thread is cleared.
  */
 export async function suppressConversation(input: {
   customerId: string;
   channelType: ChannelType;
+  externalThreadId?: string;
   reason?: string;
 }): Promise<{ suppressed: number; deletedMessages: number }> {
   const messages = await prisma.message.findMany({
     where: {
       customerId: input.customerId,
       channelType: input.channelType,
+      ...(input.externalThreadId ? { externalThreadId: input.externalThreadId } : {}),
     },
     select: { id: true, externalId: true },
   });
+
+  let clearChannelActivity = !input.externalThreadId;
+  if (input.externalThreadId) {
+    const otherThreads = await prisma.message.count({
+      where: {
+        customerId: input.customerId,
+        channelType: input.channelType,
+        NOT: { externalThreadId: input.externalThreadId },
+      },
+    });
+    clearChannelActivity = otherThreads === 0;
+  }
 
   return finalizeMessageSuppression({
     customerId: input.customerId,
     channelType: input.channelType,
     messages,
     reason: input.reason ?? "conversation_dismissed",
-    clearChannelActivity: true,
+    clearChannelActivity,
   });
 }
 
@@ -76,6 +91,7 @@ export async function suppressMessages(input: {
   customerId: string;
   channelType: ChannelType;
   messageIds: string[];
+  externalThreadId?: string;
   reason?: string;
 }): Promise<{ suppressed: number; deletedMessages: number }> {
   const ids = [...new Set(input.messageIds.filter(Boolean))];
@@ -88,6 +104,7 @@ export async function suppressMessages(input: {
       customerId: input.customerId,
       channelType: input.channelType,
       id: { in: ids },
+      ...(input.externalThreadId ? { externalThreadId: input.externalThreadId } : {}),
     },
     select: { id: true, externalId: true },
   });

@@ -126,5 +126,8 @@ export {
   getEmailClient,
   getGmailClient,
   extractEmailAddress,
+  extractEmailThreading,
+  buildReplyReferences,
+  looksLikeRfcMessageId,
   gmailAdapter,
 } from "../email/index.js";

@@ -126,6 +126,7 @@ export interface Message {
   subject: string | null;
   status: string;
   createdAt: string;
+  externalThreadId?: string | null;
 }
 
 export interface Conversation {
@@ -136,6 +137,10 @@ export interface Conversation {
   status: ConversationStatus;
   channelType: ChannelType;
   lastMessageAt: string | null;
+  /** Gmail thread id when channelType is email */
+  externalThreadId?: string | null;
+  /** Display subject for email threads (Re:/Fwd: stripped) */
+  threadSubject?: string | null;
   contact: Contact;
   inbox?: { id: string; name: string; channelType: ChannelType };
   messages?: Message[];
@@ -201,7 +206,10 @@ export const useConversations = (status?: string, inboxId?: string) =>
 export const useMessages = (conversationId?: string) =>
   useQuery({
     queryKey: ["messages", conversationId],
-    queryFn: () => request<Message[]>(`/api/v1/conversations/${conversationId}/messages`),
+    queryFn: () =>
+      request<Message[]>(
+        `/api/v1/conversations/${encodeURIComponent(conversationId!)}/messages`,
+      ),
     enabled: !!conversationId,
     refetchInterval: 5000,
     placeholderData: (previous) => previous,
@@ -212,9 +220,10 @@ export const useSendMessage = () => {
   return useMutation({
     mutationFn: ({ id, content, subject }: { id: string; content: string; subject?: string }) =>
       request<{
+        conversationId?: string;
         message: Message | null;
         result: { ok: boolean; status: string; error?: string };
-      }>(`/api/v1/conversations/${id}/messages`, {
+      }>(`/api/v1/conversations/${encodeURIComponent(id)}/messages`, {
         method: "POST",
         body: JSON.stringify({ content, subject }),
       }),
@@ -240,6 +249,7 @@ export const useSendMessage = () => {
       }
     },
     onSuccess: (data, variables, context) => {
+      const resolvedId = data.conversationId || variables.id;
       if (!data.result?.ok || !data.message) {
         // Channel send failed — drop optimistic bubble; keep draft restored by caller.
         if (context?.previous) {
@@ -251,13 +261,20 @@ export const useSendMessage = () => {
         }
         return;
       }
-      queryClient.setQueryData<Message[]>(["messages", variables.id], (current) => {
-        const list = current ?? [];
+      queryClient.setQueryData<Message[]>(["messages", resolvedId], (current) => {
+        const list =
+          resolvedId === variables.id
+            ? (current ?? [])
+            : (queryClient.getQueryData<Message[]>(["messages", resolvedId]) ?? []);
         const withoutOptimistic = list.filter((m) => !m.id.startsWith("local_"));
         const exists = withoutOptimistic.some((m) => m.id === data.message!.id);
         return exists ? withoutOptimistic : [...withoutOptimistic, data.message!];
       });
+      if (resolvedId !== variables.id) {
+        queryClient.setQueryData(["messages", variables.id], context?.previous ?? []);
+      }
       queryClient.invalidateQueries({ queryKey: ["conversations"] });
+      queryClient.invalidateQueries({ queryKey: ["messages", resolvedId] });
     },
   });
 };
@@ -266,7 +283,7 @@ export const useUpdateConversation = () => {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: ({ id, status }: { id: string; status: ConversationStatus }) =>
-      request<Conversation>(`/api/v1/conversations/${id}`, {
+      request<Conversation>(`/api/v1/conversations/${encodeURIComponent(id)}`, {
         method: "PATCH",
         body: JSON.stringify({ status }),
       }),
@@ -282,7 +299,7 @@ export const useSuppressConversation = () => {
   return useMutation({
     mutationFn: (id: string) =>
       request<{ ok: boolean; suppressed: number; deletedMessages: number }>(
-        `/api/v1/conversations/${id}/suppress`,
+        `/api/v1/conversations/${encodeURIComponent(id)}/suppress`,
         { method: "POST" },
       ),
     onSuccess: (_data, id) => {
@@ -298,7 +315,7 @@ export const useDeleteMessages = () => {
   return useMutation({
     mutationFn: ({ id, messageIds }: { id: string; messageIds: string[] }) =>
       request<{ ok: boolean; suppressed: number; deletedMessages: number }>(
-        `/api/v1/conversations/${id}/messages/delete`,
+        `/api/v1/conversations/${encodeURIComponent(id)}/messages/delete`,
         {
           method: "POST",
           body: JSON.stringify({ messageIds }),

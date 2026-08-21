@@ -17,6 +17,7 @@ import {
   CHANNELS,
   channelLabel,
   cn,
+  emailThreadLabel,
   formatBubbleTime,
   formatDaySeparator,
   formatIdentities,
@@ -79,6 +80,11 @@ type Props = {
   onTabChange: (channel: ChannelType) => void;
   conversationsByChannel: Partial<Record<ChannelType, Conversation>>;
   selectedConversation: Conversation | null;
+  /** All Gmail threads for this contact (email channel only). */
+  emailThreads?: Conversation[];
+  composingNewEmail?: boolean;
+  onSelectEmailThread?: (conversationId: string) => void;
+  onComposeNewEmail?: () => void;
   messages: Message[] | undefined;
   loadingMessages: boolean;
   onResolve: () => void;
@@ -101,6 +107,10 @@ export function ConversationThread({
   onTabChange,
   conversationsByChannel,
   selectedConversation,
+  emailThreads = [],
+  composingNewEmail = false,
+  onSelectEmailThread,
+  onComposeNewEmail,
   messages,
   loadingMessages,
   onResolve,
@@ -128,18 +138,30 @@ export function ConversationThread({
   );
   const busy = resolving || clearingChat || deletingMessages;
   const hasMessages = Boolean(messages?.length);
+  const isNewEmailCompose =
+    activeTab === "email" &&
+    (composingNewEmail || selectedConversation?.id.endsWith(":email:new"));
   const showChatMenu =
     Boolean(selectedConversation) &&
     !selecting &&
+    !isNewEmailCompose &&
     (Boolean(onDeleteMessages && hasMessages) || Boolean(onClearChat));
 
   useEffect(() => {
     setDraft("");
-    setSubject("");
     setSelecting(false);
     setSelectedIds(new Set());
     setMenuOpen(false);
-  }, [selectedConversation?.id, activeTab]);
+    if (isNewEmailCompose) {
+      setSubject("");
+    } else if (activeTab === "email" && selectedConversation?.threadSubject) {
+      // Prefill reply subject from the selected thread; agent can still edit.
+      const base = selectedConversation.threadSubject;
+      setSubject(base.toLowerCase().startsWith("re:") ? base : `Re: ${base}`);
+    } else {
+      setSubject("");
+    }
+  }, [selectedConversation?.id, activeTab, isNewEmailCompose, selectedConversation?.threadSubject]);
 
   useEffect(() => {
     if (!messages?.length) return;
@@ -360,13 +382,19 @@ export function ConversationThread({
           ? CHANNELS.filter((c) => enabledChannels.includes(c.id))
           : CHANNELS
         ).map((channel) => {
-          const conversation = conversationsByChannel[channel.id];
+          const conversation =
+            channel.id === "email"
+              ? emailThreads[0] || conversationsByChannel[channel.id]
+              : conversationsByChannel[channel.id];
           const linkedIds = contact ? identitiesFor(contact, channel.id) : [];
           const canStart =
             channel.id === "email" || channel.id === "whatsapp"
               ? linkedIds.length > 0
               : false;
-          const hasConversation = Boolean(conversation);
+          const hasConversation =
+            channel.id === "email"
+              ? emailThreads.length > 0 || Boolean(conversationsByChannel.email)
+              : Boolean(conversation);
           const tabAvailable = hasConversation || canStart;
           const channelNeedsAttention = conversation
             ? isActiveStatus(conversation.status)
@@ -409,6 +437,56 @@ export function ConversationThread({
           );
         })}
       </div>
+
+      {activeTab === "email" && (emailThreads.length > 0 || onComposeNewEmail) && (
+        <div className="flex shrink-0 items-center gap-2 border-b border-border bg-muted/20 px-3 py-2">
+          <div
+            className="flex min-w-0 flex-1 gap-1.5 overflow-x-auto scrollbar-hide"
+            role="tablist"
+            aria-label="Email threads"
+          >
+            {emailThreads.map((thread) => {
+              const selected =
+                !isNewEmailCompose && selectedConversation?.id === thread.id;
+              const label = emailThreadLabel(thread);
+              return (
+                <button
+                  key={thread.id}
+                  type="button"
+                  role="tab"
+                  aria-selected={selected}
+                  title={label}
+                  onClick={() => onSelectEmailThread?.(thread.id)}
+                  className={cn(
+                    "max-w-[200px] shrink-0 truncate rounded-md border px-2.5 py-1.5 text-left text-xs font-medium transition-colors",
+                    selected
+                      ? "border-primary/40 bg-primary/10 text-foreground"
+                      : "border-border bg-card text-muted-foreground hover:bg-muted/60 hover:text-foreground",
+                  )}
+                >
+                  {label}
+                </button>
+              );
+            })}
+            {onComposeNewEmail && (
+              <button
+                type="button"
+                role="tab"
+                aria-selected={isNewEmailCompose}
+                onClick={() => onComposeNewEmail()}
+                className={cn(
+                  "shrink-0 rounded-md border px-2.5 py-1.5 text-xs font-medium transition-colors",
+                  isNewEmailCompose
+                    ? "border-primary/40 bg-primary/10 text-foreground"
+                    : "border-dashed border-border bg-card text-muted-foreground hover:bg-muted/60 hover:text-foreground",
+                )}
+              >
+                + New email
+              </button>
+            )}
+          </div>
+        </div>
+      )}
 
       {!selectedConversation ? (
         <div className="flex flex-1 flex-col items-center justify-center gap-3 px-6 text-center">
@@ -586,7 +664,9 @@ export function ConversationThread({
                 {activeTab === "email" && (
                   <input
                     type="text"
-                    placeholder="Subject (optional)"
+                    placeholder={
+                      isNewEmailCompose ? "Subject" : "Subject (reply keeps this thread)"
+                    }
                     value={subject}
                     onChange={(e) => setSubject(e.target.value)}
                     className="w-full border-b border-border bg-transparent px-2 py-2 text-sm font-semibold placeholder:font-normal focus:outline-none"
@@ -603,9 +683,11 @@ export function ConversationThread({
                       }
                     }}
                     placeholder={
-                      isLinkedAwaitingFirst && canInitiateChannel
-                        ? `Message on ${channelLabel(activeTab)}…`
-                        : `Reply on ${channelLabel(activeTab)}…`
+                      isNewEmailCompose
+                        ? "Write a new email…"
+                        : isLinkedAwaitingFirst && canInitiateChannel
+                          ? `Message on ${channelLabel(activeTab)}…`
+                          : `Reply on ${channelLabel(activeTab)}…`
                     }
                     rows={1}
                     className="max-h-[120px] min-h-[40px] flex-1 resize-none bg-transparent px-2 py-2 text-sm leading-relaxed focus:outline-none"

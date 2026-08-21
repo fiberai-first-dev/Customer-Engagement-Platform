@@ -332,7 +332,37 @@ export function pickListConversation<
 >(conversations: T[], channelFilter: "all" | ChannelType): T | null {
   if (!conversations.length) return null;
   if (channelFilter === "all") return pickPrimaryConversation(conversations);
-  return conversations.find((c) => c.channelType === channelFilter) ?? null;
+  const scoped = conversations.filter((c) => c.channelType === channelFilter);
+  if (!scoped.length) return null;
+  return pickPrimaryConversation(scoped);
+}
+
+/** Newest email thread for a contact (or null). */
+export function pickPrimaryEmailThread<
+  T extends {
+    channelType: ChannelType;
+    status: ConversationStatus;
+    lastMessageAt?: string | null;
+  },
+>(conversations: T[]): T | null {
+  const email = conversations.filter((c) => c.channelType === "email");
+  if (!email.length) return null;
+  return pickPrimaryConversation(email);
+}
+
+/** Subject label for email thread chips. */
+export function emailThreadLabel(conversation: {
+  threadSubject?: string | null;
+  messages?: { subject?: string | null; content?: string }[];
+}): string {
+  if (conversation.threadSubject?.trim()) return conversation.threadSubject.trim();
+  const subject = conversation.messages?.[0]?.subject?.trim();
+  if (subject) {
+    return subject.replace(/^(?:(?:re|fw|fwd)\s*:\s*)+/i, "").trim() || "(no subject)";
+  }
+  const preview = conversation.messages?.[0]?.content?.trim();
+  if (preview) return preview.length > 40 ? `${preview.slice(0, 37)}…` : preview;
+  return "(no subject)";
 }
 
 export function unresolvedChannels<

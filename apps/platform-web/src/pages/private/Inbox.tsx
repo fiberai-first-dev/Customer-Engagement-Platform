@@ -30,6 +30,7 @@ import {
   isActiveStatus,
   pickListConversation,
   pickPrimaryConversation,
+  pickPrimaryEmailThread,
 } from "../../components/inbox";
 import { ConfirmDialog } from "../../components/ui/confirm-dialog";
 
@@ -77,6 +78,8 @@ export function InboxPage() {
   const [activeTab, setActiveTab] = useState<ChannelType>("whatsapp");
   const [customerContextOpen, setCustomerContextOpen] = useState(true);
   const [pendingDelete, setPendingDelete] = useState<PendingDelete | null>(null);
+  const [selectedEmailThreadId, setSelectedEmailThreadId] = useState<string | null>(null);
+  const [composingNewEmail, setComposingNewEmail] = useState(false);
   const focusedContactRef = useRef<string | null>(null);
 
   const {
@@ -140,6 +143,8 @@ export function InboxPage() {
           .join(" ")
           .toLowerCase();
         const preview = conversation.messages?.[0]?.content?.toLowerCase() ?? "";
+        const subject =
+          (conversation.threadSubject ?? conversation.messages?.[0]?.subject ?? "").toLowerCase();
         const digitsQuery = query.replace(/[^\d]/g, "");
         const digitsWhatsapp = whatsappParts.replace(/[^\d]/g, "");
         return (
@@ -147,6 +152,7 @@ export function InboxPage() {
           email.includes(query) ||
           whatsappParts.includes(query) ||
           preview.includes(query) ||
+          subject.includes(query) ||
           (digitsQuery.length >= 4 && digitsWhatsapp.includes(digitsQuery))
         );
       });
@@ -180,15 +186,59 @@ export function InboxPage() {
   const contactConversations = useMemo(() => {
     const map: Partial<Record<ChannelType, Conversation>> = {};
     if (!selectedContactId) return map;
-    for (const conversation of conversations ?? []) {
-      if (conversation.contactId !== selectedContactId) continue;
-      if (channelsReady && !enabledSet.has(conversation.channelType)) continue;
-      if (!map[conversation.channelType]) {
-        map[conversation.channelType] = conversation;
+    const rows = (conversations ?? []).filter((conversation) => {
+      if (conversation.contactId !== selectedContactId) return false;
+      if (channelsReady && !enabledSet.has(conversation.channelType)) return false;
+      return true;
+    });
+    for (const type of ["whatsapp", "instagram", "email"] as ChannelType[]) {
+      const scoped = rows.filter((c) => c.channelType === type);
+      if (!scoped.length) continue;
+      if (type === "email") {
+        const selected =
+          (selectedEmailThreadId && scoped.find((c) => c.id === selectedEmailThreadId)) ||
+          pickPrimaryConversation(scoped);
+        map.email = selected;
+      } else {
+        map[type] = pickPrimaryConversation(scoped);
       }
     }
     return map;
-  }, [conversations, selectedContactId, enabledSet, channelsReady]);
+  }, [
+    conversations,
+    selectedContactId,
+    enabledSet,
+    channelsReady,
+    selectedEmailThreadId,
+  ]);
+
+  const emailThreads = useMemo(() => {
+    if (!selectedContactId) return [] as Conversation[];
+    return (conversationsByContact[selectedContactId] ?? [])
+      .filter((c) => c.channelType === "email")
+      .sort((a, b) => {
+        const aTime = a.lastMessageAt ? new Date(a.lastMessageAt).getTime() : 0;
+        const bTime = b.lastMessageAt ? new Date(b.lastMessageAt).getTime() : 0;
+        return bTime - aTime;
+      });
+  }, [conversationsByContact, selectedContactId]);
+
+  // Reset email thread selection when switching contacts.
+  useEffect(() => {
+    setSelectedEmailThreadId(null);
+    setComposingNewEmail(false);
+  }, [selectedContactId]);
+
+  // Keep email thread selection valid; default to newest.
+  useEffect(() => {
+    if (activeTab !== "email") return;
+    if (composingNewEmail) return;
+    if (selectedEmailThreadId && emailThreads.some((t) => t.id === selectedEmailThreadId)) {
+      return;
+    }
+    const newest = pickPrimaryEmailThread(emailThreads);
+    setSelectedEmailThreadId(newest?.id ?? null);
+  }, [activeTab, emailThreads, selectedEmailThreadId, composingNewEmail]);
 
   const selectedListConversation =
     listConversations.find((c) => c.contactId === selectedContactId) ??
@@ -211,6 +261,56 @@ export function InboxPage() {
   /** Email / WhatsApp can start outbound when an identity exists (Shopify-linked email, etc.). Instagram cannot. */
   const selectedConversation = useMemo(() => {
     if (!selectedContactId || !selectedContact) return null;
+
+    if (activeTab === "email") {
+      if (composingNewEmail) {
+        return {
+          id: `${selectedContactId}:email:new`,
+          contactId: selectedContactId,
+          accountId: "workspace",
+          status: "resolved" as const,
+          lastMessageAt: null,
+          channelType: "email" as const,
+          externalThreadId: null,
+          threadSubject: "New email",
+          inbox: {
+            id: "channel_email",
+            name: "Email",
+            channelType: "email" as const,
+          },
+          contact: selectedContact,
+          messages: [],
+        } satisfies Conversation;
+      }
+      const existing =
+        (selectedEmailThreadId &&
+          emailThreads.find((t) => t.id === selectedEmailThreadId)) ||
+        contactConversations.email ||
+        emailThreads[0] ||
+        null;
+      if (existing) return existing;
+      if (channelsReady && !enabledSet.has("email")) return null;
+      const ids = identitiesFor(selectedContact, "email");
+      if (!ids.length) return null;
+      return {
+        id: `${selectedContactId}:email:new`,
+        contactId: selectedContactId,
+        accountId: "workspace",
+        status: "resolved" as const,
+        lastMessageAt: null,
+        channelType: "email" as const,
+        externalThreadId: null,
+        threadSubject: "New email",
+        inbox: {
+          id: "channel_email",
+          name: "Email",
+          channelType: "email" as const,
+        },
+        contact: selectedContact,
+        messages: [],
+      } satisfies Conversation;
+    }
+
     const existing = contactConversations[activeTab];
     if (existing) return existing;
     if (activeTab === "instagram") return null;
@@ -239,6 +339,9 @@ export function InboxPage() {
     activeTab,
     channelsReady,
     enabledSet,
+    composingNewEmail,
+    selectedEmailThreadId,
+    emailThreads,
   ]);
 
   const {
@@ -349,7 +452,15 @@ export function InboxPage() {
         toast.error(data.result?.error || "Message failed to send on channel");
         return false;
       }
-      toast.success(`${channelLabel(channel)} reply sent`);
+      if (channel === "email" && data.conversationId) {
+        setComposingNewEmail(false);
+        setSelectedEmailThreadId(data.conversationId);
+      }
+      toast.success(
+        channel === "email" && conversationId.endsWith(":new")
+          ? "Email sent"
+          : `${channelLabel(channel)} reply sent`,
+      );
       return true;
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Failed to send message");
@@ -582,6 +693,16 @@ export function InboxPage() {
           onTabChange={setActiveTab}
           conversationsByChannel={contactConversations}
           selectedConversation={selectedConversation}
+          emailThreads={emailThreads}
+          composingNewEmail={composingNewEmail}
+          onSelectEmailThread={(id) => {
+            setComposingNewEmail(false);
+            setSelectedEmailThreadId(id);
+          }}
+          onComposeNewEmail={() => {
+            setComposingNewEmail(true);
+            setSelectedEmailThreadId(null);
+          }}
           messages={messages}
           loadingMessages={showInitialMessagesLoader}
           onResolve={handleResolve}

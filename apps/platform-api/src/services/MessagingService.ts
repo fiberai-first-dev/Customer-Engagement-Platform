@@ -8,7 +8,11 @@ import {
   type NormalizedInboundMessage,
   type ChannelConfig,
 } from "../adapters/shared/index.js";
-import { extractEmailAddress } from "../adapters/email/index.js";
+import {
+  buildReplyReferences,
+  extractEmailAddress,
+  extractEmailThreading,
+} from "../adapters/email/index.js";
 import { recomputeCustomerResolved } from "./ResolveService.js";
 import { isInboundSuppressed } from "./SuppressService.js";
 import { enrichCustomerFromShopify } from "./orders/shopify-contact.service.js";
@@ -683,6 +687,11 @@ export async function ingestInboundMessages(input: {
 
     const receivedAt = inbound.occurredAt instanceof Date ? inbound.occurredAt : new Date();
     try {
+      const externalThreadId =
+        inbound.externalThreadId?.trim() ||
+        extractEmailThreading(inbound.raw).gmailThreadId ||
+        (link.channelType === "email" ? `legacy:${link.customerId}` : undefined);
+
       const message = await prisma.message.create({
         data: {
           id: ulid(),
@@ -694,6 +703,7 @@ export async function ingestInboundMessages(input: {
           contentType: mapContentType(inbound.contentType),
           subject: inbound.subject,
           externalId: inbound.externalId,
+          externalThreadId: link.channelType === "email" ? externalThreadId : null,
           status: direction === "outgoing" ? "sent" : "received",
           rawPayload: inbound.raw as Prisma.InputJsonValue,
           createdAt: receivedAt,
@@ -722,6 +732,10 @@ export async function sendCustomerChannelMessage(input: {
   channelType: ChannelType;
   content: string;
   subject?: string;
+  /** Gmail thread to reply into. Omit / undefined = new email thread. */
+  externalThreadId?: string;
+  /** Explicit "compose new" — do not attach to any existing Gmail thread. */
+  isNewEmailThread?: boolean;
 }) {
   const channelCfg = await getEnabledChannelConfig(input.channelType);
   if (!channelCfg || !channelCfg.enabled) {
@@ -742,11 +756,17 @@ export async function sendCustomerChannelMessage(input: {
       ? whatsappApiRecipient(identity.externalId) ?? identity.externalId.replace(/\D/g, "")
       : identity.externalId;
 
+  const emailThreadScope =
+    input.channelType === "email" && !input.isNewEmailThread && input.externalThreadId
+      ? input.externalThreadId
+      : undefined;
+
   const lastInbound = await prisma.message.findFirst({
     where: {
       channelType: input.channelType,
       channelId: identity.id,
       direction: "incoming",
+      ...(emailThreadScope ? { externalThreadId: emailThreadScope } : {}),
     },
     orderBy: { createdAt: "desc" },
   });
@@ -761,11 +781,48 @@ export async function sendCustomerChannelMessage(input: {
     }
   }
 
+  // Email clients thread on RFC Message-ID headers + (for Gmail) API threadId —
+  // never on Gmail's opaque message id stored in Message.externalId.
+  let replyToRfcMessageId: string | undefined;
+  let replyReferences: string | undefined;
+  let gmailThreadId: string | undefined;
+  if (input.channelType === "email" && !input.isNewEmailThread) {
+    const recent = await prisma.message.findMany({
+      where: {
+        channelType: "email",
+        channelId: identity.id,
+        ...(emailThreadScope ? { externalThreadId: emailThreadScope } : {}),
+      },
+      orderBy: { createdAt: "desc" },
+      take: 40,
+      select: { rawPayload: true, externalThreadId: true },
+    });
+    const withRfc = recent.find((m) => extractEmailThreading(m.rawPayload).rfcMessageId);
+    const threading = extractEmailThreading(
+      withRfc?.rawPayload ?? lastInbound?.rawPayload ?? null,
+    );
+    replyToRfcMessageId = threading.rfcMessageId;
+    replyReferences = buildReplyReferences(threading.rfcMessageId, threading.references);
+    gmailThreadId =
+      emailThreadScope && !emailThreadScope.startsWith("legacy:")
+        ? emailThreadScope
+        : threading.gmailThreadId ||
+          recent.map((m) => extractEmailThreading(m.rawPayload).gmailThreadId).find(Boolean);
+  }
+
   const result = await adapter.sendMessage(config, {
     to,
     content: input.content,
     subject,
-    replyToExternalId: lastInbound?.externalId ?? undefined,
+    ...(input.channelType === "email"
+      ? {
+          replyToExternalId: replyToRfcMessageId,
+          references: replyReferences,
+          threadId: gmailThreadId,
+        }
+      : {
+          replyToExternalId: lastInbound?.externalId ?? undefined,
+        }),
   });
 
   if (!result.ok || result.status === "failed") {
@@ -779,8 +836,18 @@ export async function sendCustomerChannelMessage(input: {
       },
       channelId: identity.id,
       externalId: identity.externalId,
+      externalThreadId: undefined as string | undefined,
     };
   }
+
+  const sentThreading = extractEmailThreading(result.raw);
+  const persistedThreadId =
+    input.channelType === "email"
+      ? sentThreading.gmailThreadId ||
+        gmailThreadId ||
+        emailThreadScope ||
+        `legacy:${input.customerId}`
+      : null;
 
   const message = await prisma.message.create({
     data: {
@@ -793,6 +860,7 @@ export async function sendCustomerChannelMessage(input: {
       contentType: "text",
       subject,
       externalId: result.externalId ?? `local_${ulid()}`,
+      externalThreadId: persistedThreadId,
       status: mapSendStatus(result.status),
       rawPayload: {
         to,
@@ -817,6 +885,7 @@ export async function sendCustomerChannelMessage(input: {
     },
     channelId: identity.id,
     externalId: identity.externalId,
+    externalThreadId: persistedThreadId ?? undefined,
   };
 }
 
