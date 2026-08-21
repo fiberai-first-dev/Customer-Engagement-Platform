@@ -87,7 +87,7 @@ export class ConversationService {
           contactId: customer.id,
           accountId: "workspace",
           status: unresolved ? ("open" as const) : ("resolved" as const),
-          lastMessageAt: latest.lastMessageAt ?? lastMsg?.createdAt ?? null,
+          lastMessageAt: lastMsg?.createdAt ?? latest.lastMessageAt ?? null,
           channelType: type,
           inbox: {
             id: `channel_${type}`,

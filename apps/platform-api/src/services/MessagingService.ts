@@ -298,11 +298,13 @@ export async function findOrCreateCustomerForInbound(input: {
         ? { username: prevMeta.username, senderName: prevMeta.senderName ?? prevMeta.username }
         : {}),
     } as Prisma.InputJsonValue;
+    const occurredAt =
+      inbound.occurredAt instanceof Date ? inbound.occurredAt : new Date();
 
     if (channelType === "whatsapp") {
       await prisma.whatsAppChannel.update({
         where: { id: existing.id },
-        data: { resolved: false, lastMessageAt: new Date(), metadata: mergedMeta },
+        data: { resolved: false, metadata: mergedMeta },
       });
     } else if (channelType === "instagram") {
       const upgradeExternalId =
@@ -313,7 +315,6 @@ export async function findOrCreateCustomerForInbound(input: {
         where: { id: existing.id },
         data: {
           resolved: false,
-          lastMessageAt: new Date(),
           metadata: mergedMeta,
           ...(upgradeExternalId ? { externalId: upgradeExternalId } : {}),
         },
@@ -321,9 +322,10 @@ export async function findOrCreateCustomerForInbound(input: {
     } else {
       await prisma.emailChannel.update({
         where: { id: existing.id },
-        data: { resolved: false, lastMessageAt: new Date(), metadata: mergedMeta },
+        data: { resolved: false, metadata: mergedMeta },
       });
     }
+    await touchIdentityLastMessageAt(channelType, existing.id, occurredAt);
 
     if (channelType === "instagram" && igHandle) {
       const customer = await prisma.customer.findUniqueOrThrow({ where: { id: customerId } });
@@ -466,22 +468,9 @@ export async function findOrCreateCustomerForInbound(input: {
     metadata,
     resolved: false,
   });
-  if (channelType === "whatsapp") {
-    await prisma.whatsAppChannel.update({
-      where: { id: identity.id },
-      data: { lastMessageAt: new Date() },
-    });
-  } else if (channelType === "instagram") {
-    await prisma.instagramChannel.update({
-      where: { id: identity.id },
-      data: { lastMessageAt: new Date() },
-    });
-  } else {
-    await prisma.emailChannel.update({
-      where: { id: identity.id },
-      data: { lastMessageAt: new Date() },
-    });
-  }
+  const occurredAt =
+    inbound.occurredAt instanceof Date ? inbound.occurredAt : new Date();
+  await touchIdentityLastMessageAt(channelType, identity.id, occurredAt);
   await recomputeCustomerResolved(customerId);
   return {
     customerId,
@@ -494,15 +483,42 @@ export async function findOrCreateCustomerForInbound(input: {
 async function touchIdentityLastMessageAt(
   channelType: ChannelType,
   identityId: string,
+  at: Date = new Date(),
 ) {
-  const data = { lastMessageAt: new Date() };
+  const when = at instanceof Date && !Number.isNaN(at.getTime()) ? at : new Date();
   if (channelType === "whatsapp") {
-    await prisma.whatsAppChannel.update({ where: { id: identityId }, data });
-  } else if (channelType === "instagram") {
-    await prisma.instagramChannel.update({ where: { id: identityId }, data });
-  } else {
-    await prisma.emailChannel.update({ where: { id: identityId }, data });
+    const row = await prisma.whatsAppChannel.findUnique({
+      where: { id: identityId },
+      select: { lastMessageAt: true },
+    });
+    if (row?.lastMessageAt && row.lastMessageAt.getTime() >= when.getTime()) return;
+    await prisma.whatsAppChannel.update({
+      where: { id: identityId },
+      data: { lastMessageAt: when },
+    });
+    return;
   }
+  if (channelType === "instagram") {
+    const row = await prisma.instagramChannel.findUnique({
+      where: { id: identityId },
+      select: { lastMessageAt: true },
+    });
+    if (row?.lastMessageAt && row.lastMessageAt.getTime() >= when.getTime()) return;
+    await prisma.instagramChannel.update({
+      where: { id: identityId },
+      data: { lastMessageAt: when },
+    });
+    return;
+  }
+  const row = await prisma.emailChannel.findUnique({
+    where: { id: identityId },
+    select: { lastMessageAt: true },
+  });
+  if (row?.lastMessageAt && row.lastMessageAt.getTime() >= when.getTime()) return;
+  await prisma.emailChannel.update({
+    where: { id: identityId },
+    data: { lastMessageAt: when },
+  });
 }
 
 /**
@@ -530,7 +546,9 @@ async function resolveIdentityForOutgoing(input: {
 
   const existing = await findIdentityByExternalId(channelType, peerKey);
   if (existing) {
-    await touchIdentityLastMessageAt(channelType, existing.id);
+    const occurredAt =
+      inbound.occurredAt instanceof Date ? inbound.occurredAt : new Date();
+    await touchIdentityLastMessageAt(channelType, existing.id, occurredAt);
     return {
       customerId: existing.customerId,
       channelId: existing.id,
@@ -560,17 +578,20 @@ async function resolveIdentityForOutgoing(input: {
     inbound: synthetic,
   });
   // findOrCreate marks unresolved — undo for agent-originated outbound
+  const occurredAt =
+    inbound.occurredAt instanceof Date ? inbound.occurredAt : new Date();
   if (channelType === "whatsapp") {
     await prisma.whatsAppChannel.update({
       where: { id: link.channelId },
-      data: { resolved: true, lastMessageAt: new Date() },
+      data: { resolved: true },
     });
   } else {
     await prisma.emailChannel.update({
       where: { id: link.channelId },
-      data: { resolved: true, lastMessageAt: new Date() },
+      data: { resolved: true },
     });
   }
+  await touchIdentityLastMessageAt(channelType, link.channelId, occurredAt);
   await recomputeCustomerResolved(link.customerId);
   return link;
 }
@@ -782,22 +803,7 @@ export async function sendCustomerChannelMessage(input: {
 
   // Touch the identity we actually messaged (activity timestamp).
   // Resolve is manual only — agents click Resolve in the Inbox UI.
-  if (input.channelType === "whatsapp") {
-    await prisma.whatsAppChannel.update({
-      where: { id: identity.id },
-      data: { lastMessageAt: new Date() },
-    });
-  } else if (input.channelType === "instagram") {
-    await prisma.instagramChannel.update({
-      where: { id: identity.id },
-      data: { lastMessageAt: new Date() },
-    });
-  } else {
-    await prisma.emailChannel.update({
-      where: { id: identity.id },
-      data: { lastMessageAt: new Date() },
-    });
-  }
+  await touchIdentityLastMessageAt(input.channelType, identity.id, message.createdAt);
 
   await recomputeCustomerResolved(input.customerId);
 
