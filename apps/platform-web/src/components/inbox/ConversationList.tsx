@@ -1,11 +1,10 @@
- import type { Conversation } from "../../api";
+import type { Conversation } from "../../api";
 import {
   cn,
   contactDisplayName,
   formatMessageTime,
   initials,
 } from "./utils";
-import { motion, AnimatePresence } from "framer-motion";
 
 type Props = {
   conversations: Conversation[];
@@ -74,95 +73,77 @@ export function ConversationList({
 
   return (
     <div className="flex-1 overflow-y-auto scrollbar-hide">
-      <AnimatePresence initial={false}>
-        {conversations.map((conversation) => {
-          const name = contactDisplayName(conversation.contact);
-          const subjectHint =
-            conversation.channelType === "email"
-              ? conversation.threadSubject || conversation.messages?.[0]?.subject
-              : null;
-          const bodyPreview = conversation.messages?.[0]?.content;
-          const preview = subjectHint
-            ? bodyPreview
-              ? `${subjectHint} — ${bodyPreview}`
-              : subjectHint
-            : bodyPreview ?? "No messages yet";
-          const selected = selectedContactId === conversation.contactId;
-          const scopeKey = listReadScopeKey(conversation.contactId, channelFilter);
-          const hasUnread =
-            contactHasUnread(conversation, channelFilter) &&
-            !readScopeKeys?.has(scopeKey);
-          const openCount = unresolvedChannelCount(
-            conversation,
-            channelConversationsByContact?.[conversation.contactId],
-          );
+      {conversations.map((conversation) => {
+        const name = contactDisplayName(conversation.contact);
+        const subjectHint =
+          conversation.channelType === "email"
+            ? conversation.threadSubject || conversation.messages?.[0]?.subject
+            : null;
+        const bodyPreview = conversation.messages?.[0]?.content;
+        const preview = subjectHint
+          ? bodyPreview
+            ? `${subjectHint} — ${bodyPreview}`
+            : subjectHint
+          : bodyPreview ?? "No messages yet";
+        const selected = selectedContactId === conversation.contactId;
+        const scopeKey = listReadScopeKey(conversation.contactId, channelFilter);
+        const hasUnread =
+          contactHasUnread(conversation, channelFilter) &&
+          !readScopeKeys?.has(scopeKey);
+        const openCount = unresolvedChannelCount(
+          conversation,
+          channelConversationsByContact?.[conversation.contactId],
+        );
 
-          return (
-            <motion.button
-              key={conversation.contactId}
-              layout
-              initial={{ opacity: 0, height: 0 }}
-              animate={{ opacity: 1, height: "auto" }}
-              exit={{ opacity: 0, height: 0 }}
-              transition={{ duration: 0.2 }}
-              type="button"
-              onClick={() => onSelect(conversation)}
-              className={cn(
-                "relative flex w-full items-center gap-2.5 overflow-hidden border-b border-border py-2 pl-3 pr-3 text-left transition-colors",
-                selected ? "bg-muted" : "bg-card hover:bg-muted/50",
+        return (
+          <button
+            key={conversation.contactId}
+            type="button"
+            onClick={() => onSelect(conversation)}
+            className={cn(
+              "flex w-full items-center gap-3 border-b border-border px-3 py-2.5 text-left",
+              selected ? "bg-muted" : "bg-card hover:bg-muted/50",
+              hasUnread && "border-l-[3px] border-l-primary pl-[9px]",
+            )}
+          >
+            <div className="relative flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-primary/10 text-xs font-semibold text-primary">
+              {initials(name)}
+              {openCount > 0 && (
+                <span
+                  className="absolute -right-0.5 -top-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-primary px-1 text-[9px] font-bold text-primary-foreground"
+                  title={`${openCount} unresolved channel${openCount === 1 ? "" : "s"}`}
+                >
+                  {openCount}
+                </span>
               )}
-            >
-              <motion.span
-                aria-hidden
-                className="pointer-events-none absolute left-0 top-1/2 w-[3px] -translate-y-1/2 rounded-full bg-primary"
-                initial={false}
-                animate={{
-                  height: hasUnread ? "72%" : "0%",
-                  opacity: hasUnread ? 1 : 0,
-                }}
-                transition={{ duration: 0.22, ease: [0.4, 0, 0.2, 1] }}
-              />
+            </div>
 
-              <div className="relative flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary/10 text-xs font-semibold text-primary">
-                {initials(name)}
-                {openCount > 0 && (
-                  <span
-                    className="absolute -right-0.5 -top-0.5 flex h-3.5 min-w-3.5 items-center justify-center rounded-full bg-primary px-0.5 text-[8px] font-bold leading-none text-primary-foreground"
-                    title={`${openCount} unresolved channel${openCount === 1 ? "" : "s"}`}
-                  >
-                    {openCount}
-                  </span>
-                )}
-              </div>
-
-              <div className="min-w-0 flex-1 leading-tight">
-                <div className="flex items-baseline justify-between gap-2">
-                  <span
-                    className={cn(
-                      "truncate text-[13px] text-foreground",
-                      hasUnread ? "font-semibold" : "font-medium",
-                    )}
-                  >
-                    {name}
-                  </span>
-                  <span className="shrink-0 text-[10px] tabular-nums text-muted-foreground">
-                    {formatMessageTime(conversation.lastMessageAt)}
-                  </span>
-                </div>
-
-                <p
+            <div className="min-w-0 flex-1">
+              <div className="flex items-center justify-between gap-2">
+                <span
                   className={cn(
-                    "truncate text-[11px]",
-                    hasUnread ? "text-foreground/75" : "text-muted-foreground",
+                    "truncate text-sm text-foreground",
+                    hasUnread ? "font-semibold" : "font-medium",
                   )}
                 >
-                  {preview}
-                </p>
+                  {name}
+                </span>
+                <span className="shrink-0 text-[11px] text-muted-foreground">
+                  {formatMessageTime(conversation.lastMessageAt)}
+                </span>
               </div>
-            </motion.button>
-          );
-        })}
-      </AnimatePresence>
+              <p
+                className={cn(
+                  "mt-0.5 truncate text-xs",
+                  hasUnread ? "text-foreground/80" : "text-muted-foreground",
+                )}
+              >
+                {preview}
+              </p>
+            </div>
+          </button>
+        );
+      })}
     </div>
   );
 }

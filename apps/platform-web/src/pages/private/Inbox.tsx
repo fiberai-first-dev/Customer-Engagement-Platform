@@ -382,7 +382,8 @@ export function InboxPage() {
     data: messages,
     isPending: messagesPending,
   } = useMessages(selectedConversation?.id);
-  const showInitialMessagesLoader = messagesPending && messages === undefined;
+  /** Show loader on contact/thread switch — never flash the previous conversation. */
+  const showMessagesLoader = Boolean(selectedConversation?.id) && messagesPending;
 
   /** Mark read when opening a channel tab (not only list click). */
   useEffect(() => {
@@ -663,7 +664,7 @@ export function InboxPage() {
         onConfirm={() => void confirmPendingDelete()}
         onCancel={() => closeDeleteDialog(false)}
       />
-      <section className="flex w-[380px] shrink-0 flex-col border-r border-border bg-card">
+      <section className="flex w-[360px] shrink-0 flex-col border-r border-border bg-card">
         <div className="flex h-14 shrink-0 items-center justify-between gap-2 border-b border-border px-4">
           <div className="flex min-w-0 items-center gap-2.5">
             <h1 className="text-base font-semibold tracking-tight text-foreground">Inbox</h1>
@@ -697,7 +698,7 @@ export function InboxPage() {
           </div>
         </div>
 
-        <div className="space-y-2.5 border-b border-border px-4 py-3">
+        <div className="space-y-2 border-b border-border px-4 py-3">
           <div className="relative">
             <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
             <input
@@ -767,6 +768,7 @@ export function InboxPage() {
         <ConversationEmptyState />
       ) : (
         <ConversationThread
+          key={selectedConversation?.id ?? selectedContactId}
           contactName={contactDisplayName(selectedContact)}
           contact={selectedContact}
           activeTab={activeTab}
@@ -783,8 +785,8 @@ export function InboxPage() {
             setComposingNewEmail(true);
             setSelectedEmailThreadId(null);
           }}
-          messages={messages}
-          loadingMessages={showInitialMessagesLoader}
+          messages={showMessagesLoader ? undefined : messages}
+          loadingMessages={showMessagesLoader}
           onResolve={handleResolve}
           resolving={updateStatus.isPending}
           onClearChat={handleClearChat}
@@ -801,6 +803,7 @@ export function InboxPage() {
 
       {customerContextOpen && (
         <CustomerDetails
+          key={selectedContactId ?? "none"}
           contact={selectedContact}
           conversationsByChannel={contactConversations}
           onClose={() => setCustomerContextOpen(false)}

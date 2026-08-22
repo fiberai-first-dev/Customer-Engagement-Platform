@@ -51,11 +51,11 @@ function MessageBody({
   const showText =
     Boolean(content.trim()) &&
     !(message.hasMedia && isMediaPlaceholder) &&
-    !( !message.hasMedia && (isMediaPlaceholder || isMediaType) );
+    !(!message.hasMedia && (isMediaPlaceholder || isMediaType));
   const showMissingMedia = !message.hasMedia && (isMediaPlaceholder || isMediaType);
 
   return (
-    <div className="min-w-0 space-y-2">
+    <div className="min-w-0 space-y-1.5">
       {message.hasMedia && (
         <MessageMedia
           messageId={message.id}
@@ -288,6 +288,29 @@ export function ConversationThread({
   const canInitiateChannel = activeTab === "email" || activeTab === "whatsapp";
   const isLinkedAwaitingFirst =
     Boolean(selectedConversation) && !hasMessages && channelIds.length > 0;
+
+  if (loadingMessages) {
+    return (
+      <div className="flex h-full min-w-0 flex-1 flex-col bg-background">
+        <div className="flex h-14 shrink-0 items-center gap-3 border-b border-border bg-card px-4">
+          <div className="h-9 w-9 shrink-0 animate-pulse rounded-full bg-muted" />
+          <div className="min-w-0 flex-1 space-y-2">
+            <div className="h-3.5 w-40 max-w-[50%] animate-pulse rounded bg-muted" />
+            <div className="h-3 w-28 max-w-[35%] animate-pulse rounded bg-muted" />
+          </div>
+        </div>
+        <div className="flex h-11 shrink-0 items-center gap-2 border-b border-border bg-card px-3">
+          <div className="h-6 w-20 animate-pulse rounded bg-muted" />
+          <div className="h-6 w-20 animate-pulse rounded bg-muted" />
+          <div className="h-6 w-16 animate-pulse rounded bg-muted" />
+        </div>
+        <div className="flex flex-1 flex-col items-center justify-center gap-3">
+          <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+          <p className="text-xs text-muted-foreground">Loading conversation…</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="flex h-full min-w-0 flex-1 flex-col bg-background">
@@ -574,7 +597,7 @@ export function ConversationThread({
         </div>
       ) : (
         <>
-          <div className="flex-1 space-y-3 overflow-y-auto scrollbar-hide p-5">
+          <div className="flex-1 space-y-2.5 overflow-y-auto scrollbar-hide p-4 sm:p-5">
             {loadingMessages && !messages?.length && (
               <div className="flex justify-center py-8">
                 <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
@@ -614,15 +637,14 @@ export function ConversationThread({
               return (
                 <Fragment key={message.id}>
                   {dayLabel && (
-                    <div className="flex justify-center py-1">
-                      <span className="rounded-full bg-muted px-2.5 py-0.5 text-[11px] font-medium text-muted-foreground">
+                    <div className="flex justify-center py-1.5">
+                      <span className="rounded-full bg-muted px-2.5 py-0.5 text-[11px] text-muted-foreground">
                         {dayLabel}
                       </span>
                     </div>
                   )}
                   <div
                     className={cn(
-                      // WhatsApp-style: shrink to content, cap width so long text wraps
                       "flex w-fit max-w-[min(75%,32rem)] flex-col",
                       incoming ? "mr-auto items-start" : "ml-auto items-end",
                     )}
@@ -655,7 +677,13 @@ export function ConversationThread({
                           }
                         }}
                         className={cn(
-                          "min-w-0 max-w-full overflow-hidden rounded-xl px-3.5 py-2.5 text-left text-sm transition-shadow",
+                          "min-w-0 max-w-full overflow-hidden text-left text-sm",
+                          message.hasMedia &&
+                            !message.content
+                              ?.trim()
+                              ?.replace(/^\[(image|audio|video|file|document)\]$/i, "")
+                            ? "rounded-xl p-1.5"
+                            : "rounded-xl px-3 py-2",
                           incoming
                             ? "rounded-tl-sm border border-border bg-card text-foreground"
                             : failed
@@ -698,7 +726,7 @@ export function ConversationThread({
                             ) : message.status === "queued" ? (
                               <Loader2 className="h-3 w-3 animate-spin" />
                             ) : (
-                              <CheckCircle2 className="h-3 w-3" />
+                              <CheckCircle2 className="h-3 w-3 opacity-80" />
                             ))}
                         </div>
                       </div>
@@ -714,10 +742,10 @@ export function ConversationThread({
           </div>
 
           {!selecting && (
-            <div className="shrink-0 border-t border-border bg-card p-4">
+            <div className="shrink-0 border-t border-border bg-card p-3">
               <div
                 className={cn(
-                  "flex flex-col gap-2 rounded-xl border bg-background p-2",
+                  "flex flex-col gap-1.5 rounded-xl border bg-background p-1.5",
                   needsAttentionHere ? "border-primary/25" : "border-border",
                 )}
               >
@@ -733,7 +761,7 @@ export function ConversationThread({
                   />
                 )}
                 {pendingFile && (
-                  <div className="flex items-center gap-2 rounded-md border border-border bg-muted/40 px-2 py-1.5 text-xs">
+                  <div className="flex items-center gap-2 rounded-md bg-muted/50 px-2 py-1.5 text-xs">
                     <Paperclip className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
                     <span className="min-w-0 flex-1 truncate">{pendingFile.name}</span>
                     <button
@@ -746,7 +774,7 @@ export function ConversationThread({
                     </button>
                   </div>
                 )}
-                <div className="flex items-end gap-2">
+                <div className="flex items-end gap-1">
                   {channelSupportsAttachments(activeTab) && (
                     <>
                       <input
@@ -806,7 +834,7 @@ export function ConversationThread({
                   </Button>
                 </div>
               </div>
-              <p className="mt-2 text-center text-[10px] text-muted-foreground">
+              <p className="mt-1.5 text-center text-[10px] text-muted-foreground">
                 Enter to send · Shift+Enter for new line
               </p>
             </div>

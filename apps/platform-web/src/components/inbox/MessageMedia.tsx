@@ -54,9 +54,9 @@ export function MessageMedia({ messageId, mimeType, filename, contentType, incom
 
   if (!src) {
     return (
-      <div className="flex items-center gap-2 py-2 text-xs opacity-70">
-        <Loader2 className="h-4 w-4 animate-spin" />
-        Loading attachment…
+      <div className="flex items-center gap-2 py-1.5 text-xs opacity-70">
+        <Loader2 className="h-3.5 w-3.5 animate-spin" />
+        Loading…
       </div>
     );
   }
@@ -68,11 +68,11 @@ export function MessageMedia({ messageId, mimeType, filename, contentType, incom
 
   if (isImage) {
     return (
-      <a href={src} target="_blank" rel="noreferrer" className="block max-w-xs">
+      <a href={src} target="_blank" rel="noreferrer" className="block max-w-[220px]">
         <img
           src={src}
           alt={filename ?? "Image"}
-          className="max-h-64 rounded-lg border border-border/40 object-cover"
+          className="max-h-52 w-full rounded-lg object-cover"
         />
       </a>
     );
@@ -80,16 +80,12 @@ export function MessageMedia({ messageId, mimeType, filename, contentType, incom
 
   if (isVideo) {
     return (
-      <video
-        src={src}
-        controls
-        className="max-h-64 max-w-full rounded-lg border border-border/40"
-      />
+      <video src={src} controls className="max-h-52 max-w-[260px] rounded-lg" />
     );
   }
 
   if (isAudio) {
-    return <audio src={src} controls className="max-w-full" />;
+    return <audio src={src} controls className="max-w-[260px]" preload="metadata" />;
   }
 
   return (
@@ -97,8 +93,10 @@ export function MessageMedia({ messageId, mimeType, filename, contentType, incom
       href={src}
       download={filename ?? "attachment"}
       className={cn(
-        "inline-flex items-center gap-2 rounded-md border px-3 py-2 text-xs font-medium underline-offset-2 hover:underline",
-        incoming ? "border-border bg-background/80" : "border-primary-foreground/30 bg-primary/90",
+        "inline-flex max-w-[240px] items-center gap-2 rounded-md border px-2.5 py-2 text-xs font-medium",
+        incoming
+          ? "border-border bg-background"
+          : "border-primary-foreground/25 bg-primary-foreground/10",
       )}
     >
       <FileText className="h-4 w-4 shrink-0" />

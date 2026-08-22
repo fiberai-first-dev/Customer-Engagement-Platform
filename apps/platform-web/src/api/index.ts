@@ -223,7 +223,7 @@ export const useMessages = (conversationId?: string) => {
     },
     enabled: !!conversationId,
     refetchInterval: 5000,
-    placeholderData: (previous) => previous,
+    // Do not keep previous conversation messages while switching contacts.
   });
 };
 

@@ -102,8 +102,8 @@ export function CustomerDetails({ contact, onClose }: Props) {
   const canLookup = Boolean(lookupEmail || lookupPhone);
 
   const {
-    data: commerce = emptyCommerce(),
-    isLoading,
+    data: commerceData,
+    isPending: commercePending,
     isError,
     error,
   } = useQuery({
@@ -118,12 +118,18 @@ export function CustomerDetails({ contact, onClose }: Props) {
     staleTime: 30_000,
   });
 
+  const commerce = commerceData ?? emptyCommerce();
+
   // When Shopify attaches email/phone onto this CEP contact, refresh inbox identities
   useEffect(() => {
     if (!commerce.channelsLinked) return;
     void queryClient.invalidateQueries({ queryKey: ["conversations"] });
     void queryClient.invalidateQueries({ queryKey: ["contacts"] });
   }, [commerce.channelsLinked, queryClient]);
+
+  useEffect(() => {
+    setTab("profile");
+  }, [contact?.id]);
 
   if (!contact) {
     return (
@@ -141,9 +147,8 @@ export function CustomerDetails({ contact, onClose }: Props) {
     );
   }
 
-  // Wait for Shopify/commerce before showing any profile chrome so the panel
-  // does not flash local contact UI with a spinner underneath.
-  if (canLookup && isLoading) {
+  // Always show loader on contact switch until commerce resolves (or no lookup needed).
+  if (canLookup && commercePending) {
     return (
       <aside className="flex w-[360px] shrink-0 flex-col border-l border-border bg-card">
         <Header onClose={onClose} />
