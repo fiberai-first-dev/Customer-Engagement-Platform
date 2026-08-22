@@ -7,12 +7,16 @@ import {
   MessageSquare,
   MoreVertical,
   PanelRight,
+  Paperclip,
   Send,
   Trash2,
   X,
 } from "lucide-react";
 import type { ChannelType, Conversation, Message } from "../../api";
+import { uploadConversationAttachment, channelSupportsAttachments } from "../../lib/channel-media";
+import { MessageMedia } from "./MessageMedia";
 import { Button } from "../ui/button";
+import { toast } from "sonner";
 import {
   CHANNELS,
   channelLabel,
@@ -30,44 +34,61 @@ import {
 const LONG_MESSAGE_CHARS = 480;
 
 function MessageBody({
-  content,
+  message,
   showBodyLabel,
   incoming,
 }: {
-  content: string;
+  message: Message;
   showBodyLabel: boolean;
   incoming: boolean;
 }) {
+  const content = message.content;
   const [expanded, setExpanded] = useState(false);
   const isLong = content.length > LONG_MESSAGE_CHARS;
   const visible = !isLong || expanded ? content : `${content.slice(0, LONG_MESSAGE_CHARS).trimEnd()}…`;
+  const showText =
+    Boolean(content.trim()) &&
+    !(message.hasMedia && /^\[(image|audio|video|file)\]$/i.test(content.trim()));
 
   return (
-    <div className="min-w-0">
-      {showBodyLabel && (
-        <span className="mb-1 mr-2 block text-[10px] font-bold uppercase tracking-wider opacity-60">
-          Body:
-        </span>
+    <div className="min-w-0 space-y-2">
+      {message.hasMedia && (
+        <MessageMedia
+          messageId={message.id}
+          mimeType={message.mediaMimeType}
+          filename={message.mediaFilename}
+          contentType={message.contentType}
+          incoming={incoming}
+        />
       )}
-      <div className="whitespace-pre-wrap break-words leading-relaxed [overflow-wrap:anywhere]">
-        {visible}
-      </div>
-      {isLong && (
-        <button
-          type="button"
-          className={cn(
-            "mt-1 text-[11px] font-medium underline-offset-2 hover:underline",
-            incoming ? "text-primary" : "text-primary-foreground/90",
+      {showText && (
+        <div>
+          {showBodyLabel && (
+            <span className="mb-1 mr-2 block text-[10px] font-bold uppercase tracking-wider opacity-60">
+              Body:
+            </span>
           )}
-          onClick={(e) => {
-            e.stopPropagation();
-            e.preventDefault();
-            setExpanded((v) => !v);
-          }}
-          onKeyDown={(e) => e.stopPropagation()}
-        >
-          {expanded ? "Show less" : "Read more"}
-        </button>
+          <div className="whitespace-pre-wrap break-words leading-relaxed [overflow-wrap:anywhere]">
+            {visible}
+          </div>
+          {isLong && (
+            <button
+              type="button"
+              className={cn(
+                "mt-1 text-[11px] font-medium underline-offset-2 hover:underline",
+                incoming ? "text-primary" : "text-primary-foreground/90",
+              )}
+              onClick={(e) => {
+                e.stopPropagation();
+                e.preventDefault();
+                setExpanded((v) => !v);
+              }}
+              onKeyDown={(e) => e.stopPropagation()}
+            >
+              {expanded ? "Show less" : "Read more"}
+            </button>
+          )}
+        </div>
       )}
     </div>
   );
@@ -93,7 +114,11 @@ type Props = {
   clearingChat?: boolean;
   onDeleteMessages?: (messageIds: string[]) => Promise<boolean>;
   deletingMessages?: boolean;
-  onSend: (content: string, subject?: string) => Promise<boolean>;
+  onSend: (
+    content: string,
+    subject?: string,
+    media?: { mediaKey: string; mediaMimeType: string; mediaFilename: string },
+  ) => Promise<boolean>;
   sending: boolean;
   customerContextOpen: boolean;
   onToggleCustomerContext: () => void;
@@ -127,6 +152,9 @@ export function ConversationThread({
 }: Props) {
   const [draft, setDraft] = useState("");
   const [subject, setSubject] = useState("");
+  const [pendingFile, setPendingFile] = useState<File | null>(null);
+  const [uploading, setUploading] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const [selecting, setSelecting] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [menuOpen, setMenuOpen] = useState(false);
@@ -149,6 +177,7 @@ export function ConversationThread({
 
   useEffect(() => {
     setDraft("");
+    setPendingFile(null);
     setSelecting(false);
     setSelectedIds(new Set());
     setMenuOpen(false);
@@ -188,12 +217,32 @@ export function ConversationThread({
 
   const handleSend = async () => {
     const content = draft.trim();
-    if (!content || sending || !selectedConversation) return;
+    if ((!content && !pendingFile) || sending || uploading || !selectedConversation) return;
     const subjectValue = activeTab === "email" ? subject.trim() : undefined;
-    const ok = await onSend(content, subjectValue);
+
+    let media: { mediaKey: string; mediaMimeType: string; mediaFilename: string } | undefined;
+    if (pendingFile && channelSupportsAttachments(activeTab)) {
+      setUploading(true);
+      try {
+        const uploaded = await uploadConversationAttachment(selectedConversation.id, pendingFile);
+        media = {
+          mediaKey: uploaded.mediaKey,
+          mediaMimeType: uploaded.mediaMimeType,
+          mediaFilename: uploaded.mediaFilename,
+        };
+      } catch (err) {
+        toast.error(err instanceof Error ? err.message : "Upload failed");
+        return;
+      } finally {
+        setUploading(false);
+      }
+    }
+
+    const ok = await onSend(content, subjectValue, media);
     if (ok) {
       setDraft("");
       setSubject("");
+      setPendingFile(null);
     }
   };
 
@@ -617,7 +666,7 @@ export function ConversationThread({
                           </div>
                         )}
                         <MessageBody
-                          content={message.content}
+                          message={message}
                           showBodyLabel={Boolean(message.subject)}
                           incoming={incoming || failed}
                         />
@@ -672,7 +721,47 @@ export function ConversationThread({
                     className="w-full border-b border-border bg-transparent px-2 py-2 text-sm font-semibold placeholder:font-normal focus:outline-none"
                   />
                 )}
+                {pendingFile && (
+                  <div className="flex items-center gap-2 rounded-md border border-border bg-muted/40 px-2 py-1.5 text-xs">
+                    <Paperclip className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+                    <span className="min-w-0 flex-1 truncate">{pendingFile.name}</span>
+                    <button
+                      type="button"
+                      className="text-muted-foreground hover:text-foreground"
+                      onClick={() => setPendingFile(null)}
+                      aria-label="Remove attachment"
+                    >
+                      <X className="h-3.5 w-3.5" />
+                    </button>
+                  </div>
+                )}
                 <div className="flex items-end gap-2">
+                  {channelSupportsAttachments(activeTab) && (
+                    <>
+                      <input
+                        ref={fileInputRef}
+                        type="file"
+                        className="hidden"
+                        accept="image/*,video/*,audio/*,.pdf,.doc,.docx,.xls,.xlsx,.txt,.zip"
+                        onChange={(e) => {
+                          const file = e.target.files?.[0];
+                          if (file) setPendingFile(file);
+                          e.target.value = "";
+                        }}
+                      />
+                      <Button
+                        type="button"
+                        size="icon"
+                        variant="ghost"
+                        className="mb-0.5 h-9 w-9 shrink-0"
+                        disabled={sending || uploading}
+                        onClick={() => fileInputRef.current?.click()}
+                        title="Attach file"
+                      >
+                        <Paperclip className="h-4 w-4" />
+                      </Button>
+                    </>
+                  )}
                   <textarea
                     value={draft}
                     onChange={(e) => setDraft(e.target.value)}
@@ -695,10 +784,10 @@ export function ConversationThread({
                   <Button
                     size="icon"
                     onClick={handleSend}
-                    disabled={!draft.trim() || sending}
+                    disabled={(!draft.trim() && !pendingFile) || sending || uploading}
                     className="mb-0.5 h-9 w-9 shrink-0"
                   >
-                    {sending ? (
+                    {sending || uploading ? (
                       <Loader2 className="h-4 w-4 animate-spin" />
                     ) : (
                       <Send className="h-4 w-4" />

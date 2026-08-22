@@ -33,6 +33,10 @@ function shapeMessage(
     status: string;
     createdAt: Date;
     externalThreadId?: string | null;
+    isRead?: boolean;
+    mediaKey?: string | null;
+    mediaMimeType?: string | null;
+    mediaFilename?: string | null;
   },
 ) {
   return {
@@ -45,7 +49,71 @@ function shapeMessage(
     status: m.status,
     createdAt: m.createdAt.toISOString(),
     externalThreadId: m.externalThreadId ?? null,
+    isRead: m.isRead ?? m.direction === "outgoing",
+    hasMedia: Boolean(m.mediaKey),
+    mediaFilename: m.mediaFilename ?? null,
+    mediaMimeType: m.mediaMimeType ?? null,
   };
+}
+
+function fullShapeMessage(
+  conversationId: string,
+  m: {
+    id: string;
+    direction: string;
+    content: string;
+    contentType: string;
+    subject: string | null;
+    status: string;
+    createdAt: Date;
+    externalThreadId?: string | null;
+    isRead?: boolean;
+    mediaKey?: string | null;
+    mediaMimeType?: string | null;
+    mediaFilename?: string | null;
+  },
+) {
+  return {
+    id: m.id,
+    conversationId,
+    direction: m.direction,
+    content: m.content,
+    contentType: m.contentType,
+    subject: m.subject,
+    status: m.status,
+    createdAt: m.createdAt.toISOString(),
+    externalThreadId: m.externalThreadId ?? null,
+    isRead: m.isRead ?? m.direction === "outgoing",
+    hasMedia: Boolean(m.mediaKey),
+    mediaFilename: m.mediaFilename ?? null,
+    mediaMimeType: m.mediaMimeType ?? null,
+  };
+}
+
+async function loadUnreadMap() {
+  const rows = await prisma.message.groupBy({
+    by: ["customerId", "channelType"],
+    where: { direction: "incoming", isRead: false },
+    _count: { id: true },
+  });
+  const map = new Map<string, Partial<Record<ChannelType, number>>>();
+  for (const row of rows) {
+    const prev = map.get(row.customerId) ?? {};
+    prev[row.channelType] = row._count.id;
+    map.set(row.customerId, prev);
+  }
+  return map;
+}
+
+function contactHasUnread(
+  customerId: string,
+  unreadMap: Map<string, Partial<Record<ChannelType, number>>>,
+  channelFilter?: ChannelType,
+): boolean {
+  const counts = unreadMap.get(customerId);
+  if (!counts) return false;
+  if (channelFilter) return (counts[channelFilter] ?? 0) > 0;
+  return Object.values(counts).some((n) => (n ?? 0) > 0);
 }
 
 /**
@@ -70,6 +138,8 @@ export class ConversationService {
       },
       orderBy: { updatedAt: "desc" },
     });
+
+    const unreadMap = await loadUnreadMap();
 
     const rows = [];
     for (const customer of customers) {
@@ -111,6 +181,8 @@ export class ConversationService {
           globalStatus: Object.values(channelStatuses).some((s) => s === "open")
             ? ("active" as const)
             : ("resolved" as const),
+          hasUnread: contactHasUnread(customer.id, unreadMap),
+          unreadByChannel: unreadMap.get(customer.id) ?? {},
         };
 
         const inboxMeta = {
@@ -141,6 +213,7 @@ export class ConversationService {
             channelType: type,
             externalThreadId: null as string | null,
             threadSubject: null as string | null,
+            hasUnread: (unreadMap.get(customer.id)?.[type] ?? 0) > 0,
             inbox: inboxMeta,
             contact: contactBase,
             messages: lastMsg ? [shapeMessage(conversationId, lastMsg)] : [],
@@ -190,6 +263,7 @@ export class ConversationService {
             threadSubject: displayEmailSubject(
               oldestWithSubject?.subject ?? lastMsg.subject,
             ),
+            hasUnread: (unreadMap.get(customer.id)?.email ?? 0) > 0,
             inbox: inboxMeta,
             contact: contactBase,
             messages: [shapeMessage(conversationId, lastMsg)],
@@ -224,20 +298,48 @@ export class ConversationService {
       orderBy: { createdAt: "asc" },
       take: 500,
     });
-    return messages.map((m) => ({
-      id: m.id,
-      conversationId,
-      direction: m.direction,
-      content: m.content,
-      contentType: m.contentType,
-      subject: m.subject,
-      status: m.status,
-      createdAt: m.createdAt.toISOString(),
-      externalThreadId: m.externalThreadId ?? null,
-    }));
+
+    await prisma.message.updateMany({
+      where: {
+        customerId,
+        channelType,
+        direction: "incoming",
+        isRead: false,
+        ...(channelType === "email" && externalThreadId
+          ? { externalThreadId }
+          : {}),
+      },
+      data: { isRead: true },
+    });
+
+    return messages.map((m) => fullShapeMessage(conversationId, m));
   }
 
-  static async sendMessage(conversationId: string, content: string, subject?: string) {
+  static async markConversationRead(conversationId: string) {
+    const { customerId, channelType, externalThreadId, isNewEmailThread } =
+      this.parseConversationId(conversationId);
+    if (isNewEmailThread) return { updated: 0 };
+    const result = await prisma.message.updateMany({
+      where: {
+        customerId,
+        channelType,
+        direction: "incoming",
+        isRead: false,
+        ...(channelType === "email" && externalThreadId
+          ? { externalThreadId }
+          : {}),
+      },
+      data: { isRead: true },
+    });
+    return { updated: result.count };
+  }
+
+  static async sendMessage(
+    conversationId: string,
+    content: string,
+    subject?: string,
+    media?: { mediaKey: string; mediaMimeType: string; mediaFilename?: string },
+  ) {
     const { customerId, channelType, externalThreadId, isNewEmailThread } =
       this.parseConversationId(conversationId);
     const result = await sendCustomerChannelMessage({
@@ -247,6 +349,9 @@ export class ConversationService {
       subject,
       externalThreadId,
       isNewEmailThread,
+      mediaKey: media?.mediaKey,
+      mediaMimeType: media?.mediaMimeType,
+      mediaFilename: media?.mediaFilename,
     });
 
     const resolvedConversationId =
@@ -267,6 +372,10 @@ export class ConversationService {
             status: result.message.status,
             createdAt: result.message.createdAt.toISOString(),
             externalThreadId: result.message.externalThreadId ?? null,
+            isRead: true,
+            hasMedia: Boolean(result.message.mediaKey),
+            mediaFilename: result.message.mediaFilename ?? null,
+            mediaMimeType: result.message.mediaMimeType ?? null,
           }
         : null,
       result: result.result,

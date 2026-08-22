@@ -40,16 +40,36 @@ export class ConversationController {
   }
 
   static async sendMessage(
-    request: FastifyRequest<{ Params: { id: string }; Body: { content?: string; subject?: string } }>,
+    request: FastifyRequest<{
+      Params: { id: string };
+      Body: {
+        content?: string;
+        subject?: string;
+        mediaKey?: string;
+        mediaMimeType?: string;
+        mediaFilename?: string;
+      };
+    }>,
     reply: FastifyReply,
   ) {
-    const content = request.body?.content?.trim();
-    if (!content) return reply.code(400).send({ error: "content is required" });
+    const content = request.body?.content?.trim() ?? "";
+    const mediaKey = request.body?.mediaKey?.trim();
+    const mediaMimeType = request.body?.mediaMimeType?.trim();
+    if (!content && !mediaKey) {
+      return reply.code(400).send({ error: "content or media attachment is required" });
+    }
     try {
       const result = await ConversationService.sendMessage(
         request.params.id,
         content,
         request.body?.subject,
+        mediaKey && mediaMimeType
+          ? {
+              mediaKey,
+              mediaMimeType,
+              mediaFilename: request.body?.mediaFilename,
+            }
+          : undefined,
       );
       return reply.code(201).send(result);
     } catch (err: any) {

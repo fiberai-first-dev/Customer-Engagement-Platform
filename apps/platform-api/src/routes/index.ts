@@ -4,7 +4,7 @@ import nodePath from "node:path";
 import { fileURLToPath } from "node:url";
 import { accountRoutes } from "./v1/accounts.routes.js";
 import { inboxRoutes } from "./v1/inboxes.routes.js";
-import { conversationRoutes } from "./v1/conversations.routes.js";
+import { conversationRoutes, messageMediaRoutes } from "./v1/conversations.routes.js";
 import { webhookRoutes } from "./v1/webhooks.routes.js";
 import { emailRoutes } from "./v1/email.routes.js";
 import { authRoutes } from "./v1/auth.routes.js";
@@ -85,6 +85,7 @@ export async function registerRoutes(app: FastifyInstance) {
   app.register(accountRoutes, { prefix: "/api/v1/accounts" });
   app.register(inboxRoutes, { prefix: "/api/v1/inboxes" });
   app.register(conversationRoutes, { prefix: "/api/v1/conversations" });
+  app.register(messageMediaRoutes, { prefix: "/api/v1/messages" });
   app.register(contactsRoutes, { prefix: "/api/v1/contacts" });
   app.register(dashboardRoutes, { prefix: "/api/v1/dashboard" });
   app.register(orderRoutes, { prefix: "/api/v1/orders" });

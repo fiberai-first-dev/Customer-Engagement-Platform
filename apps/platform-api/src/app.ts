@@ -1,10 +1,15 @@
 import Fastify from "fastify";
 import cors from "@fastify/cors";
+import multipart from "@fastify/multipart";
 import { registerRoutes } from "./routes/index.js";
+import { mediaConfig } from "./config/media.js";
 
 export async function buildApp() {
   const app = Fastify({ logger: true });
   await app.register(cors, { origin: true });
+  await app.register(multipart, {
+    limits: { fileSize: mediaConfig.maxBytes },
+  });
 
   // Always log webhook traffic (Meta/Gmail callbacks)
   app.addHook("onResponse", async (request, reply) => {

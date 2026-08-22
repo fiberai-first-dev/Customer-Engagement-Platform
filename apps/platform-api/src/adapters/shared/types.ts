@@ -47,6 +47,10 @@ export interface OutboundTextMessage {
   to: string;
   content: string;
   contentType?: MessageContentType;
+  /** WhatsApp outbound media (already on S3). */
+  mediaKey?: string;
+  mediaMimeType?: string;
+  mediaFilename?: string;
   /**
    * Email: RFC Message-ID of the parent message (In-Reply-To).
    * Must be the header Message-ID (e.g. `<CABx…@mail.gmail.com>`), never a Gmail API id.

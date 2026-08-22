@@ -749,7 +749,7 @@ export function SettingsPage() {
       <ConfirmDialog
         open={Boolean(disconnectTarget)}
         title={`Disconnect ${disconnectLabel}?`}
-        description={`This disconnects ${disconnectLabel}. You can connect again anytime.`}
+        description="Are you sure you want to disconnect? You can connect again anytime from Settings."
         confirmLabel="Disconnect"
         cancelLabel="Cancel"
         destructive

@@ -22,6 +22,11 @@ import {
   whatsappApiRecipient,
   whatsappDigitsEqual,
 } from "../utils/phone.js";
+import {
+  channelSupportsAttachments,
+  getChannelMediaHandler,
+  resolveInboundMedia,
+} from "./channel-media/index.js";
 
 export function mergeChannelConfig(
   existing: Prisma.JsonValue,
@@ -686,6 +691,29 @@ export async function ingestInboundMessages(input: {
     if (!link) continue;
 
     const receivedAt = inbound.occurredAt instanceof Date ? inbound.occurredAt : new Date();
+
+    let content = inbound.content;
+    let contentType = mapContentType(inbound.contentType);
+    let mediaKey: string | undefined;
+    let mediaMimeType: string | undefined;
+    let mediaFilename: string | undefined;
+
+    const mediaHandler = getChannelMediaHandler(channelCfg.channelType);
+    if (mediaHandler) {
+      const resolved = await resolveInboundMedia(mediaHandler, {
+        config,
+        customerId: link.customerId,
+        inbound,
+      });
+      if (resolved) {
+        content = resolved.content;
+        contentType = resolved.contentType;
+        mediaKey = resolved.mediaKey;
+        mediaMimeType = resolved.mediaMimeType;
+        mediaFilename = resolved.mediaFilename;
+      }
+    }
+
     try {
       const externalThreadId =
         inbound.externalThreadId?.trim() ||
@@ -699,12 +727,16 @@ export async function ingestInboundMessages(input: {
           channelId: link.channelId,
           customerId: link.customerId,
           direction,
-          content: inbound.content,
-          contentType: mapContentType(inbound.contentType),
+          content,
+          contentType,
           subject: inbound.subject,
           externalId: inbound.externalId,
           externalThreadId: link.channelType === "email" ? externalThreadId : null,
           status: direction === "outgoing" ? "sent" : "received",
+          isRead: direction === "outgoing",
+          mediaKey,
+          mediaMimeType,
+          mediaFilename,
           rawPayload: inbound.raw as Prisma.InputJsonValue,
           createdAt: receivedAt,
         },
@@ -736,6 +768,9 @@ export async function sendCustomerChannelMessage(input: {
   externalThreadId?: string;
   /** Explicit "compose new" — do not attach to any existing Gmail thread. */
   isNewEmailThread?: boolean;
+  mediaKey?: string;
+  mediaMimeType?: string;
+  mediaFilename?: string;
 }) {
   const channelCfg = await getEnabledChannelConfig(input.channelType);
   if (!channelCfg || !channelCfg.enabled) {
@@ -810,10 +845,35 @@ export async function sendCustomerChannelMessage(input: {
           recent.map((m) => extractEmailThreading(m.rawPayload).gmailThreadId).find(Boolean);
   }
 
+  if (input.mediaKey && !channelSupportsAttachments(input.channelType)) {
+    throw new Error(`Attachments are not supported for ${input.channelType}`);
+  }
+  if (input.mediaKey && input.channelType !== "email") {
+    if (!input.mediaMimeType) {
+      throw new Error("mediaMimeType is required when sending media");
+    }
+  } else if (!input.content?.trim()) {
+    throw new Error("content is required");
+  }
+
   const result = await adapter.sendMessage(config, {
     to,
-    content: input.content,
+    content: input.content?.trim() ?? "",
     subject,
+    ...(input.mediaKey && channelSupportsAttachments(input.channelType)
+      ? {
+          mediaKey: input.mediaKey,
+          mediaMimeType: input.mediaMimeType,
+          mediaFilename: input.mediaFilename,
+          contentType: input.mediaMimeType?.startsWith("image/")
+            ? ("image" as const)
+            : input.mediaMimeType?.startsWith("video/")
+              ? ("video" as const)
+              : input.mediaMimeType?.startsWith("audio/")
+                ? ("audio" as const)
+                : ("file" as const),
+        }
+      : {}),
     ...(input.channelType === "email"
       ? {
           replyToExternalId: replyToRfcMessageId,
@@ -849,6 +909,17 @@ export async function sendCustomerChannelMessage(input: {
         `legacy:${input.customerId}`
       : null;
 
+  const outboundContentType =
+    input.mediaKey && input.mediaMimeType && channelSupportsAttachments(input.channelType)
+      ? input.mediaMimeType.startsWith("image/")
+        ? "image"
+        : input.mediaMimeType.startsWith("video/")
+          ? "video"
+          : input.mediaMimeType.startsWith("audio/")
+            ? "audio"
+            : "file"
+      : "text";
+
   const message = await prisma.message.create({
     data: {
       id: ulid(),
@@ -856,12 +927,16 @@ export async function sendCustomerChannelMessage(input: {
       channelId: identity.id,
       customerId: input.customerId,
       direction: "outgoing",
-      content: input.content,
-      contentType: "text",
+      content: input.content?.trim() || input.mediaFilename || "[attachment]",
+      contentType: outboundContentType,
       subject,
       externalId: result.externalId ?? `local_${ulid()}`,
       externalThreadId: persistedThreadId,
       status: mapSendStatus(result.status),
+      isRead: true,
+      mediaKey: input.mediaKey,
+      mediaMimeType: input.mediaMimeType,
+      mediaFilename: input.mediaFilename,
       rawPayload: {
         to,
         ...(result.raw && typeof result.raw === "object" ? (result.raw as object) : {}),
