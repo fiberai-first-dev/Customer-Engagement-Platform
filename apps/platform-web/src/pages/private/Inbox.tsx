@@ -11,6 +11,7 @@ import {
   useSendMessage,
   useSuppressConversation,
   useUpdateConversation,
+  markConversationRead,
   type ChannelType,
   type Conversation,
 } from "../../api";
@@ -19,6 +20,7 @@ import {
   CHANNELS,
   ConversationEmptyState,
   ConversationList,
+  listReadScopeKey,
   ConversationThread,
   CustomerDetails,
   LivePulse,
@@ -80,6 +82,7 @@ export function InboxPage() {
   const [pendingDelete, setPendingDelete] = useState<PendingDelete | null>(null);
   const [selectedEmailThreadId, setSelectedEmailThreadId] = useState<string | null>(null);
   const [composingNewEmail, setComposingNewEmail] = useState(false);
+  const [readScopeKeys, setReadScopeKeys] = useState<Set<string>>(() => new Set());
   const focusedContactRef = useRef<string | null>(null);
 
   const {
@@ -165,6 +168,37 @@ export function InboxPage() {
       return bTime - aTime;
     });
   }, [conversationsByContact, statusFilter, channelFilter, searchQuery]);
+
+  /** New inbound while a thread is open — show the unread bar again. */
+  useEffect(() => {
+    if (!conversations?.length) return;
+    setReadScopeKeys((prev) => {
+      if (!prev.size) return prev;
+      const byContact = new Map<string, Conversation>();
+      for (const c of conversations) {
+        if (!byContact.has(c.contactId)) byContact.set(c.contactId, c);
+      }
+      const next = new Set(prev);
+      let changed = false;
+      for (const key of prev) {
+        const sep = key.indexOf(":");
+        if (sep <= 0) continue;
+        const contactId = key.slice(0, sep);
+        const filter = key.slice(sep + 1) as ChannelFilter;
+        const conv = byContact.get(contactId);
+        if (!conv) continue;
+        const serverUnread =
+          filter === "all"
+            ? Boolean(conv.contact.hasUnread)
+            : (conv.contact.unreadByChannel?.[filter as ChannelType] ?? 0) > 0;
+        if (serverUnread) {
+          next.delete(key);
+          changed = true;
+        }
+      }
+      return changed ? next : prev;
+    });
+  }, [conversations]);
 
   const channelFilterOptions = useMemo(() => {
     const enabled =
@@ -350,6 +384,20 @@ export function InboxPage() {
   } = useMessages(selectedConversation?.id);
   const showInitialMessagesLoader = messagesPending && messages === undefined;
 
+  /** Mark read when opening a channel tab (not only list click). */
+  useEffect(() => {
+    const id = selectedConversation?.id;
+    if (!id || id.endsWith(":email:new") || !selectedContactId) return;
+    const scopeKey = listReadScopeKey(selectedContactId, channelFilter);
+    setReadScopeKeys((prev) => {
+      if (prev.has(scopeKey)) return prev;
+      const next = new Set(prev);
+      next.add(scopeKey);
+      return next;
+    });
+    void markConversationRead(id).catch(() => undefined);
+  }, [selectedConversation?.id, selectedContactId, channelFilter]);
+
   useEffect(() => {
     if (!channelsReady) return;
     if (!enabledChannels.length) return;
@@ -434,6 +482,25 @@ export function InboxPage() {
     const rows = conversationsByContact[contactId] ?? [conversation];
     focusedContactRef.current = contactId;
     setSelectedContactId(contactId);
+
+    const scopeKey = listReadScopeKey(contactId, channelFilter);
+    setReadScopeKeys((prev) => {
+      if (prev.has(scopeKey)) return prev;
+      const next = new Set(prev);
+      next.add(scopeKey);
+      return next;
+    });
+
+    const toMark =
+      channelFilter === "all"
+        ? rows
+        : rows.filter((c) => c.channelType === channelFilter);
+    for (const row of toMark) {
+      void markConversationRead(row.id).catch(() => {
+        /* list refetch on messages fetch will reconcile */
+      });
+    }
+
     if (channelFilter !== "all" && rows.some((c) => c.channelType === channelFilter)) {
       setActiveTab(channelFilter);
     } else {
@@ -596,7 +663,7 @@ export function InboxPage() {
         onConfirm={() => void confirmPendingDelete()}
         onCancel={() => closeDeleteDialog(false)}
       />
-      <section className="flex w-[340px] shrink-0 flex-col border-r border-border bg-card">
+      <section className="flex w-[380px] shrink-0 flex-col border-r border-border bg-card">
         <div className="flex h-14 shrink-0 items-center justify-between gap-2 border-b border-border px-4">
           <div className="flex min-w-0 items-center gap-2.5">
             <h1 className="text-base font-semibold tracking-tight text-foreground">Inbox</h1>
@@ -691,6 +758,7 @@ export function InboxPage() {
             onSelect={handleSelectConversation}
             emptyHint={listEmptyHint}
             channelFilter={channelFilter}
+            readScopeKeys={readScopeKeys}
           />
         )}
       </section>

@@ -8,6 +8,7 @@ export async function conversationRoutes(app: FastifyInstance) {
   app.patch("/:id", ConversationController.updateStatus);
   app.post("/:id/suppress", ConversationController.suppress);
   app.post("/:id/messages/delete", ConversationController.suppressMessages);
+  app.post("/:id/read", ConversationController.markRead);
   app.post("/:id/attachments", MediaController.uploadAttachment);
   app.get("/:id/messages", ConversationController.getMessages);
   app.post("/:id/messages", ConversationController.sendMessage);

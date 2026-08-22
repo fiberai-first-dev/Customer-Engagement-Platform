@@ -1,4 +1,4 @@
-export { ConversationList } from "./ConversationList";
+export { ConversationList, listReadScopeKey } from "./ConversationList";
 export { ConversationThread, ConversationEmptyState } from "./ConversationThread";
 export { CustomerDetails } from "./CustomerDetails";
 export { LivePulse } from "./LivePulse";

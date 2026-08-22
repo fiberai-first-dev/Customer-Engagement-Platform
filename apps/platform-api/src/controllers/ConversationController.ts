@@ -39,6 +39,18 @@ export class ConversationController {
     }
   }
 
+  static async markRead(
+    request: FastifyRequest<{ Params: { id: string } }>,
+    reply: FastifyReply,
+  ) {
+    try {
+      const result = await ConversationService.markConversationRead(request.params.id);
+      return reply.send({ ok: true, ...result });
+    } catch (err: any) {
+      return reply.code(404).send({ error: err.message });
+    }
+  }
+
   static async sendMessage(
     request: FastifyRequest<{
       Params: { id: string };

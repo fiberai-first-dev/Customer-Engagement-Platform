@@ -46,9 +46,13 @@ function MessageBody({
   const [expanded, setExpanded] = useState(false);
   const isLong = content.length > LONG_MESSAGE_CHARS;
   const visible = !isLong || expanded ? content : `${content.slice(0, LONG_MESSAGE_CHARS).trimEnd()}…`;
+  const isMediaPlaceholder = /^\[(image|audio|video|file|document)\]$/i.test(content.trim());
+  const isMediaType = ["image", "video", "audio", "file"].includes(message.contentType);
   const showText =
     Boolean(content.trim()) &&
-    !(message.hasMedia && /^\[(image|audio|video|file)\]$/i.test(content.trim()));
+    !(message.hasMedia && isMediaPlaceholder) &&
+    !( !message.hasMedia && (isMediaPlaceholder || isMediaType) );
+  const showMissingMedia = !message.hasMedia && (isMediaPlaceholder || isMediaType);
 
   return (
     <div className="min-w-0 space-y-2">
@@ -60,6 +64,13 @@ function MessageBody({
           contentType={message.contentType}
           incoming={incoming}
         />
+      )}
+      {showMissingMedia && (
+        <div className="rounded-lg border border-dashed border-border/80 bg-muted/30 px-3 py-2 text-xs text-muted-foreground">
+          {message.contentType === "image" || /^\[image\]$/i.test(content.trim())
+            ? "Image unavailable"
+            : "Attachment unavailable"}
+        </div>
       )}
       {showText && (
         <div>

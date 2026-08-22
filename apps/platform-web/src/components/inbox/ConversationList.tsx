@@ -8,16 +8,22 @@ import {
 import { motion, AnimatePresence } from "framer-motion";
 
 type Props = {
-  /** One row per contact — unified inbox, no channel labels. */
   conversations: Conversation[];
-  /** Sibling channel threads by contact — used only for unresolved count badge. */
   channelConversationsByContact?: Record<string, Conversation[]>;
   selectedContactId: string | null;
   onSelect: (conversation: Conversation) => void;
-  /** Shown when the filtered list is empty. */
   emptyHint?: string;
   channelFilter?: "all" | import("../../api").ChannelType;
+  /** Optimistically cleared unread (contact + channel scope). */
+  readScopeKeys?: ReadonlySet<string>;
 };
+
+export function listReadScopeKey(
+  contactId: string,
+  channelFilter: "all" | import("../../api").ChannelType,
+): string {
+  return `${contactId}:${channelFilter}`;
+}
 
 function contactHasUnread(
   conversation: Conversation,
@@ -52,6 +58,7 @@ export function ConversationList({
   onSelect,
   emptyHint,
   channelFilter = "all",
+  readScopeKeys,
 }: Props) {
   if (conversations.length === 0) {
     return (
@@ -81,8 +88,10 @@ export function ConversationList({
               : subjectHint
             : bodyPreview ?? "No messages yet";
           const selected = selectedContactId === conversation.contactId;
-          const isActive = conversation.contact.globalStatus !== "resolved";
-          const hasUnread = contactHasUnread(conversation, channelFilter);
+          const scopeKey = listReadScopeKey(conversation.contactId, channelFilter);
+          const hasUnread =
+            contactHasUnread(conversation, channelFilter) &&
+            !readScopeKeys?.has(scopeKey);
           const openCount = unresolvedChannelCount(
             conversation,
             channelConversationsByContact?.[conversation.contactId],
@@ -99,16 +108,26 @@ export function ConversationList({
               type="button"
               onClick={() => onSelect(conversation)}
               className={cn(
-                "relative flex w-full items-center gap-3 overflow-hidden border-b border-border px-4 py-3 text-left transition-colors",
-                hasUnread && "border-l-[3px] border-l-primary pl-[13px]",
-                selected ? "bg-muted" : "bg-card hover:bg-muted/60",
+                "relative flex w-full items-center gap-2.5 overflow-hidden border-b border-border py-2 pl-3 pr-3 text-left transition-colors",
+                selected ? "bg-muted" : "bg-card hover:bg-muted/50",
               )}
             >
-              <div className="relative flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-primary/10 text-sm font-semibold text-primary">
+              <motion.span
+                aria-hidden
+                className="pointer-events-none absolute left-0 top-1/2 w-[3px] -translate-y-1/2 rounded-full bg-primary"
+                initial={false}
+                animate={{
+                  height: hasUnread ? "72%" : "0%",
+                  opacity: hasUnread ? 1 : 0,
+                }}
+                transition={{ duration: 0.22, ease: [0.4, 0, 0.2, 1] }}
+              />
+
+              <div className="relative flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary/10 text-xs font-semibold text-primary">
                 {initials(name)}
                 {openCount > 0 && (
                   <span
-                    className="absolute -right-0.5 -top-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-primary px-1 text-[9px] font-bold text-primary-foreground"
+                    className="absolute -right-0.5 -top-0.5 flex h-3.5 min-w-3.5 items-center justify-center rounded-full bg-primary px-0.5 text-[8px] font-bold leading-none text-primary-foreground"
                     title={`${openCount} unresolved channel${openCount === 1 ? "" : "s"}`}
                   >
                     {openCount}
@@ -116,22 +135,29 @@ export function ConversationList({
                 )}
               </div>
 
-              <div className="min-w-0 flex-1">
-                <div className="mb-0.5 flex items-start justify-between gap-2">
+              <div className="min-w-0 flex-1 leading-tight">
+                <div className="flex items-baseline justify-between gap-2">
                   <span
                     className={cn(
-                      "truncate text-sm text-foreground",
-                      hasUnread || isActive ? "font-semibold" : "font-medium",
+                      "truncate text-[13px] text-foreground",
+                      hasUnread ? "font-semibold" : "font-medium",
                     )}
                   >
                     {name}
                   </span>
-                  <span className="shrink-0 text-[11px] text-muted-foreground">
+                  <span className="shrink-0 text-[10px] tabular-nums text-muted-foreground">
                     {formatMessageTime(conversation.lastMessageAt)}
                   </span>
                 </div>
 
-                <p className="truncate text-xs text-muted-foreground">{preview}</p>
+                <p
+                  className={cn(
+                    "truncate text-[11px]",
+                    hasUnread ? "text-foreground/75" : "text-muted-foreground",
+                  )}
+                >
+                  {preview}
+                </p>
               </div>
             </motion.button>
           );

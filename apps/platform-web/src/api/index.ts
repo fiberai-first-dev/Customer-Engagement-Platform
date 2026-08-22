@@ -227,6 +227,12 @@ export const useMessages = (conversationId?: string) => {
   });
 };
 
+export async function markConversationRead(conversationId: string): Promise<void> {
+  await request(`/api/v1/conversations/${encodeURIComponent(conversationId)}/read`, {
+    method: "POST",
+  });
+}
+
 export const useSendMessage = () => {
   const queryClient = useQueryClient();
   return useMutation({
