@@ -1,4 +1,4 @@
-import type { ChannelType } from "../generated/client/index.js";
+import type { ChannelType, Prisma } from "../generated/client/index.js";
 import { prisma } from "../config/db.js";
 import {
   sendCustomerChannelMessage,
@@ -17,28 +17,41 @@ import {
   displayEmailSubject,
   parseConversationId,
 } from "../utils/conversationId.js";
+import {
+  getChannelMediaHandler,
+  listGmailAttachmentParts,
+  normalizeMediaItems,
+} from "./channel-media/index.js";
+import { resolveChannelConfig } from "../adapters/shared/index.js";
+import type { ChannelConfig } from "../adapters/shared/types.js";
 
 function previewMessage(content: string) {
   return content.length > 120 ? `${content.slice(0, 117)}…` : content;
 }
 
-function shapeMessage(
-  conversationId: string,
-  m: {
-    id: string;
-    direction: string;
-    content: string;
-    contentType: string;
-    subject: string | null;
-    status: string;
-    createdAt: Date;
-    externalThreadId?: string | null;
-    isRead?: boolean;
-    mediaKey?: string | null;
-    mediaMimeType?: string | null;
-    mediaFilename?: string | null;
-  },
-) {
+type MessageMediaFields = {
+  id: string;
+  direction: string;
+  content: string;
+  contentType: string;
+  subject: string | null;
+  status: string;
+  createdAt: Date;
+  externalThreadId?: string | null;
+  isRead?: boolean;
+  mediaKey?: string | null;
+  mediaMimeType?: string | null;
+  mediaFilename?: string | null;
+  mediaItems?: unknown;
+};
+
+function shapeMessage(conversationId: string, m: MessageMediaFields) {
+  const mediaItems = normalizeMediaItems(m.mediaItems, {
+    mediaKey: m.mediaKey,
+    mediaMimeType: m.mediaMimeType,
+    mediaFilename: m.mediaFilename,
+    contentType: m.contentType,
+  });
   return {
     id: m.id,
     conversationId,
@@ -50,29 +63,20 @@ function shapeMessage(
     createdAt: m.createdAt.toISOString(),
     externalThreadId: m.externalThreadId ?? null,
     isRead: m.isRead ?? m.direction === "outgoing",
-    hasMedia: Boolean(m.mediaKey),
-    mediaFilename: m.mediaFilename ?? null,
-    mediaMimeType: m.mediaMimeType ?? null,
+    hasMedia: mediaItems.length > 0,
+    mediaFilename: mediaItems[0]?.filename ?? m.mediaFilename ?? null,
+    mediaMimeType: mediaItems[0]?.mimeType ?? m.mediaMimeType ?? null,
+    mediaItems,
   };
 }
 
-function fullShapeMessage(
-  conversationId: string,
-  m: {
-    id: string;
-    direction: string;
-    content: string;
-    contentType: string;
-    subject: string | null;
-    status: string;
-    createdAt: Date;
-    externalThreadId?: string | null;
-    isRead?: boolean;
-    mediaKey?: string | null;
-    mediaMimeType?: string | null;
-    mediaFilename?: string | null;
-  },
-) {
+function fullShapeMessage(conversationId: string, m: MessageMediaFields) {
+  const mediaItems = normalizeMediaItems(m.mediaItems, {
+    mediaKey: m.mediaKey,
+    mediaMimeType: m.mediaMimeType,
+    mediaFilename: m.mediaFilename,
+    contentType: m.contentType,
+  });
   return {
     id: m.id,
     conversationId,
@@ -84,10 +88,88 @@ function fullShapeMessage(
     createdAt: m.createdAt.toISOString(),
     externalThreadId: m.externalThreadId ?? null,
     isRead: m.isRead ?? m.direction === "outgoing",
-    hasMedia: Boolean(m.mediaKey),
-    mediaFilename: m.mediaFilename ?? null,
-    mediaMimeType: m.mediaMimeType ?? null,
+    hasMedia: mediaItems.length > 0,
+    mediaFilename: mediaItems[0]?.filename ?? m.mediaFilename ?? null,
+    mediaMimeType: mediaItems[0]?.mimeType ?? m.mediaMimeType ?? null,
+    mediaItems,
   };
+}
+
+/** Backfill missing email attachments from Gmail rawPayload (older single-file ingest). */
+async function rehydrateEmailMediaIfNeeded(
+  messages: Array<{
+    id: string;
+    channelType: ChannelType;
+    customerId: string;
+    mediaKey: string | null;
+    mediaMimeType: string | null;
+    mediaFilename: string | null;
+    mediaItems: unknown;
+    rawPayload: unknown;
+    contentType: string;
+  }>,
+) {
+  const needs = messages.filter((m) => {
+    if (m.channelType !== "email" || !m.rawPayload) return false;
+    const parts = listGmailAttachmentParts(m.rawPayload);
+    if (parts.length <= 1) return false;
+    const stored = normalizeMediaItems(m.mediaItems, {
+      mediaKey: m.mediaKey,
+      mediaMimeType: m.mediaMimeType,
+      mediaFilename: m.mediaFilename,
+    });
+    return stored.length < parts.length;
+  });
+  if (!needs.length) return;
+
+  const channelCfg = await prisma.channelConfig.findFirst({
+    where: { channelType: "email" },
+    orderBy: { createdAt: "asc" },
+  });
+  if (!channelCfg) return;
+  const config = resolveChannelConfig("email", channelCfg.channelConfig) as ChannelConfig;
+  const handler = getChannelMediaHandler("email");
+  if (!handler?.parseAllInboundRaw) return;
+
+  for (const m of needs) {
+    try {
+      const parsedList = handler.parseAllInboundRaw(m.rawPayload);
+      const storedItems = [];
+      for (const parsed of parsedList) {
+        const stored = await handler.persistInbound({
+          config,
+          customerId: m.customerId,
+          parsed,
+        });
+        if (stored) {
+          storedItems.push({
+            ...stored,
+            contentType: parsed.contentType,
+          });
+        }
+      }
+      if (!storedItems.length) continue;
+      await prisma.message.update({
+        where: { id: m.id },
+        data: {
+          mediaKey: storedItems[0]!.mediaKey,
+          mediaMimeType: storedItems[0]!.mimeType,
+          mediaFilename: storedItems[0]!.filename,
+          mediaItems: storedItems as unknown as Prisma.InputJsonValue,
+        },
+      });
+      m.mediaKey = storedItems[0]!.mediaKey;
+      m.mediaMimeType = storedItems[0]!.mimeType;
+      m.mediaFilename = storedItems[0]!.filename ?? null;
+      m.mediaItems = storedItems;
+    } catch (err) {
+      console.warn(
+        "[email-media] rehydrate failed:",
+        m.id,
+        err instanceof Error ? err.message : err,
+      );
+    }
+  }
 }
 
 async function loadUnreadMap() {
@@ -299,6 +381,10 @@ export class ConversationService {
       take: 500,
     });
 
+    if (channelType === "email") {
+      await rehydrateEmailMediaIfNeeded(messages);
+    }
+
     await prisma.message.updateMany({
       where: {
         customerId,
@@ -376,6 +462,12 @@ export class ConversationService {
             hasMedia: Boolean(result.message.mediaKey),
             mediaFilename: result.message.mediaFilename ?? null,
             mediaMimeType: result.message.mediaMimeType ?? null,
+            mediaItems: normalizeMediaItems(result.message.mediaItems, {
+              mediaKey: result.message.mediaKey,
+              mediaMimeType: result.message.mediaMimeType,
+              mediaFilename: result.message.mediaFilename,
+              contentType: result.message.contentType,
+            }),
           }
         : null,
       result: result.result,

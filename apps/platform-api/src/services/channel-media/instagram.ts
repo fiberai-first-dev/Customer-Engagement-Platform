@@ -70,7 +70,7 @@ export const instagramChannelMedia: ChannelMediaHandler = {
               : type === "audio"
                 ? "audio/mpeg"
                 : "application/octet-stream",
-      filename: typeof payload?.title === "string" ? payload.title : type,
+      filename: typeof payload?.title === "string" ? payload.title : undefined,
       contentType: attachmentContentType(type),
     };
   },
@@ -79,7 +79,7 @@ export const instagramChannelMedia: ChannelMediaHandler = {
     if (!isMediaStorageEnabled() || !parsed.url) return null;
     try {
       const { buffer, mimeType } = await downloadUrl(parsed.url);
-      const filename = parsed.filename ?? `${parsed.contentType}`;
+      const filename = parsed.filename ?? `${parsed.contentType}.${mimeType.split("/")[1] ?? "bin"}`;
       const key = channelMediaKey("instagram", customerId, filename);
       await putObject({
         key,

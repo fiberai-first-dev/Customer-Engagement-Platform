@@ -110,15 +110,20 @@ export class ContactController {
       const existing = await prisma.customer.findUnique({ where: { id: request.params.id } });
       if (!existing) return reply.code(404).send({ error: "not found" });
 
-      const emails = body.emails?.length
+      // Prefer arrays when present (including empty = clear that channel list).
+      const emails = Array.isArray(body.emails)
         ? body.emails
-        : body.email
-          ? [body.email]
+        : body.email !== undefined
+          ? body.email
+            ? [body.email]
+            : []
           : undefined;
-      const whatsappIds = body.whatsappIds?.length
+      const whatsappIds = Array.isArray(body.whatsappIds)
         ? body.whatsappIds
-        : body.whatsappId
-          ? [body.whatsappId]
+        : body.whatsappId !== undefined
+          ? body.whatsappId
+            ? [body.whatsappId]
+            : []
           : undefined;
 
       if (!body.force && !body.mergeIntoId) {

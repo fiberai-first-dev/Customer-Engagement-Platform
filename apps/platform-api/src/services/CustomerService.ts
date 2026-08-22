@@ -255,6 +255,71 @@ async function attachIdentities(
   await recomputeCustomerResolved(customerId);
 }
 
+/**
+ * After an agent edit, keep only the channel ids they submitted.
+ * attachIdentities / Shopify enrich only add — without this, removed emails come back.
+ */
+async function syncIdentitiesToSubmitted(
+  customerId: string,
+  input: {
+    emails?: string[];
+    whatsappIds?: string[];
+    instagramId?: string | null;
+  },
+) {
+  if (input.emails !== undefined) {
+    const keep = new Set(
+      (input.emails ?? [])
+        .map((e) => normalizeEmail(e))
+        .filter((e): e is string => Boolean(e)),
+    );
+    const rows = await prisma.emailChannel.findMany({ where: { customerId } });
+    for (const row of rows) {
+      if (!keep.has(row.externalId.trim().toLowerCase())) {
+        await prisma.emailChannel.delete({ where: { id: row.id } });
+      }
+    }
+  }
+
+  if (input.whatsappIds !== undefined) {
+    const keepDigits = new Set(
+      (input.whatsappIds ?? [])
+        .map((w) => normalizeWhatsAppId(w))
+        .filter((d): d is string => Boolean(d)),
+    );
+    const rows = await prisma.whatsAppChannel.findMany({ where: { customerId } });
+    for (const row of rows) {
+      const digits = normalizeWhatsAppId(row.externalId);
+      if (!digits || !keepDigits.has(digits)) {
+        await prisma.whatsAppChannel.delete({ where: { id: row.id } });
+      }
+    }
+  }
+
+  if (input.instagramId !== undefined) {
+    const ig = normalizeIg(input.instagramId);
+    const rows = await prisma.instagramChannel.findMany({ where: { customerId } });
+    for (const row of rows) {
+      const meta =
+        row.metadata && typeof row.metadata === "object" && !Array.isArray(row.metadata)
+          ? (row.metadata as Record<string, unknown>)
+          : {};
+      const username =
+        typeof meta.username === "string" ? meta.username.replace(/^@+/, "") : null;
+      const matches =
+        Boolean(ig) &&
+        (row.externalId === ig ||
+          username === ig ||
+          (username && ig && username.toLowerCase() === ig.toLowerCase()));
+      if (!matches) {
+        await prisma.instagramChannel.delete({ where: { id: row.id } });
+      }
+    }
+  }
+
+  await recomputeCustomerResolved(customerId);
+}
+
 /** Move every identity + message from source → target, then delete source. */
 async function absorbCustomer(sourceId: string, targetId: string) {
   if (sourceId === targetId) return;
@@ -445,6 +510,7 @@ export async function updateCustomer(
     const survivorId =
       (await applyShopifyCrossChannelLikeInbound(input.mergeIntoId, input)) ?? input.mergeIntoId;
     await attachIdentities(survivorId, input);
+    await syncIdentitiesToSubmitted(survivorId, input);
     const name = input.keepName ?? input.name;
     if (name && !isUnknownName(name)) {
       await prisma.customer.update({
@@ -480,6 +546,8 @@ export async function updateCustomer(
   if (survivorId !== id) {
     await attachIdentities(survivorId, input);
   }
+  // Agent edit wins: drop identities they removed (incl. Shopify re-attached ones).
+  await syncIdentitiesToSubmitted(survivorId, input);
   await recomputeCustomerResolved(survivorId);
   return loadCustomerShaped(survivorId);
 }

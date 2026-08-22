@@ -174,10 +174,12 @@ model Message {
   rawPayload  Json?            @map("raw_payload")
   /// Agent has opened the thread since this message arrived (incoming only).
   isRead      Boolean          @default(false) @map("is_read")
-  /// S3 object key for WhatsApp media attachments.
+  /// S3 object key for the primary / first media attachment.
   mediaKey    String?          @map("media_key")
   mediaMimeType String?        @map("media_mime_type")
   mediaFilename String?        @map("media_filename")
+  /// All stored attachments: [{ mediaKey, mimeType, filename, contentType? }, ...]
+  mediaItems  Json?            @map("media_items")
   createdAt   DateTime         @default(now()) @map("created_at")
 
   @@unique([channelType, channelId, externalId])

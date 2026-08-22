@@ -34,8 +34,15 @@ function walkAttachmentParts(part: GmailPart | null | undefined, out: GmailPart[
   }
 }
 
+export function listGmailAttachmentParts(raw: unknown): GmailPart[] {
+  const msg = asRecord(raw);
+  if (!msg) return [];
+  const found: GmailPart[] = [];
+  walkAttachmentParts(msg.payload as GmailPart | undefined, found);
+  return found;
+}
+
 function encodeMimeWord(filename: string): string {
-  // Keep ASCII filenames plain; escape quotes.
   if (/^[\x20-\x7E]+$/.test(filename) && !filename.includes('"')) return filename;
   return `=?UTF-8?B?${Buffer.from(filename, "utf8").toString("base64")}?=`;
 }
@@ -85,30 +92,34 @@ export function buildRawEmailWithAttachment(input: {
   return Buffer.from(lines.join("\r\n")).toString("base64url");
 }
 
-export const emailChannelMedia: ChannelMediaHandler = {
-  channelType: "email",
+function parseParts(raw: unknown): ParsedInboundMedia[] {
+  const msg = asRecord(raw);
+  if (!msg) return [];
+  const messageId = typeof msg.id === "string" ? msg.id.trim() : "";
+  if (!messageId) return [];
 
-  parseInboundRaw(raw: unknown): ParsedInboundMedia | null {
-    const msg = asRecord(raw);
-    if (!msg) return null;
-    const messageId = typeof msg.id === "string" ? msg.id.trim() : "";
-    if (!messageId) return null;
-
-    const payload = msg.payload as GmailPart | undefined;
-    const found: GmailPart[] = [];
-    walkAttachmentParts(payload, found);
-    const part = found[0];
-    if (!part?.body?.attachmentId) return null;
-
+  return listGmailAttachmentParts(raw).map((part) => {
     const mimeType = part.mimeType || "application/octet-stream";
     const filename = part.filename?.trim() || "attachment";
     return {
-      providerMediaId: part.body.attachmentId,
+      providerMediaId: part.body!.attachmentId!,
       mimeType,
       filename,
       contentType: contentTypeFromMime(mimeType),
       meta: { gmailMessageId: messageId },
     };
+  });
+}
+
+export const emailChannelMedia: ChannelMediaHandler = {
+  channelType: "email",
+
+  parseInboundRaw(raw: unknown): ParsedInboundMedia | null {
+    return parseParts(raw)[0] ?? null;
+  },
+
+  parseAllInboundRaw(raw: unknown): ParsedInboundMedia[] {
+    return parseParts(raw);
   },
 
   async persistInbound({ config, customerId, parsed }) {
@@ -130,7 +141,7 @@ export const emailChannelMedia: ChannelMediaHandler = {
       const filename = parsed.filename ?? "attachment";
       const key = channelMediaKey("email", customerId, filename);
       await putObject({ key, body: buffer, contentType: mimeType });
-      return { mediaKey: key, mimeType, filename };
+      return { mediaKey: key, mimeType, filename, contentType: parsed.contentType };
     } catch (err) {
       console.warn(
         "[channel-media:email] inbound download failed:",

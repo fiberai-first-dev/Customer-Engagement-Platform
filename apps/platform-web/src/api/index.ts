@@ -133,6 +133,12 @@ export interface Message {
   hasMedia?: boolean;
   mediaFilename?: string | null;
   mediaMimeType?: string | null;
+  mediaItems?: Array<{
+    mediaKey: string;
+    mimeType: string;
+    filename?: string | null;
+    contentType?: string | null;
+  }>;
 }
 
 export interface Conversation {
@@ -394,8 +400,9 @@ export const useDisconnectInbox = () => {
   });
 };
 
-export function messageMediaUrl(messageId: string): string {
-  return `${API_BASE.replace(/\/$/, "")}/api/v1/messages/${encodeURIComponent(messageId)}/media`;
+export function messageMediaUrl(messageId: string, index = 0): string {
+  const base = `${API_BASE.replace(/\/$/, "")}/api/v1/messages/${encodeURIComponent(messageId)}/media`;
+  return index > 0 ? `${base}?index=${index}` : base;
 }
 
 export async function uploadConversationAttachment(

@@ -697,6 +697,12 @@ export async function ingestInboundMessages(input: {
     let mediaKey: string | undefined;
     let mediaMimeType: string | undefined;
     let mediaFilename: string | undefined;
+    let mediaItems: Array<{
+      mediaKey: string;
+      mimeType: string;
+      filename?: string;
+      contentType?: string;
+    }> | undefined;
 
     const mediaHandler = getChannelMediaHandler(channelCfg.channelType);
     if (mediaHandler) {
@@ -711,6 +717,7 @@ export async function ingestInboundMessages(input: {
         mediaKey = resolved.mediaKey;
         mediaMimeType = resolved.mediaMimeType;
         mediaFilename = resolved.mediaFilename;
+        mediaItems = resolved.mediaItems;
       }
     }
 
@@ -737,6 +744,9 @@ export async function ingestInboundMessages(input: {
           mediaKey,
           mediaMimeType,
           mediaFilename,
+          mediaItems: mediaItems?.length
+            ? (mediaItems as Prisma.InputJsonValue)
+            : undefined,
           rawPayload: inbound.raw as Prisma.InputJsonValue,
           createdAt: receivedAt,
         },
@@ -920,6 +930,18 @@ export async function sendCustomerChannelMessage(input: {
             : "file"
       : "text";
 
+  const outboundMediaItems =
+    input.mediaKey && input.mediaMimeType && channelSupportsAttachments(input.channelType)
+      ? [
+          {
+            mediaKey: input.mediaKey,
+            mimeType: input.mediaMimeType,
+            filename: input.mediaFilename,
+            contentType: outboundContentType,
+          },
+        ]
+      : undefined;
+
   const message = await prisma.message.create({
     data: {
       id: ulid(),
@@ -937,6 +959,9 @@ export async function sendCustomerChannelMessage(input: {
       mediaKey: input.mediaKey,
       mediaMimeType: input.mediaMimeType,
       mediaFilename: input.mediaFilename,
+      mediaItems: outboundMediaItems
+        ? (outboundMediaItems as Prisma.InputJsonValue)
+        : undefined,
       rawPayload: {
         to,
         ...(result.raw && typeof result.raw === "object" ? (result.raw as object) : {}),

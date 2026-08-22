@@ -226,25 +226,34 @@ export function ContactModal({
   const cleanList = (values: string[]) => values.map((v) => v.trim()).filter(Boolean);
 
   const buildBody = () => {
-    const emails = showEmail ? cleanList(formData.emails) : [];
+    const emails = showEmail ? cleanList(formData.emails) : undefined;
     const whatsappIds = showWa
       ? cleanList(formData.whatsappIds)
           .map((n) => formatWhatsAppStorage(n))
           .filter((n): n is string => Boolean(n))
-      : [];
+      : undefined;
     const name = formData.name.trim();
     const instagramId = showIg
       ? formData.instagramId.trim().replace(/^@+/, "")
-      : "";
+      : undefined;
 
     return {
       name: name || undefined,
-      emails,
-      whatsappIds,
-      email: emails[0],
-      whatsappId: whatsappIds[0],
-      instagramId: instagramId || undefined,
-      emailId: emails[0] || undefined,
+      ...(emails
+        ? {
+            emails,
+            email: emails[0],
+            emailId: emails[0] || undefined,
+          }
+        : {}),
+      ...(whatsappIds
+        ? {
+            whatsappIds,
+            whatsappId: whatsappIds[0],
+          }
+        : {}),
+      // Empty string clears Instagram on edit (sync treats defined as authoritative).
+      ...(showIg ? { instagramId: instagramId ?? "" } : {}),
     };
   };
 
@@ -279,7 +288,11 @@ export function ContactModal({
     }
 
     const body = buildBody();
-    if (!body.name && !body.emails.length && !body.whatsappIds.length && !body.instagramId) {
+    const hasChannel =
+      Boolean(body.emails?.length) ||
+      Boolean(body.whatsappIds?.length) ||
+      Boolean(body.instagramId);
+    if (!body.name && !hasChannel) {
       setError("Add a name or at least one channel id.");
       return;
     }
@@ -418,25 +431,29 @@ export function ContactModal({
               {showNamePicker && (
                 <div className="space-y-2">
                   <label className="text-sm font-medium">Which name should we keep?</label>
-                  <div className="flex flex-col gap-2">
-                    <label className="flex items-center gap-2 text-sm">
-                      <input
-                        type="radio"
-                        name="keepName"
-                        checked={keepName === formName}
-                        onChange={() => setKeepName(formName)}
-                      />
-                      Form: {formName}
-                    </label>
-                    <label className="flex items-center gap-2 text-sm">
-                      <input
-                        type="radio"
-                        name="keepName"
-                        checked={keepName === matchName}
-                        onChange={() => setKeepName(matchName)}
-                      />
-                      Existing: {matchName}
-                    </label>
+                  <div className="grid gap-2 sm:grid-cols-2">
+                    <button
+                      type="button"
+                      onClick={() => setKeepName(formName)}
+                      className={
+                        keepName === formName
+                          ? "rounded-lg border-2 border-primary bg-primary/5 px-3 py-3 text-left text-sm font-medium text-foreground"
+                          : "rounded-lg border border-border bg-background px-3 py-3 text-left text-sm font-medium text-foreground hover:bg-muted/40"
+                      }
+                    >
+                      {formName}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setKeepName(matchName)}
+                      className={
+                        keepName === matchName
+                          ? "rounded-lg border-2 border-primary bg-primary/5 px-3 py-3 text-left text-sm font-medium text-foreground"
+                          : "rounded-lg border border-border bg-background px-3 py-3 text-left text-sm font-medium text-foreground hover:bg-muted/40"
+                      }
+                    >
+                      {matchName}
+                    </button>
                   </div>
                 </div>
               )}

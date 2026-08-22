@@ -47,23 +47,42 @@ function MessageBody({
   const isLong = content.length > LONG_MESSAGE_CHARS;
   const visible = !isLong || expanded ? content : `${content.slice(0, LONG_MESSAGE_CHARS).trimEnd()}…`;
   const isMediaPlaceholder = /^\[(image|audio|video|file|document)\]$/i.test(content.trim());
+  /** Backend sometimes stores the type name as content when there's no caption. */
+  const isGenericMediaLabel = /^(image|audio|video|file|document)$/i.test(content.trim());
   const isMediaType = ["image", "video", "audio", "file"].includes(message.contentType);
   const showText =
     Boolean(content.trim()) &&
-    !(message.hasMedia && isMediaPlaceholder) &&
-    !(!message.hasMedia && (isMediaPlaceholder || isMediaType));
-  const showMissingMedia = !message.hasMedia && (isMediaPlaceholder || isMediaType);
+    !(message.hasMedia && (isMediaPlaceholder || isGenericMediaLabel)) &&
+    !(!message.hasMedia && (isMediaPlaceholder || isMediaType || isGenericMediaLabel));
+  const showMissingMedia =
+    !message.hasMedia && (isMediaPlaceholder || isMediaType || isGenericMediaLabel);
 
   return (
     <div className="min-w-0 space-y-1.5">
       {message.hasMedia && (
-        <MessageMedia
-          messageId={message.id}
-          mimeType={message.mediaMimeType}
-          filename={message.mediaFilename}
-          contentType={message.contentType}
-          incoming={incoming}
-        />
+        <div className="flex flex-col gap-2">
+          {(message.mediaItems?.length
+            ? message.mediaItems
+            : [
+                {
+                  mediaKey: "",
+                  mimeType: message.mediaMimeType ?? "application/octet-stream",
+                  filename: message.mediaFilename,
+                  contentType: message.contentType,
+                },
+              ]
+          ).map((item, index) => (
+            <MessageMedia
+              key={`${message.id}-${index}-${item.filename ?? item.mimeType}`}
+              messageId={message.id}
+              index={index}
+              mimeType={item.mimeType}
+              filename={item.filename}
+              contentType={item.contentType ?? message.contentType}
+              incoming={incoming}
+            />
+          ))}
+        </div>
       )}
       {showMissingMedia && (
         <div className="rounded-lg border border-dashed border-border/80 bg-muted/30 px-3 py-2 text-xs text-muted-foreground">

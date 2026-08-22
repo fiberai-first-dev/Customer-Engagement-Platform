@@ -7,7 +7,10 @@ import {
   isMediaStorageEnabled,
   putObject,
 } from "../services/MediaService.js";
-import { channelSupportsAttachments } from "../services/channel-media/index.js";
+import {
+  channelSupportsAttachments,
+  normalizeMediaItems,
+} from "../services/channel-media/index.js";
 import { parseConversationId } from "../utils/conversationId.js";
 
 function contentTypeFromMime(mimeType: string): string {
@@ -19,7 +22,10 @@ function contentTypeFromMime(mimeType: string): string {
 
 export class MediaController {
   static async streamMessageMedia(
-    request: FastifyRequest<{ Params: { messageId: string } }>,
+    request: FastifyRequest<{
+      Params: { messageId: string };
+      Querystring: { index?: string };
+    }>,
     reply: FastifyReply,
   ) {
     if (!isMediaStorageEnabled()) {
@@ -28,13 +34,27 @@ export class MediaController {
     const message = await prisma.message.findUnique({
       where: { id: request.params.messageId },
     });
-    if (!message?.mediaKey) {
+    if (!message) {
       return reply.code(404).send({ error: "Media not found" });
     }
+
+    const items = normalizeMediaItems(message.mediaItems, {
+      mediaKey: message.mediaKey,
+      mediaMimeType: message.mediaMimeType,
+      mediaFilename: message.mediaFilename,
+      contentType: message.contentType,
+    });
+    if (!items.length) {
+      return reply.code(404).send({ error: "Media not found" });
+    }
+
+    const index = Math.max(0, Number.parseInt(String(request.query.index ?? "0"), 10) || 0);
+    const item = items[Math.min(index, items.length - 1)]!;
+
     try {
-      const { body, contentType } = await getObjectBuffer(message.mediaKey);
-      const mime = message.mediaMimeType ?? contentType ?? "application/octet-stream";
-      const filename = message.mediaFilename ?? "file";
+      const { body, contentType } = await getObjectBuffer(item.mediaKey);
+      const mime = item.mimeType || contentType || "application/octet-stream";
+      const filename = item.filename || "file";
       return reply
         .header("Content-Type", mime)
         .header("Content-Disposition", `inline; filename="${filename.replace(/"/g, "")}"`)

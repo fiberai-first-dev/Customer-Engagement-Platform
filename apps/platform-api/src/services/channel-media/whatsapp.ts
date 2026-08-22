@@ -137,7 +137,7 @@ export const whatsappChannelMedia: ChannelMediaHandler = {
         config as WhatsAppChannelConfig,
         parsed.providerMediaId,
       );
-      const filename = parsed.filename ?? `${parsed.contentType}`;
+      const filename = parsed.filename ?? `${parsed.contentType}.${mimeType.split("/")[1] ?? "bin"}`;
       const key = channelMediaKey("whatsapp", customerId, filename);
       await putObject({ key, body: buffer, contentType: mimeType });
       return { mediaKey: key, mimeType, filename };
