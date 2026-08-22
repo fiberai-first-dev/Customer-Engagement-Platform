@@ -223,7 +223,8 @@ export const useMessages = (conversationId?: string) => {
     },
     enabled: !!conversationId,
     refetchInterval: 5000,
-    // Do not keep previous conversation messages while switching contacts.
+    // Never reuse the previous contact's messages while the new query loads.
+    placeholderData: undefined,
   });
 };
 

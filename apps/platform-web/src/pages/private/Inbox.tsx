@@ -1,4 +1,11 @@
-import { useEffect, useMemo, useRef, useState, type ComponentType } from "react";
+import {
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ComponentType,
+} from "react";
 import { toast } from "sonner";
 import { Loader2, Mail, MessageCircle, Search } from "lucide-react";
 import {
@@ -378,12 +385,27 @@ export function InboxPage() {
     emailThreads,
   ]);
 
+  const conversationId = selectedConversation?.id;
   const {
     data: messages,
     isPending: messagesPending,
-  } = useMessages(selectedConversation?.id);
-  /** Show loader on contact/thread switch — never flash the previous conversation. */
-  const showMessagesLoader = Boolean(selectedConversation?.id) && messagesPending;
+  } = useMessages(conversationId);
+
+  /**
+   * Never paint messages until this exact conversation is ready.
+   * `isPending` alone is false when the new thread is cached, so the previous
+   * contact's bubbles can flash (or skip the loader entirely). Gate on id match.
+   */
+  const [messagesReadyFor, setMessagesReadyFor] = useState<string | null>(null);
+  useLayoutEffect(() => {
+    setMessagesReadyFor(null);
+  }, [conversationId]);
+  useEffect(() => {
+    if (!conversationId || messagesPending) return;
+    setMessagesReadyFor(conversationId);
+  }, [conversationId, messagesPending]);
+  const showMessagesLoader =
+    Boolean(conversationId) && messagesReadyFor !== conversationId;
 
   /** Mark read when opening a channel tab (not only list click). */
   useEffect(() => {
