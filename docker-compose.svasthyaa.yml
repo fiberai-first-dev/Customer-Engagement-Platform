@@ -22,12 +22,7 @@ services:
       context: ./apps/platform-api
       dockerfile: Dockerfile
     env_file:
-      - ./apps/platform-api/.env
-    environment:
-      PLATFORM_API_BASE_URL: https://api.cep-svasthyaa.fybud.com
-      PLATFORM_WEB_BASE_URL: https://cep-svasthyaa.fybud.com
-      PLATFORM_DATABASE_URL: postgresql://cep:cep@cep-postgres:5432/cep_platform
-      PLATFORM_MIGRATE_DATABASE_URL: postgresql://cep:cep@cep-postgres:5432/cep_platform
+      - ./apps/platform-api/.env.svasthyaa
     ports:
       - "4100:4100"
     depends_on:
@@ -41,7 +36,7 @@ services:
       args:
         VITE_API_BASE_URL: https://api.cep-svasthyaa.fybud.com
     env_file:
-      - ./apps/platform-web/.env
+      - ./apps/platform-web/.env.svasthyaa
     ports:
       - "9000:5173"
     depends_on:
