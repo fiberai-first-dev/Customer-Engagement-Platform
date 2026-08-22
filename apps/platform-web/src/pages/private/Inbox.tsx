@@ -441,13 +441,24 @@ export function InboxPage() {
     }
   };
 
-  const handleSend = async (content: string, subject?: string): Promise<boolean> => {
+  const handleSend = async (
+    content: string,
+    subject?: string,
+    media?: { mediaKey: string; mediaMimeType: string; mediaFilename: string },
+  ): Promise<boolean> => {
     if (!selectedConversation || !selectedContactId) return false;
     const channel = selectedConversation.channelType;
     const conversationId = selectedConversation.id;
 
     try {
-      const data = await sendMessage.mutateAsync({ id: conversationId, content, subject });
+      const data = await sendMessage.mutateAsync({
+        id: conversationId,
+        content,
+        subject,
+        mediaKey: media?.mediaKey,
+        mediaMimeType: media?.mediaMimeType,
+        mediaFilename: media?.mediaFilename,
+      });
       if (!data.result?.ok || !data.message) {
         toast.error(data.result?.error || "Message failed to send on channel");
         return false;
@@ -679,6 +690,7 @@ export function InboxPage() {
             selectedContactId={selectedContactId}
             onSelect={handleSelectConversation}
             emptyHint={listEmptyHint}
+            channelFilter={channelFilter}
           />
         )}
       </section>

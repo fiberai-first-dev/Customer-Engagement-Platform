@@ -16,7 +16,19 @@ type Props = {
   onSelect: (conversation: Conversation) => void;
   /** Shown when the filtered list is empty. */
   emptyHint?: string;
+  channelFilter?: "all" | import("../../api").ChannelType;
 };
+
+function contactHasUnread(
+  conversation: Conversation,
+  channelFilter: "all" | import("../../api").ChannelType,
+): boolean {
+  if (channelFilter === "all") {
+    return Boolean(conversation.contact.hasUnread);
+  }
+  const n = conversation.contact.unreadByChannel?.[channelFilter] ?? 0;
+  return n > 0;
+}
 
 function unresolvedChannelCount(
   conversation: Conversation,
@@ -39,6 +51,7 @@ export function ConversationList({
   selectedContactId,
   onSelect,
   emptyHint,
+  channelFilter = "all",
 }: Props) {
   if (conversations.length === 0) {
     return (
@@ -69,6 +82,7 @@ export function ConversationList({
             : bodyPreview ?? "No messages yet";
           const selected = selectedContactId === conversation.contactId;
           const isActive = conversation.contact.globalStatus !== "resolved";
+          const hasUnread = contactHasUnread(conversation, channelFilter);
           const openCount = unresolvedChannelCount(
             conversation,
             channelConversationsByContact?.[conversation.contactId],
@@ -85,7 +99,8 @@ export function ConversationList({
               type="button"
               onClick={() => onSelect(conversation)}
               className={cn(
-                "flex w-full items-center gap-3 overflow-hidden border-b border-border px-4 py-3 text-left transition-colors",
+                "relative flex w-full items-center gap-3 overflow-hidden border-b border-border px-4 py-3 text-left transition-colors",
+                hasUnread && "border-l-[3px] border-l-primary pl-[13px]",
                 selected ? "bg-muted" : "bg-card hover:bg-muted/60",
               )}
             >
@@ -106,7 +121,7 @@ export function ConversationList({
                   <span
                     className={cn(
                       "truncate text-sm text-foreground",
-                      isActive ? "font-semibold" : "font-medium",
+                      hasUnread || isActive ? "font-semibold" : "font-medium",
                     )}
                   >
                     {name}

@@ -172,9 +172,16 @@ model Message {
   externalThreadId String?     @map("external_thread_id")
   status      MessageStatus    @default(received)
   rawPayload  Json?            @map("raw_payload")
+  /// Agent has opened the thread since this message arrived (incoming only).
+  isRead      Boolean          @default(false) @map("is_read")
+  /// S3 object key for WhatsApp media attachments.
+  mediaKey    String?          @map("media_key")
+  mediaMimeType String?        @map("media_mime_type")
+  mediaFilename String?        @map("media_filename")
   createdAt   DateTime         @default(now()) @map("created_at")
 
   @@unique([channelType, channelId, externalId])
+  @@index([customerId, channelType, isRead, direction])
   @@index([customerId, createdAt])
   @@index([channelType, channelId, createdAt])
   @@index([customerId, channelType])

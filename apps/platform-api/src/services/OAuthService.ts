@@ -239,11 +239,25 @@ export async function completeGmailOAuth(input: {
   };
 }
 
+function instagramCredsFromConfig(
+  existing: Prisma.JsonValue,
+): { appId: string; appSecret: string; verifyToken: string } | null {
+  const cfg =
+    existing && typeof existing === "object" && !Array.isArray(existing)
+      ? (existing as Record<string, unknown>)
+      : {};
+  const appId = nonEmpty(cfg.instagramAppId);
+  const appSecret = nonEmpty(cfg.instagramAppSecret);
+  const verifyToken = nonEmpty(cfg.verifyToken);
+  if (!appId || !appSecret || !verifyToken) return null;
+  return { appId, appSecret, verifyToken };
+}
+
 export async function startInstagramOAuth(
   inboxId: string,
   creds: { instagramAppId?: string; instagramAppSecret?: string; verifyToken?: string },
 ): Promise<{ url: string; redirectUri: string }> {
-  await loadInbox(inboxId, "instagram");
+  const inbox = await loadInbox(inboxId, "instagram");
   const appId = nonEmpty(creds.instagramAppId);
   const appSecret = nonEmpty(creds.instagramAppSecret);
   const verifyToken = nonEmpty(creds.verifyToken);
@@ -255,6 +269,14 @@ export async function startInstagramOAuth(
   if (!redirectUri.startsWith("https://")) {
     throw new Error(`Instagram redirect must be HTTPS: ${redirectUri}`);
   }
+
+  // Persist before redirect so callback survives API restarts / another instance.
+  await patchInboxConfig(
+    inbox.id,
+    inbox.channelConfig,
+    { instagramAppId: appId, instagramAppSecret: appSecret, verifyToken },
+    inbox.enabled,
+  );
 
   const nonce = putPending({
     provider: "instagram",
@@ -317,6 +339,27 @@ async function subscribeInstagramMessages(accessToken: string) {
   await subscribeInstagramMessaging(accessToken);
 }
 
+/** Instagram Graph token endpoints now reject GET in production; use POST + form body. */
+async function instagramGraphTokenExchange(
+  endpoint: "access_token" | "refresh_access_token",
+  params: Record<string, string>,
+): Promise<{
+  access_token?: string;
+  expires_in?: number;
+  error?: { message?: string; code?: number };
+}> {
+  const res = await fetch(`https://graph.instagram.com/${endpoint}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    body: new URLSearchParams(params),
+  });
+  return (await res.json().catch(() => ({}))) as {
+    access_token?: string;
+    expires_in?: number;
+    error?: { message?: string; code?: number };
+  };
+}
+
 export async function completeInstagramOAuth(input: {
   code: string;
   state?: string;
@@ -325,14 +368,23 @@ export async function completeInstagramOAuth(input: {
     throw new Error("Connection expired. Click Connect again.");
   }
   const { inboxId, nonce } = verifyState(input.state, "instagram");
-  const pending = takePending(nonce, "instagram", inboxId);
-  if (!pending || pending.provider !== "instagram") {
-    throw new Error("Connection expired. Click Connect again.");
-  }
-
   const inbox = await loadInbox(inboxId, "instagram");
-  const appId = pending.instagramAppId;
-  const appSecret = pending.instagramAppSecret;
+  const pending = takePending(nonce, "instagram", inboxId);
+
+  let appId: string;
+  let appSecret: string;
+  let verifyToken: string;
+  if (pending && pending.provider === "instagram") {
+    appId = pending.instagramAppId;
+    appSecret = pending.instagramAppSecret;
+    verifyToken = pending.verifyToken;
+  } else {
+    const saved = instagramCredsFromConfig(inbox.channelConfig);
+    if (!saved) {
+      throw new Error("Connection expired. Click Connect again.");
+    }
+    ({ appId, appSecret, verifyToken } = saved);
+  }
 
   const redirectUri = instagramRedirectUri();
   const code = input.code.replace(/#_$/, "");
@@ -357,17 +409,18 @@ export async function completeInstagramOAuth(input: {
     throw new Error(shortJson.error_message || "short-lived token exchange failed");
   }
 
-  const longUrl = new URL("https://graph.instagram.com/access_token");
-  longUrl.searchParams.set("grant_type", "ig_exchange_token");
-  longUrl.searchParams.set("client_secret", appSecret);
-  longUrl.searchParams.set("access_token", shortJson.access_token);
-  const longRes = await fetch(longUrl);
-  const longJson = (await longRes.json()) as {
-    access_token?: string;
-    error?: { message?: string };
-  };
+  const longJson = await instagramGraphTokenExchange("access_token", {
+    grant_type: "ig_exchange_token",
+    client_secret: appSecret,
+    access_token: shortJson.access_token,
+  });
   if (!longJson.access_token) {
-    throw new Error(longJson.error?.message || "long-lived exchange failed");
+    const msg = longJson.error?.message || "long-lived exchange failed";
+    throw new Error(
+      longJson.error?.code === 100 && /method type:\s*get/i.test(msg)
+        ? `${msg} (Instagram Graph token exchange must use POST — redeploy platform-api if this persists)`
+        : msg,
+    );
   }
 
   let username: string | undefined;
@@ -391,7 +444,7 @@ export async function completeInstagramOAuth(input: {
     accessToken: longJson.access_token,
     instagramAppId: appId,
     instagramAppSecret: appSecret,
-    verifyToken: pending.verifyToken,
+    verifyToken: verifyToken,
     instagramTokenIssuedAt: Date.now(),
     ...(username ? { instagramUsername: username } : {}),
     appSecret: null,
@@ -415,17 +468,12 @@ const DAY_MS = 24 * 60 * 60 * 1000;
 async function refreshInstagramLongLivedToken(
   accessToken: string,
 ): Promise<{ accessToken: string; expiresIn: number } | null> {
-  const url = new URL("https://graph.instagram.com/refresh_access_token");
-  url.searchParams.set("grant_type", "ig_refresh_token");
-  url.searchParams.set("access_token", accessToken);
-  const res = await fetch(url);
-  const json = (await res.json()) as {
-    access_token?: string;
-    expires_in?: number;
-    error?: { message?: string };
-  };
+  const json = await instagramGraphTokenExchange("refresh_access_token", {
+    grant_type: "ig_refresh_token",
+    access_token: accessToken,
+  });
   if (!json.access_token) {
-    console.warn("[instagram] token refresh failed:", json.error?.message ?? `HTTP ${res.status}`);
+    console.warn("[instagram] token refresh failed:", json.error?.message ?? "unknown error");
     return null;
   }
   return { accessToken: json.access_token, expiresIn: json.expires_in ?? 60 * 24 * 3600 };

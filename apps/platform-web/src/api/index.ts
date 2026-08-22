@@ -102,6 +102,8 @@ export interface Contact {
   instagramScopedId?: string | null;
   instagramDetails?: { username?: string | null; senderName?: string | null } | null;
   globalStatus?: "active" | "resolved";
+  hasUnread?: boolean;
+  unreadByChannel?: Partial<Record<ChannelType, number>>;
   channelStatuses?: Partial<Record<ChannelType, ConversationStatus>>;
   identifiers?: Record<string, string>;
   identities?: ContactIdentity[];
@@ -127,6 +129,10 @@ export interface Message {
   status: string;
   createdAt: string;
   externalThreadId?: string | null;
+  isRead?: boolean;
+  hasMedia?: boolean;
+  mediaFilename?: string | null;
+  mediaMimeType?: string | null;
 }
 
 export interface Conversation {
@@ -144,6 +150,7 @@ export interface Conversation {
   contact: Contact;
   inbox?: { id: string; name: string; channelType: ChannelType };
   messages?: Message[];
+  hasUnread?: boolean;
 }
 
 export interface ShopifyConfig {
@@ -203,29 +210,48 @@ export const useConversations = (status?: string, inboxId?: string) =>
     placeholderData: (previous) => previous,
   });
 
-export const useMessages = (conversationId?: string) =>
-  useQuery({
+export const useMessages = (conversationId?: string) => {
+  const queryClient = useQueryClient();
+  return useQuery({
     queryKey: ["messages", conversationId],
-    queryFn: () =>
-      request<Message[]>(
+    queryFn: async () => {
+      const data = await request<Message[]>(
         `/api/v1/conversations/${encodeURIComponent(conversationId!)}/messages`,
-      ),
+      );
+      await queryClient.invalidateQueries({ queryKey: ["conversations"] });
+      return data;
+    },
     enabled: !!conversationId,
     refetchInterval: 5000,
     placeholderData: (previous) => previous,
   });
+};
 
 export const useSendMessage = () => {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: ({ id, content, subject }: { id: string; content: string; subject?: string }) =>
+    mutationFn: ({
+      id,
+      content,
+      subject,
+      mediaKey,
+      mediaMimeType,
+      mediaFilename,
+    }: {
+      id: string;
+      content: string;
+      subject?: string;
+      mediaKey?: string;
+      mediaMimeType?: string;
+      mediaFilename?: string;
+    }) =>
       request<{
         conversationId?: string;
         message: Message | null;
         result: { ok: boolean; status: string; error?: string };
       }>(`/api/v1/conversations/${encodeURIComponent(id)}/messages`, {
         method: "POST",
-        body: JSON.stringify({ content, subject }),
+        body: JSON.stringify({ content, subject, mediaKey, mediaMimeType, mediaFilename }),
       }),
     onMutate: async ({ id, content, subject }) => {
       await queryClient.cancelQueries({ queryKey: ["messages", id] });
@@ -355,9 +381,49 @@ export const useDisconnectInbox = () => {
       request<Inbox>(`/api/v1/inboxes/${id}/disconnect`, { method: "POST" }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["inboxes"] });
+      queryClient.invalidateQueries({ queryKey: ["conversations"] });
+      queryClient.invalidateQueries({ queryKey: ["contacts"] });
     },
   });
 };
+
+export function messageMediaUrl(messageId: string): string {
+  return `${API_BASE.replace(/\/$/, "")}/api/v1/messages/${encodeURIComponent(messageId)}/media`;
+}
+
+export async function uploadConversationAttachment(
+  conversationId: string,
+  file: File,
+): Promise<{
+  mediaKey: string;
+  mediaMimeType: string;
+  mediaFilename: string;
+  contentType: string;
+}> {
+  const token = useAuthStore.getState().token;
+  const form = new FormData();
+  form.append("file", file);
+  const res = await fetch(
+    `${API_BASE.replace(/\/$/, "")}/api/v1/conversations/${encodeURIComponent(conversationId)}/attachments`,
+    {
+      method: "POST",
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+      body: form,
+    },
+  );
+  if (!res.ok) {
+    const body = await res.text();
+    let msg = body;
+    try {
+      const parsed = JSON.parse(body) as { error?: string };
+      msg = parsed.error ?? body;
+    } catch {
+      /* plain */
+    }
+    throw new ApiError(msg || `${res.status}`, res.status);
+  }
+  return res.json();
+}
 
 export interface OAuthHints {
   gmailRedirectUri: string;

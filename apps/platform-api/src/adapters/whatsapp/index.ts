@@ -153,14 +153,36 @@ export const whatsappAdapter: ChannelAdapter<WhatsAppChannelConfig> = {
     if (!to) {
       return { ok: false, status: "failed", error: "WhatsApp recipient missing" };
     }
-    const body = {
-      messaging_product: "whatsapp",
-      to,
-      type: "text",
-      text: { preview_url: false, body: message.content },
-    };
 
     try {
+      let body: Record<string, unknown>;
+      if (message.mediaKey && message.mediaMimeType) {
+        const { getObjectBuffer } = await import("../../services/MediaService.js");
+        const { getChannelMediaHandler } = await import("../../services/channel-media/index.js");
+        const mediaHandler = getChannelMediaHandler("whatsapp");
+        if (!mediaHandler) {
+          return { ok: false, status: "failed", error: "WhatsApp media is not configured" };
+        }
+        const { body: buffer } = await getObjectBuffer(message.mediaKey);
+        body = await mediaHandler.buildOutboundWithMedia({
+          config,
+          message,
+          to,
+          buffer,
+        });
+      } else {
+        const text = message.content?.trim();
+        if (!text) {
+          return { ok: false, status: "failed", error: "Message text is required" };
+        }
+        body = {
+          messaging_product: "whatsapp",
+          to,
+          type: "text",
+          text: { preview_url: false, body: text },
+        };
+      }
+
       const res = await fetch(`${GRAPH}/${phoneNumberId}/messages`, {
         method: "POST",
         headers: {
@@ -182,12 +204,15 @@ export const whatsappAdapter: ChannelAdapter<WhatsAppChannelConfig> = {
           code === 190 ||
           code === 102 ||
           /auth|oauth|access token|session has expired|permission/i.test(detail);
+        const isNotRegistered = code === 133010 || /not registered/i.test(detail);
         return {
           ok: false,
           status: "failed",
           error: isAuth
             ? "WhatsApp access token is invalid or expired. Update it in Settings → Channels."
-            : detail,
+            : isNotRegistered
+              ? "WhatsApp phone number is not registered on Cloud API. Register it in Meta (POST /{phone-number-id}/register) and retry."
+              : detail,
           raw,
         };
       }

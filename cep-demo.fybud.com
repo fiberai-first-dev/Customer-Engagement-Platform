@@ -20,7 +20,7 @@ server {
 
     server_name api.cep-demo.fybud.com;
 
-    client_max_body_size 25m;
+    client_max_body_size 105m;
     proxy_read_timeout 120s;
 
     location / {
