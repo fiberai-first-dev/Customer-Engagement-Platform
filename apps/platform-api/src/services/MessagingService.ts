@@ -848,7 +848,7 @@ export async function sendCustomerChannelMessage(input: {
   if (input.mediaKey && !channelSupportsAttachments(input.channelType)) {
     throw new Error(`Attachments are not supported for ${input.channelType}`);
   }
-  if (input.mediaKey && input.channelType !== "email") {
+  if (input.mediaKey && channelSupportsAttachments(input.channelType)) {
     if (!input.mediaMimeType) {
       throw new Error("mediaMimeType is required when sending media");
     }

@@ -131,7 +131,7 @@ export const whatsappChannelMedia: ChannelMediaHandler = {
   },
 
   async persistInbound({ config, customerId, parsed }) {
-    if (!isMediaStorageEnabled()) return null;
+    if (!isMediaStorageEnabled() || !parsed.providerMediaId) return null;
     try {
       const { buffer, mimeType } = await downloadProviderMedia(
         config as WhatsAppChannelConfig,

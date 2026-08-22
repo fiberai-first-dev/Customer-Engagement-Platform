@@ -47,7 +47,7 @@ export interface OutboundTextMessage {
   to: string;
   content: string;
   contentType?: MessageContentType;
-  /** WhatsApp outbound media (already on S3). */
+  /** Outbound media already stored on S3 (WhatsApp / Instagram / Email). */
   mediaKey?: string;
   mediaMimeType?: string;
   mediaFilename?: string;

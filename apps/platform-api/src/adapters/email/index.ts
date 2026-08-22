@@ -303,13 +303,42 @@ export const emailAdapter: ChannelAdapter<EmailChannelConfig> = {
           ? message.references
           : inReplyTo;
 
-      const raw = buildRawEmail({
-        to,
-        subject: message.subject || "Message from FiberAI",
-        content: message.content,
-        inReplyTo,
-        references,
-      });
+      let raw: string;
+      if (message.mediaKey && message.mediaMimeType) {
+        const { getObjectBuffer } = await import("../../services/MediaService.js");
+        const { getChannelMediaHandler } = await import("../../services/channel-media/index.js");
+        const mediaHandler = getChannelMediaHandler("email");
+        if (!mediaHandler) {
+          return { ok: false, status: "failed", error: "Email attachments are not configured" };
+        }
+        const { body: buffer } = await getObjectBuffer(message.mediaKey);
+        const built = await mediaHandler.buildOutboundWithMedia({
+          config,
+          message: {
+            ...message,
+            replyToExternalId: inReplyTo,
+            references,
+          },
+          to,
+          buffer,
+        });
+        raw = typeof built.raw === "string" ? built.raw : "";
+        if (!raw) {
+          return { ok: false, status: "failed", error: "Failed to build email with attachment" };
+        }
+      } else {
+        const text = message.content?.trim();
+        if (!text) {
+          return { ok: false, status: "failed", error: "Message text is required" };
+        }
+        raw = buildRawEmail({
+          to,
+          subject: message.subject || "Message from FiberAI",
+          content: text,
+          inReplyTo,
+          references,
+        });
+      }
 
       const res = await gmail.users.messages.send({
         userId: "me",

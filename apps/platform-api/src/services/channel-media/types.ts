@@ -2,11 +2,16 @@ import type { ChannelType, ContentType } from "../../generated/client/index.js";
 import type { ChannelConfig, NormalizedInboundMessage, OutboundTextMessage } from "../../adapters/shared/types.js";
 
 export type ParsedInboundMedia = {
-  providerMediaId: string;
+  /** Provider media id (WhatsApp media id, Gmail attachment id, …). */
+  providerMediaId?: string;
+  /** Direct download URL (Instagram CDN, etc.). */
+  url?: string;
   mimeType?: string;
   filename?: string;
   caption?: string;
   contentType: ContentType;
+  /** Extra ids needed to fetch (e.g. Gmail message id). */
+  meta?: Record<string, string>;
 };
 
 export type StoredMedia = {
@@ -64,7 +69,9 @@ export async function resolveInboundMedia(
   let content = input.inbound.content;
   let contentType = parsed.contentType;
   if (parsed.caption?.trim()) content = parsed.caption.trim();
-  else if (content.startsWith("[")) content = parsed.filename ?? content;
+  else if (!content.trim() || content.startsWith("[")) {
+    content = parsed.filename ?? content;
+  }
 
   const stored = await handler.persistInbound({
     config: input.config,

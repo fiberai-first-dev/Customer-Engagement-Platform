@@ -251,11 +251,6 @@ export const instagramAdapter: ChannelAdapter<InstagramChannelConfig> = {
       return { ok: false, status: "failed", error: "Instagram accessToken missing" };
     }
 
-    const body = {
-      recipient: { id: message.to },
-      message: { text: message.content },
-    };
-
     const useIgLogin = isInstagramUserToken(config.accessToken);
     const url = useIgLogin
       ? `${IG_GRAPH}/me/messages`
@@ -270,6 +265,32 @@ export const instagramAdapter: ChannelAdapter<InstagramChannelConfig> = {
     }
 
     try {
+      let body: Record<string, unknown>;
+      if (message.mediaKey && message.mediaMimeType) {
+        const { getObjectBuffer } = await import("../../services/MediaService.js");
+        const { getChannelMediaHandler } = await import("../../services/channel-media/index.js");
+        const mediaHandler = getChannelMediaHandler("instagram");
+        if (!mediaHandler) {
+          return { ok: false, status: "failed", error: "Instagram media is not configured" };
+        }
+        const { body: buffer } = await getObjectBuffer(message.mediaKey);
+        body = await mediaHandler.buildOutboundWithMedia({
+          config,
+          message,
+          to: message.to,
+          buffer,
+        });
+      } else {
+        const text = message.content?.trim();
+        if (!text) {
+          return { ok: false, status: "failed", error: "Message text is required" };
+        }
+        body = {
+          recipient: { id: message.to },
+          message: { text },
+        };
+      }
+
       const res = await fetch(url, {
         method: "POST",
         headers: {
