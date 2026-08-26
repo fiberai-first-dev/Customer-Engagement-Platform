@@ -195,7 +195,7 @@ export function CreateTicketModal({
             <div className="grid grid-cols-3 gap-1.5 mb-3">
               {(
                 [
-                  { id: "none" as const, label: "Unassigned" },
+                  { id: "none" as const, label: isAdminOrAbove ? "Open pool" : "Unassigned" },
                   { id: "person" as const, label: "Person" },
                   { id: "team" as const, label: "Team queue" },
                 ] as const
@@ -273,8 +273,9 @@ export function CreateTicketModal({
 
             {assignMode === "none" && (
               <p className="text-[11px] text-muted-foreground rounded-md bg-muted/50 px-3 py-2">
-                Ticket stays unassigned until someone claims it
-                {isAdminOrAbove ? " from a team queue or is assigned later." : "."}
+                {isAdminOrAbove
+                  ? "Open pool: no team and no assignee — any agent can claim it."
+                  : "Stays on your team as an open queue item until someone claims it."}
               </p>
             )}
           </div>

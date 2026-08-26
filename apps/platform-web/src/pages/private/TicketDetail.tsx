@@ -195,6 +195,25 @@ export function TicketDetailPage() {
 
   const customerLabel = ticket.customer?.name || "Unknown customer";
   const noteCount = ticket.notes?.length ?? 0;
+  const isOpenPool = !ticket.assignedTo && !ticket.teamId;
+  const canClaim =
+    isAgent &&
+    !isLocked &&
+    !ticket.assignedTo &&
+    (isOpenPool || ticket.teamId === user?.teamId);
+
+  const handleClaim = async () => {
+    try {
+      await assignTicket.mutateAsync({
+        id: ticket.id,
+        assigneeId: user!.id,
+        teamId: user?.teamId ?? "",
+      });
+      toast.success("Ticket claimed");
+    } catch (err: any) {
+      toast.error(err.message || "Failed to claim");
+    }
+  };
 
   return (
     <div className="flex flex-col h-full bg-background">
@@ -234,6 +253,18 @@ export function TicketDetailPage() {
         </div>
 
         <div className="flex items-center gap-2 shrink-0">
+          {canClaim && (
+            <button
+              id="claim-ticket-btn"
+              type="button"
+              onClick={handleClaim}
+              disabled={assignTicket.isPending}
+              className="inline-flex items-center gap-1.5 rounded-md bg-primary px-3.5 py-2 text-xs font-semibold text-primary-foreground hover:bg-primary/90 shadow-sm transition-colors disabled:opacity-50"
+            >
+              <UserPlus className="w-3.5 h-3.5" />
+              {assignTicket.isPending ? "Claiming…" : "Claim ticket"}
+            </button>
+          )}
           {isEscalated && isManagerOrAbove && (
             <button
               id="return-btn"
@@ -529,6 +560,11 @@ export function TicketDetailPage() {
             </Panel>
 
             <Panel title="Assign to">
+              {isOpenPool && !ticket.assignedTo && (
+                <p className="text-[11px] text-muted-foreground mb-2 rounded-md bg-muted/50 px-2.5 py-1.5">
+                  Open pool — any agent can claim this ticket.
+                </p>
+              )}
               {isLocked ? (
                 <p className="text-xs text-foreground font-medium">
                   {ticket.assignee
@@ -537,6 +573,47 @@ export function TicketDetailPage() {
                       ? `Team queue: ${ticket.team.name}`
                       : <span className="text-muted-foreground font-normal">Unassigned</span>}
                 </p>
+              ) : isAgent ? (
+                <div className="space-y-2">
+                  <p className="text-xs text-foreground font-medium">
+                    {ticket.assignee
+                      ? ticket.assignee.username === user?.username || ticket.assignedTo === user?.id
+                        ? "You"
+                        : ticket.assignee.username
+                      : ticket.team
+                        ? `Team queue: ${ticket.team.name}`
+                        : "Unassigned (open pool)"}
+                  </p>
+                  {canClaim && (
+                    <button
+                      type="button"
+                      onClick={handleClaim}
+                      disabled={assignTicket.isPending}
+                      className="w-full rounded-md bg-primary px-3 py-2 text-xs font-semibold text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
+                    >
+                      Claim this ticket
+                    </button>
+                  )}
+                  {ticket.assignedTo === user?.id && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        assignTicket
+                          .mutateAsync({
+                            id: ticket.id,
+                            assigneeId: "",
+                            teamId: ticket.teamId ?? "",
+                          })
+                          .then(() => toast.success("Released to queue"))
+                          .catch((err: any) => toast.error(err.message));
+                      }}
+                      disabled={assignTicket.isPending}
+                      className="w-full rounded-md border border-border px-3 py-2 text-xs font-medium hover:bg-muted disabled:opacity-50"
+                    >
+                      Release back to queue
+                    </button>
+                  )}
+                </div>
               ) : (
                 <select
                   id="assignee-select"

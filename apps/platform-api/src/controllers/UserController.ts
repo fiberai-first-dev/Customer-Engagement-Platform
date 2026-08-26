@@ -74,10 +74,19 @@ export class UserController {
           ? { role: { in: ["MANAGER", "AGENT"] as Role[] } }
           : actorRole === "MANAGER"
             ? {
-                role: "AGENT" as Role,
-                teamId: actorTeamId ?? "__none__",
+                OR: [
+                  {
+                    role: "AGENT" as Role,
+                    teamId: actorTeamId ?? "__none__",
+                  },
+                  { role: { in: ["MANAGER", "ADMIN", "SUPER_ADMIN"] as Role[] } },
+                ],
               }
-            : { id: "__none__" };
+            : // Agents need Manager/Admin list for escalation targets
+              {
+                role: { in: ["MANAGER", "ADMIN", "SUPER_ADMIN"] as Role[] },
+                isActive: true,
+              };
 
     const users = await prisma.user.findMany({
       where: where as any,

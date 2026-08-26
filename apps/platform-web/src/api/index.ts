@@ -826,7 +826,7 @@ export const useEscalateTicket = () => {
     }) =>
       request<Ticket>(`/api/v1/tickets/${id}/escalate`, {
         method: "POST",
-        body: JSON.stringify({ teamId, targetUserId, note }),
+        body: JSON.stringify({ teamId, userId: targetUserId, targetUserId, note }),
       }),
     onSuccess: (_data, { id }) => {
       queryClient.invalidateQueries({ queryKey: ["tickets"] });

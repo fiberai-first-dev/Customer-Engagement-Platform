@@ -574,18 +574,17 @@ export class TicketController {
   static async escalateTicket(
     request: FastifyRequest<{
       Params: { id: string };
-      Body: { teamId?: string; userId?: string; note?: string };
+      Body: { teamId?: string; userId?: string; targetUserId?: string; note?: string };
     }>,
     reply: FastifyReply,
   ) {
     const { id } = request.params;
-    const { teamId, userId: targetUserId, note } = request.body ?? {};
+    const body = request.body ?? {};
+    const teamId = body.teamId || undefined;
+    const targetUserId = body.userId || body.targetUserId || undefined;
+    const note = body.note;
     const user = getUser(request);
     if (!user) return reply.code(401).send({ error: "unauthorized" });
-
-    if (!teamId && !targetUserId) {
-      return reply.code(400).send({ error: "teamId or userId required for escalation" });
-    }
 
     const ticket = await prisma.ticket.findUnique({ where: { id } });
     if (!ticket) return reply.code(404).send({ error: "ticket not found" });
@@ -594,45 +593,85 @@ export class TicketController {
       return reply.code(403).send({ error: "access denied" });
     }
 
-    // Already escalated
     if (ticket.status === "ESCALATED") {
       return reply.code(400).send({ error: "Ticket is already escalated" });
     }
 
-    // Agents must provide a note
     if (user.role === "AGENT" && !note?.trim()) {
       return reply.code(400).send({ error: "A reason note is required when escalating" });
     }
 
-    // Agents can only escalate to their own team (manager handles it)
+    let resolvedTeamId: string | null = teamId ?? null;
+    let resolvedUserId: string | null = targetUserId ?? null;
+
     if (user.role === "AGENT") {
-      if (teamId && teamId !== user.teamId) {
-        return reply.code(403).send({ error: "Agents can only escalate within their own team" });
+      const hasOwnTeam = !!user.teamId;
+
+      if (hasOwnTeam) {
+        // Team agents: escalate to own team queue (manager), or optionally a Manager/Admin person
+        if (teamId && teamId !== user.teamId) {
+          return reply.code(403).send({ error: "Agents can only escalate to their own team queue" });
+        }
+        if (!resolvedUserId) {
+          resolvedTeamId = user.teamId!;
+        }
+        // If they pick a Manager/Admin, validate below; team may stay null or their own
+      } else {
+        // Team-less agents (or open-pool work): must escalate to a Manager or Admin
+        if (!resolvedUserId) {
+          return reply.code(400).send({
+            error: "Select a Manager or Admin to escalate to (you are not on a team)",
+          });
+        }
+        resolvedTeamId = null;
       }
-      // For agent escalations, always target their team
-      const escalationTeam = teamId ?? user.teamId;
-      if (!escalationTeam) {
-        return reply.code(400).send({ error: "You must belong to a team to escalate a ticket" });
+
+      if (resolvedUserId) {
+        const target = await prisma.user.findUnique({
+          where: { id: resolvedUserId },
+          select: { id: true, role: true, isActive: true, teamId: true },
+        });
+        if (!target || !target.isActive) {
+          return reply.code(400).send({ error: "Escalation target not found or inactive" });
+        }
+        if (target.role !== "MANAGER" && target.role !== "ADMIN" && target.role !== "SUPER_ADMIN") {
+          return reply.code(400).send({ error: "Agents can only escalate to a Manager or Admin" });
+        }
+      }
+
+      if (!resolvedTeamId && !resolvedUserId) {
+        return reply.code(400).send({ error: "teamId or userId required for escalation" });
+      }
+    } else {
+      // Manager / Admin: team queue and/or specific user
+      if (!resolvedTeamId && !resolvedUserId) {
+        return reply.code(400).send({ error: "teamId or userId required for escalation" });
+      }
+      if (resolvedUserId) {
+        const target = await prisma.user.findUnique({
+          where: { id: resolvedUserId },
+          select: { id: true, role: true, isActive: true },
+        });
+        if (!target || !target.isActive) {
+          return reply.code(400).send({ error: "Escalation target not found or inactive" });
+        }
       }
     }
-
-    // Managers can escalate to Admin — allow any team for MANAGER+
-    const resolvedTeamId = teamId ?? (user.role === "AGENT" ? user.teamId : undefined);
 
     try {
       const updated = await prisma.ticket.update({
         where: { id },
         data: {
           status: "ESCALATED",
-          escalatedToUserId: targetUserId ?? null,
-          escalatedToTeamId: resolvedTeamId ?? null,
+          escalatedToUserId: resolvedUserId,
+          escalatedToTeamId: resolvedTeamId,
           events: {
             create: {
               id: ulid(),
               actorId: user.id,
               type: "ESCALATED",
               fromValue: ticket.status,
-              toValue: { teamId: resolvedTeamId, userId: targetUserId },
+              toValue: { teamId: resolvedTeamId, userId: resolvedUserId },
               note: note?.trim() ?? null,
             },
           },
@@ -656,7 +695,6 @@ export class TicketController {
     const user = getUser(request);
     if (!user) return reply.code(401).send({ error: "unauthorized" });
 
-    // Only Manager+ can return an escalated ticket
     if (user.role === "AGENT") {
       return reply.code(403).send({ error: "Only Managers and Admins can return escalated tickets" });
     }
@@ -668,9 +706,15 @@ export class TicketController {
       return reply.code(400).send({ error: "Ticket is not in ESCALATED status" });
     }
 
-    // Manager can only return their own team's ticket
-    if (user.role === "MANAGER" && ticket.teamId !== user.teamId) {
-      return reply.code(403).send({ error: "access denied" });
+    if (user.role === "MANAGER") {
+      const allowed =
+        ticket.teamId === user.teamId ||
+        ticket.teamId === null ||
+        ticket.escalatedToUserId === user.id ||
+        ticket.escalatedToTeamId === user.teamId;
+      if (!allowed) {
+        return reply.code(403).send({ error: "access denied" });
+      }
     }
 
     try {
