@@ -889,14 +889,34 @@ export interface Team {
   name: string;
   managerId?: string | null;
   parentTeamId?: string | null;
-  manager?: { username: string } | null;
+  manager?: { id?: string; username: string; name?: string | null } | null;
   _count?: { members: number; tickets: number };
+}
+
+export interface TeamMember {
+  id: string;
+  username: string;
+  name?: string | null;
+  role: "SUPER_ADMIN" | "ADMIN" | "MANAGER" | "AGENT";
+  isActive: boolean;
+  createdAt: string;
+}
+
+export interface TeamDetail extends Team {
+  members: TeamMember[];
 }
 
 export const useTeams = () =>
   useQuery({
     queryKey: ["teams"],
     queryFn: () => request<Team[]>("/api/v1/teams"),
+  });
+
+export const useTeam = (id?: string) =>
+  useQuery({
+    queryKey: ["teams", id],
+    queryFn: () => request<TeamDetail>(`/api/v1/teams/${id}`),
+    enabled: !!id,
   });
 
 // ─── Dashboard ────────────────────────────────────────────────────────────────
@@ -931,6 +951,7 @@ export type UserRole = "SUPER_ADMIN" | "ADMIN" | "MANAGER" | "AGENT";
 export interface OrgUser {
   id: string;
   username: string;
+  name?: string | null;
   role: UserRole;
   isActive: boolean;
   teamId?: string | null;
@@ -947,7 +968,7 @@ export const useOrgUsers = () =>
 export const useCreateOrgUser = () => {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (body: { email: string; role: UserRole; teamId?: string }) =>
+    mutationFn: (body: { email: string; name?: string; role: UserRole; teamId?: string }) =>
       request<OrgUser>("/api/v1/users", {
         method: "POST",
         body: JSON.stringify(body),
@@ -961,19 +982,22 @@ export const useCreateOrgUser = () => {
 export const useUpdateOrgUser = () => {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: ({
-      id,
-      ...body
-    }: {
-      id: string;
-      role?: UserRole;
-      teamId?: string;
-      isActive?: boolean;
-    }) =>
+    mutationFn: ({ id, ...body }: { id: string; email?: string; name?: string; role?: UserRole; teamId?: string | null; isActive?: boolean }) =>
       request<OrgUser>(`/api/v1/users/${id}`, {
         method: "PATCH",
         body: JSON.stringify(body),
       }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["org-users"] });
+    },
+  });
+};
+
+export const useDeleteOrgUser = () => {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) =>
+      request<{ ok: boolean }>(`/api/v1/users/${id}`, { method: "DELETE" }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["org-users"] });
     },

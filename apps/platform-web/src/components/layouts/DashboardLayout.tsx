@@ -1,8 +1,33 @@
 import { NavLink, Outlet, useNavigate } from "react-router-dom";
 import { useAppStore } from "../../store";
 import { useAuthStore } from "../../store/auth";
-import { MessageSquare, Settings, Moon, Sun, Users, LogOut, TicketIcon, Building2, ShieldCheck } from "lucide-react";
+import {
+  MessageSquare,
+  Settings,
+  Moon,
+  Sun,
+  Users,
+  LogOut,
+  TicketIcon,
+  Building2,
+  ShieldCheck,
+} from "lucide-react";
 import { cn } from "../../utils/utils";
+
+function roleShort(role?: string) {
+  switch (role) {
+    case "SUPER_ADMIN":
+      return "S.Admin";
+    case "ADMIN":
+      return "Admin";
+    case "MANAGER":
+      return "Manager";
+    case "AGENT":
+      return "Agent";
+    default:
+      return "";
+  }
+}
 
 export function DashboardLayout() {
   const { theme, toggleTheme } = useAppStore();
@@ -15,7 +40,10 @@ export function DashboardLayout() {
     navigate("/login");
   };
 
-  const isAdmin = user?.role === "ADMIN" || user?.role === "SUPER_ADMIN";
+  const canManageUsers =
+    user?.role === "SUPER_ADMIN" || user?.role === "ADMIN" || user?.role === "MANAGER";
+  const canViewTeams =
+    user?.role === "SUPER_ADMIN" || user?.role === "ADMIN" || user?.role === "MANAGER";
 
   const mainLinks = [
     { to: "/inbox", icon: MessageSquare, label: "Inbox" },
@@ -23,118 +51,105 @@ export function DashboardLayout() {
     { to: "/tickets", icon: TicketIcon, label: "Tickets" },
   ];
 
-  const adminLinks = [
-    { to: "/admin/users", icon: ShieldCheck, label: "Users" },
-    { to: "/admin/teams", icon: Building2, label: "Teams" },
+  const orgLinks = [
+    ...(canManageUsers ? [{ to: "/admin/users", icon: ShieldCheck, label: "Users" }] : []),
+    ...(canViewTeams ? [{ to: "/admin/teams", icon: Building2, label: "Teams" }] : []),
   ];
 
-  const bottomLinks = user?.role === "SUPER_ADMIN" || user?.role === "ADMIN" ? [
-    { to: "/settings", icon: Settings, label: "Settings" },
-  ] : [];
+  const bottomLinks =
+    user?.role === "SUPER_ADMIN" || user?.role === "ADMIN"
+      ? [{ to: "/settings", icon: Settings, label: "Settings" }]
+      : [];
+
+  const renderLink = (link: {
+    to: string;
+    icon: React.ComponentType<{ className?: string }>;
+    label: string;
+  }) => (
+    <NavLink
+      key={link.to}
+      to={link.to}
+      title={link.label}
+      className={({ isActive }) =>
+        cn(
+          "flex w-full flex-col items-center justify-center gap-1 rounded-lg px-1 py-2.5 transition-colors",
+          isActive
+            ? "bg-primary text-primary-foreground shadow-sm"
+            : "text-muted-foreground hover:bg-muted hover:text-foreground",
+        )
+      }
+    >
+      <link.icon className="h-5 w-5" />
+      <span className="text-[10px] font-medium leading-none">{link.label}</span>
+    </NavLink>
+  );
 
   return (
     <div className="flex h-screen w-full overflow-hidden bg-background">
-      <aside className="z-10 flex w-20 shrink-0 flex-col items-center border-r border-border bg-card py-4 shadow-sm">
-        {/* Logo */}
-        <div className="mb-3 flex h-10 w-10 items-center justify-center rounded-xl bg-primary text-lg font-bold text-primary-foreground shadow-md">
-          <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5" />
-          </svg>
+      <aside className="z-10 flex w-[4.75rem] shrink-0 flex-col border-r border-border bg-card">
+        <div className="flex flex-col items-center gap-2 border-b border-border px-2 py-4">
+          <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-primary text-primary-foreground shadow-sm">
+            <svg
+              className="h-4 w-4"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2.5"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            >
+              <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5" />
+            </svg>
+          </div>
+          {user && (
+            <span
+              className="max-w-full truncate rounded-md bg-muted px-1.5 py-0.5 text-[9px] font-semibold text-foreground"
+              title={`${user.username} · ${user.role}`}
+            >
+              {roleShort(user.role)}
+            </span>
+          )}
         </div>
 
-        {/* User avatar + role */}
-        {user && (
-          <div className="mb-4 flex flex-col items-center gap-1" title={`${user.username}\n${user.role}`}>
-            <div className="flex h-8 w-8 items-center justify-center rounded-full bg-primary/20 border border-primary/30 text-xs font-semibold text-primary">
-              {user.username.charAt(0).toUpperCase()}
-            </div>
-            <span className="text-[9px] text-muted-foreground leading-none max-w-[60px] truncate text-center">
-              {user.role === "SUPER_ADMIN" ? "S.Admin" : user.role === "ADMIN" ? "Admin" : user.role === "MANAGER" ? "Mgr" : "Agent"}
-            </span>
-          </div>
-        )}
+        <nav className="flex flex-1 flex-col gap-1 overflow-y-auto px-2 py-3">
+          <p className="mb-1 px-0.5 text-center text-[9px] font-semibold uppercase tracking-wider text-muted-foreground/70">
+            Work
+          </p>
+          {mainLinks.map(renderLink)}
 
-        {/* Main nav */}
-        <nav className="flex w-full flex-1 flex-col gap-1 px-2">
-          {mainLinks.map((link) => (
-            <NavLink
-              key={link.to}
-              to={link.to}
-              className={({ isActive }) =>
-                cn(
-                  "group flex w-full aspect-square flex-col items-center justify-center gap-1 rounded-xl transition-all",
-                  isActive
-                    ? "bg-primary/10 font-medium text-primary"
-                    : "text-muted-foreground hover:bg-muted hover:text-foreground",
-                )
-              }
-            >
-              <link.icon className="h-5 w-5 transition-transform group-hover:scale-110" />
-              <span className="text-[10px]">{link.label}</span>
-            </NavLink>
-          ))}
-
-          {/* Admin section */}
-          {isAdmin && (
+          {orgLinks.length > 0 && (
             <>
-              <div className="my-2 mx-3 border-t border-border/50" />
-              {adminLinks.map((link) => (
-                <NavLink
-                  key={link.to}
-                  to={link.to}
-                  className={({ isActive }) =>
-                    cn(
-                      "group flex w-full aspect-square flex-col items-center justify-center gap-1 rounded-xl transition-all",
-                      isActive
-                        ? "bg-purple-500/10 font-medium text-purple-400"
-                        : "text-muted-foreground hover:bg-muted hover:text-foreground",
-                    )
-                  }
-                >
-                  <link.icon className="h-5 w-5 transition-transform group-hover:scale-110" />
-                  <span className="text-[10px]">{link.label}</span>
-                </NavLink>
-              ))}
+              <div className="my-2 mx-1 border-t border-border" />
+              <p className="mb-1 px-0.5 text-center text-[9px] font-semibold uppercase tracking-wider text-muted-foreground/70">
+                Org
+              </p>
+              {orgLinks.map(renderLink)}
             </>
           )}
         </nav>
 
-        <div className="flex w-full flex-col gap-1 px-2 pt-2">
-          {bottomLinks.map((link) => (
-            <NavLink
-              key={link.to}
-              to={link.to}
-              className={({ isActive }) =>
-                cn(
-                  "group flex w-full aspect-square flex-col items-center justify-center gap-1 rounded-xl transition-all",
-                  isActive
-                    ? "bg-primary/10 font-medium text-primary"
-                    : "text-muted-foreground hover:bg-muted hover:text-foreground",
-                )
-              }
-            >
-              <link.icon className="h-5 w-5 transition-transform group-hover:scale-110" />
-              <span className="text-[10px]">{link.label}</span>
-            </NavLink>
-          ))}
+        <div className="mt-auto flex flex-col gap-1 border-t border-border px-2 py-3">
+          {bottomLinks.map(renderLink)}
 
           <button
+            type="button"
             onClick={toggleTheme}
-            className="flex w-full aspect-square flex-col items-center justify-center gap-1 rounded-xl text-muted-foreground transition-all hover:bg-muted hover:text-foreground"
-            title={theme === "dark" ? "Switch to light mode" : "Switch to dark mode"}
+            className="flex w-full flex-col items-center justify-center gap-1 rounded-lg px-1 py-2.5 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+            title={theme === "dark" ? "Light mode" : "Dark mode"}
           >
             {theme === "dark" ? <Sun className="h-5 w-5" /> : <Moon className="h-5 w-5" />}
-            <span className="text-[10px]">Theme</span>
+            <span className="text-[10px] font-medium leading-none">Theme</span>
           </button>
 
           <button
             id="logout-btn"
+            type="button"
             onClick={handleLogout}
-            className="flex w-full aspect-square flex-col items-center justify-center gap-1 rounded-xl text-muted-foreground transition-all hover:bg-rose-500/10 hover:text-rose-500"
+            className="flex w-full flex-col items-center justify-center gap-1 rounded-lg px-1 py-2.5 text-muted-foreground transition-colors hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-500/10 dark:hover:text-red-400"
             title="Logout"
           >
             <LogOut className="h-5 w-5" />
-            <span className="text-[10px]">Logout</span>
+            <span className="text-[10px] font-medium leading-none">Logout</span>
           </button>
         </div>
       </aside>

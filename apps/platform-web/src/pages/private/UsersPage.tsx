@@ -1,50 +1,173 @@
-import { useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import {
-  useOrgUsers, useCreateOrgUser, useUpdateOrgUser, useTeams,
-  type OrgUser, type UserRole,
+  useOrgUsers,
+  useCreateOrgUser,
+  useUpdateOrgUser,
+  useDeleteOrgUser,
+  useTeams,
+  type OrgUser,
+  type UserRole,
 } from "../../api";
 import { useAuthStore } from "../../store/auth";
-import { Users, Plus, X, ShieldCheck, Shield, Briefcase, Headphones, ToggleLeft, ToggleRight, Edit2 } from "lucide-react";
+import {
+  Users,
+  Plus,
+  X,
+  ShieldCheck,
+  Shield,
+  Briefcase,
+  Headphones,
+  Mail,
+  User,
+  Search,
+  MoreVertical,
+  Pencil,
+  Power,
+  Trash2,
+} from "lucide-react";
 
-const ROLE_META: Record<UserRole, { label: string; icon: React.ReactNode; color: string; bg: string }> = {
-  SUPER_ADMIN: { label: "Super Admin", icon: <ShieldCheck className="w-3.5 h-3.5" />, color: "text-purple-400", bg: "bg-purple-500/15" },
-  ADMIN: { label: "Admin", icon: <Shield className="w-3.5 h-3.5" />, color: "text-blue-400", bg: "bg-blue-500/15" },
-  MANAGER: { label: "Manager", icon: <Briefcase className="w-3.5 h-3.5" />, color: "text-amber-400", bg: "bg-amber-500/15" },
-  AGENT: { label: "Agent", icon: <Headphones className="w-3.5 h-3.5" />, color: "text-emerald-400", bg: "bg-emerald-500/15" },
+const ROLE_META: Record<UserRole, { label: string; icon: React.ReactNode; className: string }> = {
+  SUPER_ADMIN: {
+    label: "Super Admin",
+    icon: <ShieldCheck className="w-3.5 h-3.5" />,
+    className: "bg-slate-900 text-white dark:bg-slate-100 dark:text-slate-900",
+  },
+  ADMIN: {
+    label: "Admin",
+    icon: <Shield className="w-3.5 h-3.5" />,
+    className: "bg-blue-600 text-white",
+  },
+  MANAGER: {
+    label: "Manager",
+    icon: <Briefcase className="w-3.5 h-3.5" />,
+    className: "bg-amber-500 text-white",
+  },
+  AGENT: {
+    label: "Agent",
+    icon: <Headphones className="w-3.5 h-3.5" />,
+    className: "bg-emerald-600 text-white",
+  },
 };
-
-const ROLE_HIERARCHY: UserRole[] = ["SUPER_ADMIN", "ADMIN", "MANAGER", "AGENT"];
 
 function allowedRoles(actorRole: UserRole): UserRole[] {
   if (actorRole === "SUPER_ADMIN") return ["SUPER_ADMIN", "ADMIN", "MANAGER", "AGENT"];
   if (actorRole === "ADMIN") return ["MANAGER", "AGENT"];
+  if (actorRole === "MANAGER") return ["AGENT"];
   return [];
 }
 
 function RoleBadge({ role }: { role: UserRole }) {
   const m = ROLE_META[role];
   return (
-    <span className={`inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs font-medium ${m.bg} ${m.color}`}>
+    <span className={`inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-xs font-semibold ${m.className}`}>
       {m.icon}
       {m.label}
     </span>
   );
 }
 
-interface CreateUserModalProps { actorRole: UserRole; onClose: () => void }
-function CreateUserModal({ actorRole, onClose }: CreateUserModalProps) {
+const fieldClass =
+  "w-full rounded-md border border-border bg-background px-3 py-2.5 text-sm text-foreground outline-none focus:border-primary focus:ring-2 focus:ring-primary/20 transition-all";
+
+function ActionsMenu({
+  user,
+  onEdit,
+  onToggle,
+  onDelete,
+}: {
+  user: OrgUser;
+  onEdit: () => void;
+  onToggle: () => void;
+  onDelete: () => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const onDoc = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener("mousedown", onDoc);
+    return () => document.removeEventListener("mousedown", onDoc);
+  }, [open]);
+
+  return (
+    <div className="relative flex justify-end" ref={ref}>
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-border text-muted-foreground hover:bg-muted hover:text-foreground"
+        aria-label="Actions"
+      >
+        <MoreVertical className="w-4 h-4" />
+      </button>
+      {open && (
+        <div className="absolute right-0 top-full mt-1 z-30 w-44 rounded-md border border-border bg-card shadow-lg overflow-hidden">
+          <button
+            type="button"
+            onClick={() => {
+              setOpen(false);
+              onEdit();
+            }}
+            className="flex w-full items-center gap-2 px-3 py-2.5 text-sm text-foreground hover:bg-muted"
+          >
+            <Pencil className="w-3.5 h-3.5" />
+            Edit
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              setOpen(false);
+              onToggle();
+            }}
+            className="flex w-full items-center gap-2 px-3 py-2.5 text-sm text-foreground hover:bg-muted"
+          >
+            <Power className="w-3.5 h-3.5" />
+            {user.isActive ? "Deactivate" : "Activate"}
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              setOpen(false);
+              onDelete();
+            }}
+            className="flex w-full items-center gap-2 px-3 py-2.5 text-sm text-red-600 hover:bg-red-50 dark:hover:bg-red-500/10"
+          >
+            <Trash2 className="w-3.5 h-3.5" />
+            Delete
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+interface CreateUserModalProps {
+  actorRole: UserRole;
+  actorTeamId?: string | null;
+  onClose: () => void;
+}
+function CreateUserModal({ actorRole, actorTeamId, onClose }: CreateUserModalProps) {
+  const [name, setName] = useState("");
   const [email, setEmail] = useState("");
-  const [role, setRole] = useState<UserRole>("AGENT");
-  const [teamId, setTeamId] = useState("");
+  const [role, setRole] = useState<UserRole>(actorRole === "MANAGER" ? "AGENT" : "AGENT");
+  const [teamId, setTeamId] = useState(actorRole === "MANAGER" ? actorTeamId || "" : "");
   const createUser = useCreateOrgUser();
   const { data: teams = [] } = useTeams();
   const rolesAvailable = allowedRoles(actorRole);
+  const showTeam = (role === "MANAGER" || role === "AGENT") && actorRole !== "MANAGER";
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
-      const u = await createUser.mutateAsync({ email, role, teamId: teamId || undefined });
+      const u = await createUser.mutateAsync({
+        name,
+        email,
+        role,
+        teamId: actorRole === "MANAGER" ? actorTeamId || undefined : teamId || undefined,
+      });
       toast.success(`User ${u.username} created`);
       onClose();
     } catch (err: any) {
@@ -54,38 +177,60 @@ function CreateUserModal({ actorRole, onClose }: CreateUserModalProps) {
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-      <div className="absolute inset-0 bg-background/80 backdrop-blur-sm" onClick={onClose} />
-      <div className="relative z-10 w-full max-w-sm rounded-2xl border border-border bg-card shadow-2xl">
-        <div className="flex items-center justify-between border-b border-border p-5">
-          <h2 className="font-semibold text-foreground">Create User</h2>
-          <button onClick={onClose} className="rounded-lg p-1.5 text-muted-foreground hover:bg-accent transition-colors"><X className="w-4 h-4" /></button>
+      <div className="absolute inset-0 bg-black/40" onClick={onClose} />
+      <div className="relative z-10 w-full max-w-md rounded-lg border border-border bg-card shadow-xl">
+        <div className="flex items-center justify-between border-b border-border px-5 py-4">
+          <div>
+            <h2 className="text-base font-semibold text-foreground">Create User</h2>
+            <p className="text-xs text-muted-foreground mt-0.5">Add a member to your organization</p>
+          </div>
+          <button onClick={onClose} className="rounded-md p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground">
+            <X className="w-4 h-4" />
+          </button>
         </div>
         <form onSubmit={handleSubmit} className="p-5 space-y-4">
           <div>
-            <label className="text-xs font-medium text-muted-foreground mb-1.5 block">Email *</label>
-            <input
-              id="new-user-email"
-              type="email"
-              required
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              autoFocus
-              placeholder="agent@company.com"
-              className="w-full rounded-xl border border-border bg-background px-3 py-2.5 text-sm text-foreground placeholder-muted-foreground outline-none focus:border-primary/50 transition-all"
-            />
+            <label className="text-xs font-semibold text-foreground mb-1.5 block">Full Name</label>
+            <div className="relative">
+              <User className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+              <input
+                id="new-user-name"
+                type="text"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                autoFocus
+                placeholder="e.g. Jane Doe"
+                className={`${fieldClass} pl-10`}
+              />
+            </div>
           </div>
           <div>
-            <label className="text-xs font-medium text-muted-foreground mb-1.5 block">Role *</label>
+            <label className="text-xs font-semibold text-foreground mb-1.5 block">Email *</label>
+            <div className="relative">
+              <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+              <input
+                id="new-user-email"
+                type="email"
+                required
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                placeholder="agent@company.com"
+                className={`${fieldClass} pl-10`}
+              />
+            </div>
+          </div>
+          <div>
+            <label className="text-xs font-semibold text-foreground mb-1.5 block">Role *</label>
             <div className="grid grid-cols-2 gap-2">
               {rolesAvailable.map((r) => (
                 <button
                   key={r}
                   type="button"
                   onClick={() => setRole(r)}
-                  className={`flex items-center gap-2 rounded-xl border px-3 py-2.5 text-xs font-medium transition-all ${
+                  className={`flex items-center gap-2 rounded-md border px-3 py-2.5 text-xs font-semibold transition-colors ${
                     role === r
-                      ? `${ROLE_META[r].bg} ${ROLE_META[r].color} border-current/30`
-                      : "border-white/10 text-slate-400 hover:border-white/20"
+                      ? "border-primary bg-primary/10 text-primary"
+                      : "border-border text-muted-foreground hover:bg-muted hover:text-foreground"
                   }`}
                 >
                   {ROLE_META[r].icon}
@@ -94,26 +239,33 @@ function CreateUserModal({ actorRole, onClose }: CreateUserModalProps) {
               ))}
             </div>
           </div>
-          {(role === "MANAGER" || role === "AGENT") && (
+          {showTeam && (
             <div>
-              <label className="text-xs font-medium text-muted-foreground mb-1.5 block">Team</label>
-              <select
-                value={teamId}
-                onChange={(e) => setTeamId(e.target.value)}
-                className="w-full rounded-xl border border-border bg-background px-3 py-2.5 text-sm text-foreground outline-none focus:border-primary/50 transition-all"
-              >
-                <option value="">— no team —</option>
-                {teams.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
+              <label className="text-xs font-semibold text-foreground mb-1.5 block">Team</label>
+              <select value={teamId} onChange={(e) => setTeamId(e.target.value)} className={fieldClass}>
+                <option value="">No team</option>
+                {teams.map((t) => (
+                  <option key={t.id} value={t.id}>
+                    {t.name}
+                  </option>
+                ))}
               </select>
             </div>
           )}
-          <div className="flex gap-3 pt-1">
-            <button type="button" onClick={onClose} className="flex-1 rounded-xl border border-border py-2.5 text-sm text-foreground hover:bg-accent transition-colors">Cancel</button>
+          {actorRole === "MANAGER" && (
+            <p className="text-xs text-muted-foreground">
+              New agent will be added to your team automatically.
+            </p>
+          )}
+          <div className="flex gap-2 pt-2 border-t border-border">
+            <button type="button" onClick={onClose} className="flex-1 rounded-md border border-border py-2.5 text-sm font-medium text-foreground hover:bg-muted">
+              Cancel
+            </button>
             <button
               id="create-user-submit"
               type="submit"
               disabled={createUser.isPending}
-              className="flex-1 rounded-xl bg-primary py-2.5 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50 transition-colors"
+              className="flex-1 rounded-md bg-primary py-2.5 text-sm font-semibold text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
             >
               {createUser.isPending ? "Creating…" : "Create User"}
             </button>
@@ -124,18 +276,30 @@ function CreateUserModal({ actorRole, onClose }: CreateUserModalProps) {
   );
 }
 
-interface EditUserModalProps { actorRole: UserRole; user: OrgUser; onClose: () => void }
-function EditUserModal({ actorRole, user, onClose }: EditUserModalProps) {
+interface EditUserModalProps {
+  actorRole: UserRole;
+  actorTeamId?: string | null;
+  user: OrgUser;
+  onClose: () => void;
+}
+function EditUserModal({ actorRole, actorTeamId, user, onClose }: EditUserModalProps) {
+  const [name, setName] = useState(user.name || "");
   const [role, setRole] = useState<UserRole>(user.role);
   const [teamId, setTeamId] = useState(user.teamId || "");
   const updateUser = useUpdateOrgUser();
   const { data: teams = [] } = useTeams();
   const rolesAvailable = allowedRoles(actorRole);
+  const showTeam = (role === "MANAGER" || role === "AGENT") && actorRole !== "MANAGER";
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
-      await updateUser.mutateAsync({ id: user.id, role, teamId: teamId || undefined });
+      await updateUser.mutateAsync({
+        id: user.id,
+        name,
+        role,
+        teamId: actorRole === "MANAGER" ? actorTeamId || undefined : teamId || undefined,
+      });
       toast.success(`User ${user.username} updated`);
       onClose();
     } catch (err: any) {
@@ -145,43 +309,54 @@ function EditUserModal({ actorRole, user, onClose }: EditUserModalProps) {
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-      <div className="absolute inset-0 bg-background/80 backdrop-blur-sm" onClick={onClose} />
-      <div className="relative z-10 w-full max-w-sm rounded-2xl border border-border bg-card shadow-2xl">
-        <div className="flex items-center justify-between border-b border-border p-5">
-          <h2 className="font-semibold text-foreground">Edit User: {user.username}</h2>
-          <button onClick={onClose} className="rounded-lg p-1.5 text-muted-foreground hover:bg-accent transition-colors"><X className="w-4 h-4" /></button>
+      <div className="absolute inset-0 bg-black/40" onClick={onClose} />
+      <div className="relative z-10 w-full max-w-md rounded-lg border border-border bg-card shadow-xl">
+        <div className="flex items-center justify-between border-b border-border px-5 py-4">
+          <div>
+            <h2 className="text-base font-semibold text-foreground">Edit User</h2>
+            <p className="text-xs text-muted-foreground mt-0.5">{user.username}</p>
+          </div>
+          <button onClick={onClose} className="rounded-md p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground">
+            <X className="w-4 h-4" />
+          </button>
         </div>
         <form onSubmit={handleSubmit} className="p-5 space-y-4">
           <div>
-            <label className="text-xs font-medium text-muted-foreground mb-1.5 block">Role</label>
-            <select
-              value={role}
-              onChange={(e) => setRole(e.target.value as UserRole)}
-              className="w-full rounded-xl border border-border bg-background px-3 py-2.5 text-sm text-foreground outline-none focus:border-primary/50 transition-all"
-            >
-              {rolesAvailable.map((r) => <option key={r} value={r}>{r}</option>)}
+            <label className="text-xs font-semibold text-foreground mb-1.5 block">Full Name</label>
+            <input type="text" value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Jane Doe" className={fieldClass} />
+          </div>
+          <div>
+            <label className="text-xs font-semibold text-foreground mb-1.5 block">Role</label>
+            <select value={role} onChange={(e) => setRole(e.target.value as UserRole)} className={fieldClass}>
+              {rolesAvailable.map((r) => (
+                <option key={r} value={r}>
+                  {ROLE_META[r].label}
+                </option>
+              ))}
             </select>
           </div>
-          {(role === "MANAGER" || role === "AGENT") && (
+          {showTeam && (
             <div>
-              <label className="text-xs font-medium text-muted-foreground mb-1.5 block">Team</label>
-              <select
-                value={teamId}
-                onChange={(e) => setTeamId(e.target.value)}
-                className="w-full rounded-xl border border-border bg-background px-3 py-2.5 text-sm text-foreground outline-none focus:border-primary/50 transition-all"
-              >
-                <option value="">— no team —</option>
-                {teams.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
+              <label className="text-xs font-semibold text-foreground mb-1.5 block">Team</label>
+              <select value={teamId} onChange={(e) => setTeamId(e.target.value)} className={fieldClass}>
+                <option value="">No team</option>
+                {teams.map((t) => (
+                  <option key={t.id} value={t.id}>
+                    {t.name}
+                  </option>
+                ))}
               </select>
             </div>
           )}
-          <div className="flex gap-3 pt-1">
-            <button type="button" onClick={onClose} className="flex-1 rounded-xl border border-border py-2.5 text-sm text-foreground hover:bg-accent transition-colors">Cancel</button>
+          <div className="flex gap-2 pt-2 border-t border-border">
+            <button type="button" onClick={onClose} className="flex-1 rounded-md border border-border py-2.5 text-sm font-medium text-foreground hover:bg-muted">
+              Cancel
+            </button>
             <button
               id="edit-user-submit"
               type="submit"
               disabled={updateUser.isPending}
-              className="flex-1 rounded-xl bg-primary py-2.5 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50 transition-colors"
+              className="flex-1 rounded-md bg-primary py-2.5 text-sm font-semibold text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
             >
               {updateUser.isPending ? "Saving…" : "Save Changes"}
             </button>
@@ -195,9 +370,31 @@ function EditUserModal({ actorRole, user, onClose }: EditUserModalProps) {
 export function UsersPage() {
   const [showCreate, setShowCreate] = useState(false);
   const [editingUser, setEditingUser] = useState<OrgUser | null>(null);
-  const actorRole = useAuthStore((s) => s.user?.role ?? "AGENT") as UserRole;
+  const [search, setSearch] = useState("");
+  const [teamFilter, setTeamFilter] = useState("ALL");
+  const actor = useAuthStore((s) => s.user);
+  const actorRole = (actor?.role ?? "AGENT") as UserRole;
   const { data: users = [], isLoading } = useOrgUsers();
+  const { data: teams = [] } = useTeams();
   const updateUser = useUpdateOrgUser();
+  const deleteUser = useDeleteOrgUser();
+
+  const filtered = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    return users.filter((u) => {
+      if (teamFilter !== "ALL") {
+        if (teamFilter === "NONE" && u.teamId) return false;
+        if (teamFilter !== "NONE" && u.teamId !== teamFilter) return false;
+      }
+      if (!q) return true;
+      return (
+        u.username.toLowerCase().includes(q) ||
+        (u.name || "").toLowerCase().includes(q) ||
+        u.role.toLowerCase().includes(q) ||
+        (u.team?.name || "").toLowerCase().includes(q)
+      );
+    });
+  }, [users, search, teamFilter]);
 
   const handleToggleActive = async (user: OrgUser) => {
     try {
@@ -208,25 +405,36 @@ export function UsersPage() {
     }
   };
 
-  const canManage = (target: OrgUser) => {
-    const actorIdx = ROLE_HIERARCHY.indexOf(actorRole);
-    const targetIdx = ROLE_HIERARCHY.indexOf(target.role as UserRole);
-    return actorIdx < targetIdx;
+  const handleDelete = async (user: OrgUser) => {
+    const ok = window.confirm(`Delete ${user.username}? This cannot be undone.`);
+    if (!ok) return;
+    try {
+      await deleteUser.mutateAsync(user.id);
+      toast.success("User deleted");
+    } catch (err: any) {
+      toast.error(err.message || "Failed to delete user");
+    }
   };
 
+  const showTeamFilter = actorRole === "SUPER_ADMIN" || actorRole === "ADMIN";
+
   return (
-    <div className="flex flex-col h-full">
-      <div className="flex items-center justify-between border-b border-border px-6 py-4">
+    <div className="flex flex-col h-full bg-background">
+      <div className="flex items-center justify-between border-b border-border bg-card px-6 py-4">
         <div className="flex items-center gap-3">
-          <Users className="w-5 h-5 text-primary" />
-          <h1 className="text-lg font-semibold text-foreground">Users & Roles</h1>
-          <span className="rounded-full bg-muted px-2 py-0.5 text-xs text-muted-foreground">{users.length}</span>
+          <div className="flex h-9 w-9 items-center justify-center rounded-md bg-primary text-primary-foreground">
+            <Users className="w-4 h-4" />
+          </div>
+          <div>
+            <h1 className="text-lg font-semibold text-foreground leading-tight">Users & Roles</h1>
+            <p className="text-xs text-muted-foreground">{filtered.length} members</p>
+          </div>
         </div>
         {allowedRoles(actorRole).length > 0 && (
           <button
             id="invite-user-btn"
             onClick={() => setShowCreate(true)}
-            className="flex items-center gap-2 rounded-xl bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 transition-colors"
+            className="inline-flex items-center gap-1.5 rounded-md bg-primary px-3.5 py-2 text-sm font-semibold text-primary-foreground hover:bg-primary/90 shadow-sm"
           >
             <Plus className="w-4 h-4" />
             Create User
@@ -234,69 +442,117 @@ export function UsersPage() {
         )}
       </div>
 
-      <div className="flex-1 overflow-y-auto">
-        {isLoading ? (
-          <div className="flex items-center justify-center h-32 text-muted-foreground text-sm">Loading users…</div>
-        ) : (
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b border-border text-xs text-muted-foreground">
-                <th className="px-6 py-3 text-left font-medium">User</th>
-                <th className="px-3 py-3 text-left font-medium">Role</th>
-                <th className="px-3 py-3 text-left font-medium">Team</th>
-                <th className="px-3 py-3 text-left font-medium">Status</th>
-                <th className="px-3 py-3 text-left font-medium">Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {users.map((user) => (
-                <tr key={user.id} className="border-b border-border hover:bg-muted/50 transition-colors">
-                  <td className="px-6 py-3">
-                    <div className="flex items-center gap-3">
-                      <div className="flex h-8 w-8 items-center justify-center rounded-full bg-primary/20 border border-primary/30 text-xs font-semibold text-primary">
-                        {user.username.charAt(0).toUpperCase()}
-                      </div>
-                      <span className="text-foreground text-sm">{user.username}</span>
-                    </div>
-                  </td>
-                  <td className="px-3 py-3"><RoleBadge role={user.role} /></td>
-                  <td className="px-3 py-3 text-xs text-slate-400">{user.team?.name ?? <span className="text-slate-600">—</span>}</td>
-                  <td className="px-3 py-3">
-                    <span className={`text-xs font-medium ${user.isActive ? "text-emerald-400" : "text-slate-500"}`}>
-                      {user.isActive ? "Active" : "Inactive"}
-                    </span>
-                  </td>
-                  <td className="px-3 py-3">
-                    <div className="flex items-center justify-end gap-2">
-                      {canManage(user) && (
-                        <>
-                          <button
-                            onClick={() => setEditingUser(user)}
-                            title="Edit User"
-                            className="text-slate-400 hover:text-white transition-colors p-1"
-                          >
-                            <Edit2 className="w-4 h-4" />
-                          </button>
-                          <button
-                            onClick={() => handleToggleActive(user)}
-                            title={user.isActive ? "Deactivate" : "Activate"}
-                            className="text-slate-400 hover:text-white transition-colors p-1"
-                          >
-                            {user.isActive ? <ToggleRight className="w-5 h-5 text-emerald-400" /> : <ToggleLeft className="w-5 h-5" />}
-                          </button>
-                        </>
-                      )}
-                    </div>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+      <div className="flex flex-wrap items-center gap-2 border-b border-border bg-card/50 px-6 py-3">
+        <div className="relative flex-1 min-w-[200px]">
+          <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />
+          <input
+            type="text"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Search by name, email, role…"
+            className="w-full rounded-md border border-border bg-background pl-8 pr-3 py-2 text-sm text-foreground outline-none focus:border-primary focus:ring-2 focus:ring-primary/20"
+          />
+        </div>
+        {showTeamFilter && (
+          <select
+            value={teamFilter}
+            onChange={(e) => setTeamFilter(e.target.value)}
+            className="rounded-md border border-border bg-background px-3 py-2 text-sm text-foreground outline-none focus:border-primary"
+          >
+            <option value="ALL">All Teams</option>
+            <option value="NONE">No Team</option>
+            {teams.map((t) => (
+              <option key={t.id} value={t.id}>
+                {t.name}
+              </option>
+            ))}
+          </select>
         )}
       </div>
 
-      {showCreate && <CreateUserModal actorRole={actorRole} onClose={() => setShowCreate(false)} />}
-      {editingUser && <EditUserModal actorRole={actorRole} user={editingUser} onClose={() => setEditingUser(null)} />}
+      <div className="flex-1 overflow-y-auto p-6">
+        {isLoading ? (
+          <div className="flex items-center justify-center h-32 text-muted-foreground text-sm">Loading users…</div>
+        ) : filtered.length === 0 ? (
+          <div className="flex flex-col items-center justify-center h-40 text-muted-foreground">
+            <Users className="w-8 h-8 mb-2 opacity-30" />
+            <p className="text-sm">No users found</p>
+          </div>
+        ) : (
+          <div className="rounded-lg border border-border bg-card overflow-hidden shadow-sm">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-border bg-muted/40 text-xs uppercase tracking-wide text-muted-foreground">
+                  <th className="px-5 py-3 text-left font-semibold">User</th>
+                  <th className="px-4 py-3 text-left font-semibold">Role</th>
+                  <th className="px-4 py-3 text-left font-semibold">Team</th>
+                  <th className="px-4 py-3 text-left font-semibold">Status</th>
+                  <th className="px-4 py-3 text-right font-semibold">Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {filtered.map((user) => (
+                  <tr key={user.id} className="border-b border-border last:border-0 hover:bg-muted/30 transition-colors">
+                    <td className="px-5 py-3.5">
+                      <div className="flex flex-col min-w-0">
+                        <span className="text-foreground text-sm font-semibold truncate">
+                          {user.name || user.username.split("@")[0]}
+                        </span>
+                        <span className="text-muted-foreground text-xs truncate">{user.username}</span>
+                      </div>
+                    </td>
+                    <td className="px-4 py-3.5">
+                      <RoleBadge role={user.role} />
+                    </td>
+                    <td className="px-4 py-3.5 text-sm text-foreground">
+                      {user.team?.name ?? <span className="text-muted-foreground">—</span>}
+                    </td>
+                    <td className="px-4 py-3.5">
+                      <span
+                        className={`inline-flex items-center rounded-md px-2 py-0.5 text-xs font-semibold ${
+                          user.isActive
+                            ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-500/20 dark:text-emerald-300"
+                            : "bg-slate-100 text-slate-600 dark:bg-slate-500/20 dark:text-slate-300"
+                        }`}
+                      >
+                        {user.isActive ? "Active" : "Inactive"}
+                      </span>
+                    </td>
+                    <td className="px-4 py-3.5">
+                      {user.id === actor?.id ? (
+                        <span className="block text-right text-xs text-muted-foreground">You</span>
+                      ) : (
+                        <ActionsMenu
+                          user={user}
+                          onEdit={() => setEditingUser(user)}
+                          onToggle={() => handleToggleActive(user)}
+                          onDelete={() => handleDelete(user)}
+                        />
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+
+      {showCreate && (
+        <CreateUserModal
+          actorRole={actorRole}
+          actorTeamId={actor?.teamId}
+          onClose={() => setShowCreate(false)}
+        />
+      )}
+      {editingUser && (
+        <EditUserModal
+          actorRole={actorRole}
+          actorTeamId={actor?.teamId}
+          user={editingUser}
+          onClose={() => setEditingUser(null)}
+        />
+      )}
     </div>
   );
 }

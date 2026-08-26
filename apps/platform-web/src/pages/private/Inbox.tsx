@@ -46,6 +46,7 @@ import {
 import { ConfirmDialog } from "../../components/ui/confirm-dialog";
 import { CreateTicketModal } from "../../components/tickets/CreateTicketModal";
 import { TicketIcon, Plus } from "lucide-react";
+import { Panel, PanelGroup, PanelResizeHandle } from "react-resizable-panels";
 
 type ChannelFilter = "all" | ChannelType;
 type PendingDelete =
@@ -684,7 +685,7 @@ export function InboxPage() {
     ) : null;
 
   return (
-    <div className="flex h-full flex-1 overflow-hidden bg-background">
+    <div className="flex h-full flex-1 overflow-hidden bg-background relative">
       <ConfirmDialog
         open={Boolean(pendingDelete)}
         title={deleteDialogTitle}
@@ -696,7 +697,8 @@ export function InboxPage() {
         onConfirm={() => void confirmPendingDelete()}
         onCancel={() => closeDeleteDialog(false)}
       />
-      <section className="flex w-[360px] shrink-0 flex-col border-r border-border bg-card">
+      <PanelGroup direction="horizontal" autoSaveId="inbox-layout-panels" className="flex h-full w-full">
+        <Panel defaultSize={25} minSize={20} maxSize={40} className="flex shrink-0 flex-col border-r border-border bg-card">
         <div className="flex h-14 shrink-0 items-center justify-between gap-2 border-b border-border px-4">
           <div className="flex min-w-0 items-center gap-2.5">
             <h1 className="text-base font-semibold tracking-tight text-foreground">Inbox</h1>
@@ -794,12 +796,17 @@ export function InboxPage() {
             readScopeKeys={readScopeKeys}
           />
         )}
-      </section>
+      </Panel>
 
-      {!selectedContactId || !selectedContact ? (
-        <ConversationEmptyState />
-      ) : (
-        <ConversationThread
+      <PanelResizeHandle className="w-1.5 flex items-center justify-center bg-border/50 hover:bg-primary/50 transition-colors cursor-col-resize z-10">
+        <div className="h-6 w-1 rounded-full bg-border group-hover:bg-primary/50 transition-colors" />
+      </PanelResizeHandle>
+
+      <Panel defaultSize={50} minSize={30} className="flex flex-col flex-1 min-w-0">
+        {!selectedContactId || !selectedContact ? (
+          <ConversationEmptyState />
+        ) : (
+          <ConversationThread
           key={selectedConversation?.id ?? selectedContactId}
           contactName={contactDisplayName(selectedContact)}
           contact={selectedContact}
@@ -832,6 +839,7 @@ export function InboxPage() {
           enabledChannels={enabledChannels}
         />
       )}
+      </Panel>
 
       {/* Create Ticket floating button — visible when a conversation is selected */}
       {selectedConversation && (
@@ -882,13 +890,21 @@ export function InboxPage() {
       )}
 
       {customerContextOpen && (
-        <CustomerDetails
-          key={selectedContactId ?? "none"}
-          contact={selectedContact}
-          conversationsByChannel={contactConversations}
-          onClose={() => setCustomerContextOpen(false)}
-        />
+        <>
+          <PanelResizeHandle className="w-1.5 flex items-center justify-center bg-border/50 hover:bg-primary/50 transition-colors cursor-col-resize z-10">
+            <div className="h-6 w-1 rounded-full bg-border group-hover:bg-primary/50 transition-colors" />
+          </PanelResizeHandle>
+          <Panel defaultSize={25} minSize={20} maxSize={40} className="flex shrink-0 flex-col border-l border-border bg-card">
+            <CustomerDetails
+              key={selectedContactId ?? "none"}
+              contact={selectedContact}
+              conversationsByChannel={contactConversations}
+              onClose={() => setCustomerContextOpen(false)}
+            />
+          </Panel>
+        </>
       )}
+      </PanelGroup>
 
       {createTicketConv && (
         <CreateTicketModal

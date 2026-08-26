@@ -33,6 +33,14 @@ import {
   Plus,
   Loader2,
   Lock,
+  CircleDot,
+  UserPlus,
+  RefreshCw,
+  ArrowRightLeft,
+  StickyNote,
+  CheckCircle2,
+  XCircle,
+  RotateCcw,
 } from "lucide-react";
 
 const STATUS_CONFIG: Record<TicketStatus, { label: string; bg: string; text: string; border: string }> = {
@@ -50,20 +58,20 @@ const PRIORITY_CONFIG: Record<TicketPriority, { label: string; color: string; bg
   URGENT: { label: "Urgent", color: "text-red-400", bg: "bg-red-500/10" },
 };
 
-const EVENT_LABELS: Record<string, string> = {
-  CREATED: "Ticket created",
-  ASSIGNED: "Assigned",
-  REASSIGNED: "Reassigned",
-  STATUS_CHANGED: "Status changed",
-  PRIORITY_CHANGED: "Priority changed",
-  TEAM_CHANGED: "Team changed",
-  ESCALATED: "Escalated",
-  RETURNED: "Returned to agent",
-  NOTE_ADDED: "Note added",
-  REPLIED: "Reply sent",
-  RESOLVED: "Resolved",
-  CLOSED: "Closed",
-  REOPENED: "Reopened",
+const EVENT_META: Record<string, { label: string; icon: typeof CircleDot; color: string; bg: string }> = {
+  CREATED: { label: "Ticket created", icon: CircleDot, color: "text-blue-400", bg: "bg-blue-500/15" },
+  ASSIGNED: { label: "Assigned", icon: UserPlus, color: "text-violet-400", bg: "bg-violet-500/15" },
+  REASSIGNED: { label: "Reassigned", icon: RefreshCw, color: "text-violet-400", bg: "bg-violet-500/15" },
+  STATUS_CHANGED: { label: "Status changed", icon: ArrowRightLeft, color: "text-sky-400", bg: "bg-sky-500/15" },
+  PRIORITY_CHANGED: { label: "Priority changed", icon: Tag, color: "text-amber-400", bg: "bg-amber-500/15" },
+  TEAM_CHANGED: { label: "Team changed", icon: Users, color: "text-indigo-400", bg: "bg-indigo-500/15" },
+  ESCALATED: { label: "Escalated", icon: ArrowUpCircle, color: "text-orange-400", bg: "bg-orange-500/15" },
+  RETURNED: { label: "Returned to agent", icon: ArrowDownCircle, color: "text-blue-400", bg: "bg-blue-500/15" },
+  NOTE_ADDED: { label: "Note added", icon: StickyNote, color: "text-amber-400", bg: "bg-amber-500/15" },
+  REPLIED: { label: "Reply sent", icon: MessageSquare, color: "text-emerald-400", bg: "bg-emerald-500/15" },
+  RESOLVED: { label: "Resolved", icon: CheckCircle2, color: "text-emerald-400", bg: "bg-emerald-500/15" },
+  CLOSED: { label: "Closed", icon: XCircle, color: "text-slate-400", bg: "bg-slate-500/15" },
+  REOPENED: { label: "Reopened", icon: RotateCcw, color: "text-blue-400", bg: "bg-blue-500/15" },
 };
 
 export function TicketDetailPage() {
@@ -115,13 +123,15 @@ export function TicketDetailPage() {
 
   const statusCfg = STATUS_CONFIG[ticket.status];
 
-  // Agents can only assign to self; Managers can assign team members; Admins anyone
+  // Agents can only assign to self; Managers can assign team members; Admins anyone (managers/agents only)
   const agentUsers = users.filter((u) => {
-    if (isAdminOrAbove) return u.role === "AGENT" || u.role === "MANAGER";
+    if (u.role !== "AGENT" && u.role !== "MANAGER") return false;
+    if (!u.isActive) return false;
+    if (isAdminOrAbove) return true;
     if (isManagerOrAbove && !isAdminOrAbove) {
-      return (u.role === "AGENT" || u.role === "MANAGER") && u.teamId === user?.teamId;
+      return u.teamId === user?.teamId;
     }
-    return u.id === user?.id; // Agents can only assign to themselves
+    return u.id === user?.id;
   });
 
   // Allowed status transitions per role (excluding ESCALATED — use Escalate button)
@@ -160,24 +170,6 @@ export function TicketDetailPage() {
     }
   };
 
-  const handleAssign = async (assigneeId: string) => {
-    try {
-      await assignTicket.mutateAsync({ id: ticket.id, assigneeId: assigneeId || undefined });
-      toast.success("Assignee updated");
-    } catch (err: any) {
-      toast.error(err.message);
-    }
-  };
-
-  const handleTeamChange = async (newTeamId: string) => {
-    try {
-      await updateTicket.mutateAsync({ id: ticket.id, teamId: newTeamId || undefined });
-      toast.success("Team updated");
-    } catch (err: any) {
-      toast.error(err.message);
-    }
-  };
-
   const handleAddNote = async () => {
     if (!noteText.trim()) return;
     try {
@@ -201,24 +193,24 @@ export function TicketDetailPage() {
   return (
     <div className="flex flex-col h-full">
       {/* Top bar */}
-      <div className="flex items-center gap-3 border-b border-white/8 px-6 py-3">
+      <div className="flex items-center gap-3 border-b border-border px-6 py-3 bg-card/40">
         <button
           onClick={() => navigate("/tickets")}
-          className="rounded-lg p-1.5 text-slate-400 hover:bg-white/10 hover:text-white transition-colors"
+          className="rounded-md p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
         >
           <ArrowLeft className="w-4 h-4" />
         </button>
-        <span className="text-slate-500 font-mono text-sm">#{ticket.number}</span>
-        <h1 className="text-white font-semibold truncate flex-1">{ticket.subject}</h1>
+        <span className="text-muted-foreground font-mono text-sm">#{ticket.number}</span>
+        <h1 className="text-foreground font-semibold truncate flex-1">{ticket.subject}</h1>
         <span
-          className={`text-xs font-medium px-2.5 py-1 rounded-full border ${statusCfg.bg} ${statusCfg.text} ${statusCfg.border}`}
+          className={`text-xs font-medium px-2.5 py-1 rounded-md border ${statusCfg.bg} ${statusCfg.text} ${statusCfg.border}`}
         >
           {statusCfg.label}
         </span>
 
         {/* Lock indicator for escalated agents */}
         {isLocked && (
-          <span className="flex items-center gap-1 text-xs text-orange-400 bg-orange-500/10 border border-orange-500/20 px-2.5 py-1 rounded-full">
+          <span className="flex items-center gap-1 text-xs text-orange-400 bg-orange-500/10 border border-orange-500/20 px-2.5 py-1 rounded-md">
             <Lock className="w-3 h-3" /> Escalated — read only
           </span>
         )}
@@ -229,7 +221,7 @@ export function TicketDetailPage() {
             id="return-btn"
             onClick={handleReturn}
             disabled={returnTicket.isPending}
-            className="flex items-center gap-1.5 rounded-xl bg-blue-600/20 border border-blue-500/30 px-3 py-1.5 text-xs font-medium text-blue-300 hover:bg-blue-600/30 transition-colors disabled:opacity-50"
+            className="inline-flex items-center gap-1.5 rounded-md bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground hover:bg-primary/90 transition-colors disabled:opacity-50"
           >
             <ArrowDownCircle className="w-3.5 h-3.5" />
             Return to Agent
@@ -241,7 +233,7 @@ export function TicketDetailPage() {
           <button
             id="escalate-btn"
             onClick={() => setShowEscalate(true)}
-            className="flex items-center gap-1.5 rounded-xl bg-orange-600/20 border border-orange-500/30 px-3 py-1.5 text-xs font-medium text-orange-300 hover:bg-orange-600/30 transition-colors"
+            className="inline-flex items-center gap-1.5 rounded-md bg-orange-500 px-3 py-1.5 text-xs font-medium text-white hover:bg-orange-600 transition-colors"
           >
             <ArrowUpCircle className="w-3.5 h-3.5" />
             Escalate
@@ -488,64 +480,113 @@ export function TicketDetailPage() {
             )}
           </Section>
 
-          {/* Assignee */}
-          <Section icon={<User2 className="w-3.5 h-3.5" />} title="Assignee">
+          {/* Assign To — person XOR team queue */}
+          <Section icon={<User2 className="w-3.5 h-3.5" />} title="Assign To">
             {isLocked ? (
-              <p className="text-xs text-foreground">
-                {ticket.assignee?.username ?? <span className="text-muted-foreground">Unassigned</span>}
-              </p>
+              <div className="flex flex-col gap-0.5">
+                <p className="text-xs text-foreground">
+                  {ticket.assignee
+                    ? `${ticket.assignee.username}${ticket.team?.name ? ` — ${ticket.team.name}` : ""}`
+                    : ticket.team
+                      ? `Team queue: ${ticket.team.name}`
+                      : <span className="text-muted-foreground">Unassigned</span>}
+                </p>
+              </div>
             ) : (
               <select
                 id="assignee-select"
-                value={ticket.assignedTo ?? ""}
-                onChange={(e) => handleAssign(e.target.value)}
-                className="w-full rounded-lg border border-border bg-background px-2.5 py-2 text-xs text-foreground outline-none focus:border-primary/50 transition-all"
+                value={
+                  ticket.assignedTo
+                    ? `user:${ticket.assignedTo}`
+                    : ticket.teamId
+                      ? `team:${ticket.teamId}`
+                      : "unassigned"
+                }
+                onChange={(e) => {
+                  const val = e.target.value;
+                  let tId: string | undefined;
+                  let aId: string | undefined;
+
+                  if (val.startsWith("team:")) {
+                    tId = val.replace("team:", "");
+                    aId = undefined; // team queue — clear person
+                  } else if (val.startsWith("user:")) {
+                    aId = val.replace("user:", "");
+                    const targetUser = agentUsers.find((u) => u.id === aId);
+                    tId = targetUser?.teamId || undefined;
+                  } else {
+                    tId = undefined;
+                    aId = undefined;
+                  }
+
+                  assignTicket
+                    .mutateAsync({
+                      id: ticket.id,
+                      assigneeId: aId ?? "",
+                      teamId: tId ?? "",
+                    })
+                    .then(() => toast.success("Assignment updated"))
+                    .catch((err: any) => toast.error(err.message));
+                }}
+                className="w-full rounded-md border border-border bg-background px-2.5 py-2 text-xs text-foreground outline-none focus:border-primary focus:ring-2 focus:ring-primary/20"
               >
-                <option value="">Unassigned</option>
-                {agentUsers.map((u) => (
-                  <option key={u.id} value={u.id}>{u.username}</option>
-                ))}
+                <option value="unassigned">Unassigned</option>
+                {isManagerOrAbove && teams.length > 0 && (
+                  <optgroup label="Team queues">
+                    {teams.map((t) => (
+                      <option key={`team-${t.id}`} value={`team:${t.id}`}>
+                        {t.name} (open queue)
+                      </option>
+                    ))}
+                  </optgroup>
+                )}
+                <optgroup label="People">
+                  {agentUsers.map((u) => (
+                    <option key={`user-${u.id}`} value={`user:${u.id}`}>
+                      {(u.name || u.username.split("@")[0])}
+                      {u.team?.name ? ` — ${u.team.name}` : ""}
+                    </option>
+                  ))}
+                </optgroup>
               </select>
             )}
           </Section>
 
-          {/* Team — Manager+ only */}
-          {isManagerOrAbove && (
-            <Section icon={<Users className="w-3.5 h-3.5" />} title="Team">
-              {isLocked && !isManagerOrAbove ? (
-                <p className="text-xs text-foreground">{ticket.team?.name ?? "No Team"}</p>
-              ) : (
-                <select
-                  id="team-select"
-                  value={ticket.teamId ?? ""}
-                  onChange={(e) => handleTeamChange(e.target.value)}
-                  className="w-full rounded-lg border border-border bg-background px-2.5 py-2 text-xs text-foreground outline-none focus:border-primary/50 transition-all"
-                >
-                  <option value="">No Team</option>
-                  {teams.map((t) => (
-                    <option key={t.id} value={t.id}>{t.name}</option>
-                  ))}
-                </select>
-              )}
-            </Section>
-          )}
-
           {/* Activity log */}
           <Section icon={<Clock className="w-3.5 h-3.5" />} title="Activity">
-            <div className="space-y-2">
-              {events.length === 0 && (
-                <p className="text-xs text-muted-foreground">No activity yet</p>
-              )}
-              {events.map((ev) => (
-                <div key={ev.id} className="text-xs text-muted-foreground leading-relaxed">
-                  <span className="text-foreground">{EVENT_LABELS[ev.type] ?? ev.type}</span>
-                  {ev.note && (
-                    <p className="text-muted-foreground italic mt-0.5 pl-1 border-l border-border">"{ev.note}"</p>
-                  )}
-                  <p>{formatDistanceToNow(new Date(ev.createdAt), { addSuffix: true })}</p>
-                </div>
-              ))}
-            </div>
+            {events.length === 0 ? (
+              <p className="text-xs text-muted-foreground">No activity yet</p>
+            ) : (
+              <ol className="relative ms-2 border-s border-border space-y-0">
+                {events.map((ev) => {
+                  const meta = EVENT_META[ev.type] ?? {
+                    label: ev.type,
+                    icon: CircleDot,
+                    color: "text-muted-foreground",
+                    bg: "bg-muted",
+                  };
+                  const Icon = meta.icon;
+                  return (
+                    <li key={ev.id} className="relative ps-5 pb-4 last:pb-0">
+                      <span
+                        className={`absolute -start-2.5 top-0.5 flex h-5 w-5 items-center justify-center rounded-full border border-border ${meta.bg}`}
+                      >
+                        <Icon className={`h-2.5 w-2.5 ${meta.color}`} />
+                      </span>
+                      <p className={`text-xs font-medium ${meta.color}`}>{meta.label}</p>
+                      {ev.note && (
+                        <p className="mt-1 text-[11px] text-muted-foreground leading-snug rounded-md bg-muted/50 px-2 py-1">
+                          {ev.note}
+                        </p>
+                      )}
+                      <p className="mt-0.5 text-[10px] text-muted-foreground/80">
+                        {formatDistanceToNow(new Date(ev.createdAt), { addSuffix: true })}
+                      </p>
+                    </li>
+                  );
+                })}
+              </ol>
+            )}
           </Section>
         </div>
       </div>

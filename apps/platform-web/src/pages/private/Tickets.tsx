@@ -9,9 +9,8 @@ import {
   type TicketStatus,
 } from "../../api";
 import { useAuthStore } from "../../store/auth";
-import { CreateTicketModal } from "../../components/tickets/CreateTicketModal";
 import { formatDistanceToNow } from "date-fns";
-import { TicketIcon, Plus, Search, ChevronDown } from "lucide-react";
+import { Ticket as TicketIcon, Search, ChevronDown, TriangleAlert } from "lucide-react";
 
 const STATUS_CONFIG: Record<TicketStatus, { label: string; bg: string; text: string }> = {
   OPEN: { label: "Open", bg: "bg-blue-500/15", text: "text-blue-400" },
@@ -94,9 +93,9 @@ export function TicketsPage() {
   const [assigneeFilter, setAssigneeFilter] = useState<string>("ALL");
   const [teamFilter, setTeamFilter] = useState<string>("ALL");
   const [search, setSearch] = useState<string>("");
-  const [showCreate, setShowCreate] = useState(false);
 
   const user = useAuthStore((s) => s.user);
+  const hasPersonalTeam = user?.role === "MANAGER" || user?.role === "AGENT";
   const { data: teams = [] } = useTeams();
   const { data: orgUsers = [] } = useOrgUsers();
 
@@ -144,14 +143,6 @@ export function TicketsPage() {
             </span>
           )}
         </div>
-        <button
-          id="new-ticket-btn"
-          onClick={() => setShowCreate(true)}
-          className="flex items-center gap-2 rounded-xl bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 transition-colors"
-        >
-          <Plus className="w-4 h-4" />
-          New Ticket
-        </button>
       </div>
 
       {/* Status filter tabs */}
@@ -160,10 +151,10 @@ export function TicketsPage() {
           <button
             key={s}
             onClick={() => setStatusFilter(s)}
-            className={`whitespace-nowrap rounded-lg px-3 py-1.5 text-xs font-medium transition-colors ${
+            className={`whitespace-nowrap rounded-md px-3 py-1.5 text-xs font-medium transition-colors ${
               statusFilter === s
-                ? "bg-primary/10 text-primary"
-                : "text-muted-foreground hover:bg-accent hover:text-accent-foreground"
+                ? "bg-primary text-primary-foreground shadow-sm"
+                : "text-muted-foreground hover:bg-muted hover:text-foreground"
             }`}
           >
             {s === "ALL" ? "All Tickets" : STATUS_CONFIG[s].label}
@@ -176,33 +167,37 @@ export function TicketsPage() {
         {/* Quick views */}
         <button
           onClick={handleMyTickets}
-          className={`px-3 py-1.5 rounded-lg text-xs font-medium border transition-colors ${
+          className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${
             assigneeFilter === user?.id && teamFilter === "ALL"
-              ? "bg-primary/10 border-primary/30 text-primary"
-              : "bg-background border-border text-foreground hover:bg-accent"
+              ? "bg-primary text-primary-foreground shadow-sm"
+              : "bg-muted/50 text-muted-foreground hover:bg-muted hover:text-foreground"
           }`}
         >
           My Tickets
         </button>
-        <button
-          onClick={handleMyTeam}
-          className={`px-3 py-1.5 rounded-lg text-xs font-medium border transition-colors ${
-            teamFilter === user?.teamId && assigneeFilter === "ALL"
-              ? "bg-primary/10 border-primary/30 text-primary"
-              : "bg-background border-border text-foreground hover:bg-accent"
-          }`}
-        >
-          My Team
-        </button>
+        {/* Admins / Super Admins are org-level — they don't belong to a team */}
+        {hasPersonalTeam && (
+          <button
+            onClick={handleMyTeam}
+            className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${
+              teamFilter === user?.teamId && assigneeFilter === "ALL"
+                ? "bg-primary text-primary-foreground shadow-sm"
+                : "bg-muted/50 text-muted-foreground hover:bg-muted hover:text-foreground"
+            }`}
+          >
+            My Team
+          </button>
+        )}
         <button
           onClick={handleEscalated}
-          className={`px-3 py-1.5 rounded-lg text-xs font-medium border transition-colors ${
+          className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${
             statusFilter === "ESCALATED"
-              ? "bg-orange-500/10 border-orange-500/30 text-orange-400"
-              : "bg-background border-border text-foreground hover:bg-accent"
+              ? "bg-orange-500 text-white shadow-sm"
+              : "bg-muted/50 text-muted-foreground hover:bg-muted hover:text-foreground"
           }`}
         >
-          🔺 Escalated
+          <TriangleAlert className="w-3 h-3" />
+          Escalated
         </button>
 
         <div className="h-4 w-px bg-border mx-1" />
@@ -319,8 +314,6 @@ export function TicketsPage() {
           </table>
         )}
       </div>
-
-      {showCreate && <CreateTicketModal onClose={() => setShowCreate(false)} />}
     </div>
   );
 }

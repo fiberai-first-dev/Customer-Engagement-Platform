@@ -98,24 +98,39 @@ export class TicketController {
     const user = getUser(request);
     if (!user) return reply.code(401).send({ error: "unauthorized" });
 
-    // Determine team — use body value (Admin), else user's own team
+    // Team: explicit body > own team for Manager/Agent. Admins may leave unassigned with no team.
     let teamId = request.body.teamId ?? null;
-    if (!teamId && user.teamId) teamId = user.teamId;
+    if (!teamId && (user.role === "MANAGER" || user.role === "AGENT") && user.teamId) {
+      teamId = user.teamId;
+    }
 
-    // Validate teamId if specified and role is agent/manager (must be own team)
     if (teamId && !isAdminOrAbove(user.role) && teamId !== user.teamId) {
       return reply.code(403).send({ error: "You can only create tickets for your own team" });
     }
 
-    // Determine assignee — if agent and no explicit assignee, default to self
+    // Assignee: agents always self. Others may assign Manager/Agent only.
     let assignedTo = request.body.assignedTo ?? null;
-    if (!assignedTo && user.role === "AGENT") {
+    if (user.role === "AGENT") {
       assignedTo = user.id;
+      teamId = user.teamId ?? teamId;
+    } else if (assignedTo) {
+      const assignee = await prisma.user.findUnique({
+        where: { id: assignedTo },
+        select: { id: true, role: true, teamId: true, isActive: true },
+      });
+      if (!assignee || !assignee.isActive) {
+        return reply.code(400).send({ error: "Assignee not found or inactive" });
+      }
+      if (assignee.role !== "AGENT" && assignee.role !== "MANAGER") {
+        return reply.code(400).send({ error: "Tickets can only be assigned to Managers or Agents" });
+      }
+      if (user.role === "MANAGER" && assignee.teamId !== user.teamId) {
+        return reply.code(403).send({ error: "Managers can only assign to members of their own team" });
+      }
+      // Person assignment implies their team (team queue not used alongside person)
+      teamId = assignee.teamId ?? teamId;
     }
-    // Agents can only self-assign
-    if (assignedTo && user.role === "AGENT" && assignedTo !== user.id) {
-      return reply.code(403).send({ error: "Agents can only assign tickets to themselves" });
-    }
+    // Team-queue mode: assignedTo stays null, teamId set — any agent can claim later
 
     try {
       const ticket = await prisma.ticket.create({
@@ -425,9 +440,15 @@ export class TicketController {
     const user = getUser(request);
     if (!user) return reply.code(401).send({ error: "unauthorized" });
 
-    if (!assigneeId && !teamId) {
+    // Empty strings / null = clear that field. At least one key must be present
+    // (including empty) so clients can unassign.
+    if (assigneeId === undefined && teamId === undefined) {
       return reply.code(400).send({ error: "assigneeId or teamId required" });
     }
+
+    const nextAssignee =
+      assigneeId !== undefined ? (assigneeId || null) : undefined;
+    const nextTeam = teamId !== undefined ? (teamId || null) : undefined;
 
     const ticket = await prisma.ticket.findUnique({ where: { id } });
     if (!ticket) return reply.code(404).send({ error: "ticket not found" });
@@ -438,41 +459,64 @@ export class TicketController {
 
     // Agents can only self-assign
     if (user.role === "AGENT") {
-      if (assigneeId && assigneeId !== user.id) {
+      if (nextAssignee && nextAssignee !== user.id) {
         return reply.code(403).send({ error: "Agents can only assign tickets to themselves" });
       }
-      if (teamId && teamId !== user.teamId) {
+      if (nextTeam && nextTeam !== user.teamId) {
         return reply.code(403).send({ error: "Agents cannot change the ticket team" });
       }
     }
 
-    // Managers can only assign to users in their team
-    if (user.role === "MANAGER" && assigneeId) {
+    let resolvedAssignee = nextAssignee;
+    let resolvedTeam = nextTeam;
+
+    if (nextAssignee) {
       const targetUser = await prisma.user.findUnique({
-        where: { id: assigneeId },
-        select: { teamId: true },
+        where: { id: nextAssignee },
+        select: { teamId: true, role: true, isActive: true },
       });
-      if (!targetUser || targetUser.teamId !== user.teamId) {
+      if (!targetUser || !targetUser.isActive) {
+        return reply.code(400).send({ error: "Assignee not found or inactive" });
+      }
+      if (targetUser.role !== "AGENT" && targetUser.role !== "MANAGER") {
+        return reply.code(400).send({ error: "Tickets can only be assigned to Managers or Agents" });
+      }
+      if (user.role === "MANAGER" && targetUser.teamId !== user.teamId) {
         return reply.code(403).send({ error: "Managers can only assign to members of their own team" });
       }
+      // Person assignment → their team (ignore separate team-queue)
+      resolvedTeam = targetUser.teamId ?? null;
+    } else if (nextAssignee === null) {
+      // Explicit clear of person (team queue or full unassign)
+      resolvedAssignee = null;
     }
 
-    const isReassign = ticket.assignedTo !== null && assigneeId !== ticket.assignedTo;
+    if (user.role === "MANAGER" && resolvedTeam && resolvedTeam !== user.teamId) {
+      return reply.code(403).send({ error: "Managers can only use their own team queue" });
+    }
+
+    const isReassign =
+      ticket.assignedTo !== null &&
+      resolvedAssignee !== undefined &&
+      resolvedAssignee !== ticket.assignedTo;
     const eventType = isReassign ? "REASSIGNED" : "ASSIGNED";
 
     try {
       const updated = await prisma.ticket.update({
         where: { id },
         data: {
-          assignedTo: assigneeId !== undefined ? (assigneeId || null) : undefined,
-          teamId: teamId !== undefined ? (teamId || null) : undefined,
+          assignedTo: resolvedAssignee,
+          teamId: resolvedTeam,
           events: {
             create: {
               id: ulid(),
               actorId: user.id,
               type: eventType,
               fromValue: { assigneeId: ticket.assignedTo, teamId: ticket.teamId },
-              toValue: { assigneeId, teamId },
+              toValue: {
+                assigneeId: resolvedAssignee !== undefined ? resolvedAssignee : ticket.assignedTo,
+                teamId: resolvedTeam !== undefined ? resolvedTeam : ticket.teamId,
+              },
             },
           },
         },

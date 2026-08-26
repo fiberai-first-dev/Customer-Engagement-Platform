@@ -133,7 +133,7 @@ export function CustomerDetails({ contact, onClose }: Props) {
 
   if (!contact) {
     return (
-      <aside className="flex w-[360px] shrink-0 flex-col border-l border-border bg-card">
+      <aside className="flex w-full h-full flex-col bg-card">
         <Header onClose={onClose} />
         <div className="flex flex-1 items-center justify-center p-8 text-center">
           <div>
@@ -150,7 +150,7 @@ export function CustomerDetails({ contact, onClose }: Props) {
   // Always show loader on contact switch until commerce resolves (or no lookup needed).
   if (canLookup && commercePending) {
     return (
-      <aside className="flex w-[360px] shrink-0 flex-col border-l border-border bg-card">
+      <aside className="flex w-full h-full flex-col bg-card">
         <Header onClose={onClose} />
         <div className="flex flex-1 flex-col items-center justify-center gap-3 p-8 text-center">
           <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
@@ -166,7 +166,7 @@ export function CustomerDetails({ contact, onClose }: Props) {
   const shopifyCustomerId = commerce.customer?.id ?? null;
 
   return (
-    <aside className="flex w-[360px] shrink-0 flex-col border-l border-border bg-card">
+    <aside className="flex w-full h-full flex-col bg-card">
       <Header onClose={onClose} />
 
       <div className="border-b border-border px-4 pb-4 pt-3">

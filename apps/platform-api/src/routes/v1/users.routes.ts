@@ -1,10 +1,11 @@
 import type { FastifyInstance } from "fastify";
 import { UserController } from "../../controllers/UserController.js";
-import { requireAdmin } from "../../middleware/auth.js";
+import { requireManager } from "../../middleware/auth.js";
 
 export async function userRoutes(app: FastifyInstance) {
-  // Only Admin+ can list and manage users
-  app.get("/", { preHandler: [requireAdmin] }, UserController.listUsers as any);
-  app.post("/", { preHandler: [requireAdmin] }, UserController.createUser as any);
-  app.patch("/:id", { preHandler: [requireAdmin] }, UserController.updateUser as any);
+  // Manager+ can list/manage users (scoped by role inside controller)
+  app.get("/", { preHandler: [requireManager] }, UserController.listUsers as any);
+  app.post("/", { preHandler: [requireManager] }, UserController.createUser as any);
+  app.patch("/:id", { preHandler: [requireManager] }, UserController.updateUser as any);
+  app.delete("/:id", { preHandler: [requireManager] }, UserController.deleteUser as any);
 }

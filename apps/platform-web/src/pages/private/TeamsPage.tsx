@@ -1,7 +1,16 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { toast } from "sonner";
-import { useTeams, useOrgUsers, type Team } from "../../api";
-import { Building2, Plus, X, Users, ChevronRight } from "lucide-react";
+import { useTeams, useTeam, useOrgUsers, type Team } from "../../api";
+import { useAuthStore } from "../../store/auth";
+import {
+  Building2,
+  Plus,
+  X,
+  Users,
+  ChevronRight,
+  ArrowLeft,
+  Search,
+} from "lucide-react";
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL ?? "";
 
@@ -12,19 +21,23 @@ async function apiPost(path: string, body: unknown, token: string) {
     body: JSON.stringify(body),
   });
   if (!res.ok) {
-    const d = await res.json().catch(() => ({})) as { error?: string };
+    const d = (await res.json().catch(() => ({}))) as { error?: string };
     throw new Error(d.error ?? `${res.status}`);
   }
   return res.json();
 }
 
-interface CreateTeamModalProps { token: string; onClose: () => void; onCreated: () => void }
+interface CreateTeamModalProps {
+  token: string;
+  onClose: () => void;
+  onCreated: () => void;
+}
 function CreateTeamModal({ token, onClose, onCreated }: CreateTeamModalProps) {
   const [name, setName] = useState("");
   const [managerId, setManagerId] = useState("");
   const [loading, setLoading] = useState(false);
   const { data: users = [] } = useOrgUsers();
-  const managers = users.filter((u) => u.role === "MANAGER" || u.role === "ADMIN");
+  const managers = users.filter((u) => u.role === "MANAGER");
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -43,15 +56,17 @@ function CreateTeamModal({ token, onClose, onCreated }: CreateTeamModalProps) {
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-      <div className="absolute inset-0 bg-background/80 backdrop-blur-sm" onClick={onClose} />
-      <div className="relative z-10 w-full max-w-sm rounded-2xl border border-border bg-card shadow-2xl">
-        <div className="flex items-center justify-between border-b border-border p-5">
+      <div className="absolute inset-0 bg-black/40" onClick={onClose} />
+      <div className="relative z-10 w-full max-w-sm rounded-lg border border-border bg-card shadow-xl">
+        <div className="flex items-center justify-between border-b border-border px-5 py-4">
           <h2 className="font-semibold text-foreground">Create Team</h2>
-          <button onClick={onClose} className="rounded-lg p-1.5 text-muted-foreground hover:bg-accent transition-colors"><X className="w-4 h-4" /></button>
+          <button onClick={onClose} className="rounded-md p-1.5 text-muted-foreground hover:bg-muted">
+            <X className="w-4 h-4" />
+          </button>
         </div>
         <form onSubmit={handleSubmit} className="p-5 space-y-4">
           <div>
-            <label className="text-xs font-medium text-muted-foreground mb-1.5 block">Team Name *</label>
+            <label className="text-xs font-semibold text-foreground mb-1.5 block">Team Name *</label>
             <input
               id="team-name"
               type="text"
@@ -60,27 +75,33 @@ function CreateTeamModal({ token, onClose, onCreated }: CreateTeamModalProps) {
               value={name}
               onChange={(e) => setName(e.target.value)}
               placeholder="e.g. L1 Support, Billing"
-              className="w-full rounded-xl border border-border bg-background px-3 py-2.5 text-sm text-foreground placeholder-muted-foreground outline-none focus:border-primary/50 transition-all"
+              className="w-full rounded-md border border-border bg-background px-3 py-2.5 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/20"
             />
           </div>
           <div>
-            <label className="text-xs font-medium text-muted-foreground mb-1.5 block">Manager</label>
+            <label className="text-xs font-semibold text-foreground mb-1.5 block">Manager</label>
             <select
               value={managerId}
               onChange={(e) => setManagerId(e.target.value)}
-              className="w-full rounded-xl border border-border bg-background px-3 py-2.5 text-sm text-foreground outline-none focus:border-primary/50 transition-all"
+              className="w-full rounded-md border border-border bg-background px-3 py-2.5 text-sm outline-none focus:border-primary"
             >
-              <option value="">— no manager —</option>
-              {managers.map((u) => <option key={u.id} value={u.id}>{u.username}</option>)}
+              <option value="">No manager</option>
+              {managers.map((u) => (
+                <option key={u.id} value={u.id}>
+                  {u.name || u.username}
+                </option>
+              ))}
             </select>
           </div>
-          <div className="flex gap-3 pt-1">
-            <button type="button" onClick={onClose} className="flex-1 rounded-xl border border-border py-2.5 text-sm text-foreground hover:bg-accent transition-colors">Cancel</button>
+          <div className="flex gap-2 pt-1">
+            <button type="button" onClick={onClose} className="flex-1 rounded-md border border-border py-2.5 text-sm font-medium hover:bg-muted">
+              Cancel
+            </button>
             <button
               id="create-team-submit"
               type="submit"
               disabled={loading}
-              className="flex-1 rounded-xl bg-primary py-2.5 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50 transition-colors"
+              className="flex-1 rounded-md bg-primary py-2.5 text-sm font-semibold text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
             >
               {loading ? "Creating…" : "Create Team"}
             </button>
@@ -91,18 +112,24 @@ function CreateTeamModal({ token, onClose, onCreated }: CreateTeamModalProps) {
   );
 }
 
-function TeamCard({ team }: { team: Team }) {
+function TeamCard({ team, onOpen }: { team: Team; onOpen: () => void }) {
   return (
-    <div className="rounded-2xl border border-border bg-card p-5 hover:bg-muted hover:border-border transition-all group cursor-default">
+    <button
+      type="button"
+      onClick={onOpen}
+      className="w-full text-left rounded-lg border border-border bg-card p-5 shadow-sm hover:border-primary/40 hover:bg-muted/20 transition-colors"
+    >
       <div className="flex items-start justify-between mb-3">
-        <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary/20 border border-primary/30">
-          <Building2 className="w-5 h-5 text-primary" />
+        <div className="flex h-10 w-10 items-center justify-center rounded-md bg-primary text-primary-foreground">
+          <Building2 className="w-5 h-5" />
         </div>
-        <ChevronRight className="w-4 h-4 text-muted-foreground group-hover:text-foreground transition-colors" />
+        <ChevronRight className="w-4 h-4 text-muted-foreground" />
       </div>
       <h3 className="font-semibold text-foreground mb-1">{team.name}</h3>
       {team.manager && (
-        <p className="text-xs text-muted-foreground mb-3">Manager: <span className="text-foreground">{team.manager.username}</span></p>
+        <p className="text-xs text-muted-foreground mb-3">
+          Manager: <span className="text-foreground font-medium">{team.manager.name || team.manager.username}</span>
+        </p>
       )}
       <div className="flex items-center gap-4 text-xs text-muted-foreground">
         <span className="flex items-center gap-1">
@@ -111,35 +138,173 @@ function TeamCard({ team }: { team: Team }) {
         </span>
         <span>{team._count?.tickets ?? 0} tickets</span>
       </div>
+    </button>
+  );
+}
+
+function TeamMembersView({ teamId, onBack }: { teamId: string; onBack?: () => void }) {
+  const [search, setSearch] = useState("");
+  const { data: team, isLoading } = useTeam(teamId);
+
+  const members = (team?.members ?? []).filter((m) => {
+    const q = search.trim().toLowerCase();
+    if (!q) return true;
+    return (
+      m.username.toLowerCase().includes(q) ||
+      (m.name || "").toLowerCase().includes(q) ||
+      m.role.toLowerCase().includes(q)
+    );
+  });
+
+  if (isLoading) {
+    return <div className="flex items-center justify-center h-40 text-sm text-muted-foreground">Loading members…</div>;
+  }
+  if (!team) {
+    return <div className="flex items-center justify-center h-40 text-sm text-muted-foreground">Team not found</div>;
+  }
+
+  return (
+    <div className="flex flex-col h-full">
+      <div className="flex items-center gap-3 border-b border-border bg-card px-6 py-4">
+        {onBack && (
+          <button
+            type="button"
+            onClick={onBack}
+            className="rounded-md p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground"
+          >
+            <ArrowLeft className="w-4 h-4" />
+          </button>
+        )}
+        <div className="flex h-9 w-9 items-center justify-center rounded-md bg-primary text-primary-foreground">
+          <Building2 className="w-4 h-4" />
+        </div>
+        <div className="min-w-0 flex-1">
+          <h1 className="text-lg font-semibold text-foreground leading-tight truncate">{team.name}</h1>
+          <p className="text-xs text-muted-foreground">
+            {team._count?.members ?? members.length} members
+            {team.manager ? ` · Manager: ${team.manager.name || team.manager.username}` : ""}
+          </p>
+        </div>
+      </div>
+
+      <div className="border-b border-border px-6 py-3 bg-card/50">
+        <div className="relative max-w-md">
+          <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />
+          <input
+            type="text"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Search members…"
+            className="w-full rounded-md border border-border bg-background pl-8 pr-3 py-2 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/20"
+          />
+        </div>
+      </div>
+
+      <div className="flex-1 overflow-y-auto p-6">
+        {members.length === 0 ? (
+          <div className="flex flex-col items-center justify-center h-40 text-muted-foreground">
+            <Users className="w-8 h-8 mb-2 opacity-30" />
+            <p className="text-sm">No members in this team</p>
+          </div>
+        ) : (
+          <div className="rounded-lg border border-border bg-card overflow-hidden shadow-sm">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-border bg-muted/40 text-xs uppercase tracking-wide text-muted-foreground">
+                  <th className="px-5 py-3 text-left font-semibold">Member</th>
+                  <th className="px-4 py-3 text-left font-semibold">Role</th>
+                  <th className="px-4 py-3 text-left font-semibold">Status</th>
+                </tr>
+              </thead>
+              <tbody>
+                {members.map((m) => (
+                  <tr key={m.id} className="border-b border-border last:border-0 hover:bg-muted/30">
+                    <td className="px-5 py-3.5">
+                      <div className="flex flex-col min-w-0">
+                        <span className="font-semibold text-foreground truncate">{m.name || m.username.split("@")[0]}</span>
+                        <span className="text-xs text-muted-foreground truncate">{m.username}</span>
+                      </div>
+                    </td>
+                    <td className="px-4 py-3.5 text-xs font-medium text-foreground">{m.role.replace("_", " ")}</td>
+                    <td className="px-4 py-3.5">
+                      <span
+                        className={`inline-flex rounded-md px-2 py-0.5 text-xs font-semibold ${
+                          m.isActive
+                            ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-500/20 dark:text-emerald-300"
+                            : "bg-slate-100 text-slate-600 dark:bg-slate-500/20 dark:text-slate-300"
+                        }`}
+                      >
+                        {m.isActive ? "Active" : "Inactive"}
+                      </span>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
     </div>
   );
 }
 
 export function TeamsPage() {
   const [showCreate, setShowCreate] = useState(false);
+  const [selectedTeamId, setSelectedTeamId] = useState<string | null>(null);
+  const user = useAuthStore((s) => s.user);
+  const isManager = user?.role === "MANAGER";
+  const canCreate = user?.role === "SUPER_ADMIN" || user?.role === "ADMIN";
   const { data: teams = [], isLoading, refetch } = useTeams();
-  // We need the token for direct fetch in CreateTeamModal
+
   const token = (() => {
-    try { return (JSON.parse(localStorage.getItem("cep-auth-store") ?? "{}") as any)?.state?.token ?? ""; }
-    catch { return ""; }
+    try {
+      return (JSON.parse(localStorage.getItem("cep-auth-store") ?? "{}") as any)?.state?.token ?? "";
+    } catch {
+      return "";
+    }
   })();
+
+  // Manager: jump straight into their team members view
+  useEffect(() => {
+    if (!isManager) return;
+    if (user?.teamId) {
+      setSelectedTeamId(user.teamId);
+      return;
+    }
+    if (teams.length === 1) setSelectedTeamId(teams[0]!.id);
+  }, [isManager, user?.teamId, teams]);
+
+  if (selectedTeamId) {
+    return (
+      <TeamMembersView
+        teamId={selectedTeamId}
+        onBack={isManager ? undefined : () => setSelectedTeamId(null)}
+      />
+    );
+  }
 
   return (
     <div className="flex flex-col h-full">
-      <div className="flex items-center justify-between border-b border-border px-6 py-4">
+      <div className="flex items-center justify-between border-b border-border bg-card px-6 py-4">
         <div className="flex items-center gap-3">
-          <Building2 className="w-5 h-5 text-primary" />
-          <h1 className="text-lg font-semibold text-foreground">Teams</h1>
-          <span className="rounded-full bg-muted px-2 py-0.5 text-xs text-muted-foreground">{teams.length}</span>
+          <div className="flex h-9 w-9 items-center justify-center rounded-md bg-primary text-primary-foreground">
+            <Building2 className="w-4 h-4" />
+          </div>
+          <div>
+            <h1 className="text-lg font-semibold text-foreground leading-tight">Teams</h1>
+            <p className="text-xs text-muted-foreground">{teams.length} teams</p>
+          </div>
         </div>
-        <button
-          id="create-team-btn"
-          onClick={() => setShowCreate(true)}
-          className="flex items-center gap-2 rounded-xl bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 transition-colors"
-        >
-          <Plus className="w-4 h-4" />
-          New Team
-        </button>
+        {canCreate && (
+          <button
+            id="create-team-btn"
+            onClick={() => setShowCreate(true)}
+            className="inline-flex items-center gap-1.5 rounded-md bg-primary px-3.5 py-2 text-sm font-semibold text-primary-foreground hover:bg-primary/90 shadow-sm"
+          >
+            <Plus className="w-4 h-4" />
+            New Team
+          </button>
+        )}
       </div>
 
       <div className="flex-1 overflow-y-auto p-6">
@@ -148,16 +313,20 @@ export function TeamsPage() {
         ) : teams.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-48 text-muted-foreground">
             <Building2 className="w-8 h-8 mb-2 opacity-30" />
-            <p className="text-sm">No teams yet</p>
+            <p className="text-sm">{isManager ? "You are not assigned to a team" : "No teams yet"}</p>
           </div>
         ) : (
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-            {teams.map((team) => <TeamCard key={team.id} team={team} />)}
+            {teams.map((team) => (
+              <TeamCard key={team.id} team={team} onOpen={() => setSelectedTeamId(team.id)} />
+            ))}
           </div>
         )}
       </div>
 
-      {showCreate && <CreateTeamModal token={token} onClose={() => setShowCreate(false)} onCreated={() => refetch()} />}
+      {showCreate && canCreate && (
+        <CreateTeamModal token={token} onClose={() => setShowCreate(false)} onCreated={() => refetch()} />
+      )}
     </div>
   );
 }
