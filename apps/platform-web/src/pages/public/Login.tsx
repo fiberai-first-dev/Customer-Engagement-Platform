@@ -56,12 +56,7 @@ export function LoginPage() {
       <div className="relative z-10 w-full max-w-sm mx-4">
         {/* Logo / brand */}
         <div className="mb-8 text-center">
-          <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-primary mb-4 shadow-lg shadow-primary/30">
-            <svg viewBox="0 0 24 24" fill="currentColor" className="w-8 h-8 text-primary-foreground">
-              <path d="M20 2H4c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2z" />
-            </svg>
-          </div>
-          <h1 className="text-2xl font-bold text-foreground">Fybud</h1>
+          <h1 className="text-3xl font-bold text-foreground tracking-tight">Fybud</h1>
         </div>
 
         {/* Card */}
