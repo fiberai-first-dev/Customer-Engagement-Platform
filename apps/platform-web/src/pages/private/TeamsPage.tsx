@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
-import { useTeams, useTeam, useOrgUsers, type Team, type UserRole } from "../../api";
+import { useTeams, useTeam, useOrgUsers, type UserRole } from "../../api";
 import { useAuthStore } from "../../store/auth";
 import {
   Building2,
@@ -139,36 +139,6 @@ function CreateTeamModal({ token, onClose, onCreated }: CreateTeamModalProps) {
   );
 }
 
-function TeamCard({ team, onOpen }: { team: Team; onOpen: () => void }) {
-  return (
-    <button
-      type="button"
-      onClick={onOpen}
-      className="w-full text-left rounded-lg border border-border bg-card p-5 shadow-sm hover:border-primary/40 hover:bg-muted/20 transition-colors"
-    >
-      <div className="flex items-start justify-between mb-3">
-        <div className="flex h-10 w-10 items-center justify-center rounded-md bg-primary text-primary-foreground">
-          <Building2 className="w-5 h-5" />
-        </div>
-        <ChevronRight className="w-4 h-4 text-muted-foreground" />
-      </div>
-      <h3 className="font-semibold text-foreground mb-1">{team.name}</h3>
-      {team.manager && (
-        <p className="text-xs text-muted-foreground mb-3">
-          Manager: <span className="text-foreground font-medium">{team.manager.name || team.manager.username}</span>
-        </p>
-      )}
-      <div className="flex items-center gap-4 text-xs text-muted-foreground">
-        <span className="flex items-center gap-1">
-          <Users className="w-3 h-3" />
-          {team._count?.members ?? 0} members
-        </span>
-        <span>{team._count?.tickets ?? 0} tickets</span>
-      </div>
-    </button>
-  );
-}
-
 function TeamMembersView({ teamId, onBack }: { teamId: string; onBack?: () => void }) {
   const [search, setSearch] = useState("");
   const [roleFilter, setRoleFilter] = useState<"ALL" | UserRole>("ALL");
@@ -288,13 +258,13 @@ function TeamMembersView({ teamId, onBack }: { teamId: string; onBack?: () => vo
             <p className="text-xs mt-1">Assign users to this team from Users & Roles.</p>
           </div>
         ) : (
-          <div className="rounded-lg border border-border bg-card overflow-hidden shadow-sm">
+          <div className="rounded-lg border border-border bg-card shadow-sm">
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-border bg-muted/40 text-xs uppercase tracking-wide text-muted-foreground">
-                  <th className="px-5 py-3 text-left font-semibold">Member</th>
+                  <th className="px-5 py-3 text-left font-semibold rounded-tl-lg">Member</th>
                   <th className="px-4 py-3 text-left font-semibold">Role</th>
-                  <th className="px-4 py-3 text-left font-semibold">Status</th>
+                  <th className="px-4 py-3 text-left font-semibold rounded-tr-lg">Status</th>
                 </tr>
               </thead>
               <tbody>
@@ -348,6 +318,7 @@ function TeamMembersView({ teamId, onBack }: { teamId: string; onBack?: () => vo
 export function TeamsPage() {
   const [showCreate, setShowCreate] = useState(false);
   const [selectedTeamId, setSelectedTeamId] = useState<string | null>(null);
+  const [search, setSearch] = useState("");
   const user = useAuthStore((s) => s.user);
   const isManager = user?.role === "MANAGER";
   const canCreate = user?.role === "SUPER_ADMIN" || user?.role === "ADMIN";
@@ -360,6 +331,17 @@ export function TeamsPage() {
       return "";
     }
   })();
+
+  const filteredTeams = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    if (!q) return teams;
+    return teams.filter(
+      (t) =>
+        t.name.toLowerCase().includes(q) ||
+        (t.manager?.name || "").toLowerCase().includes(q) ||
+        (t.manager?.username || "").toLowerCase().includes(q),
+    );
+  }, [teams, search]);
 
   // Manager: jump straight into their team members view
   useEffect(() => {
@@ -381,20 +363,23 @@ export function TeamsPage() {
   }
 
   return (
-    <div className="flex flex-col h-full">
-      <div className="flex items-center justify-between border-b border-border bg-card px-6 py-4">
+    <div className="flex flex-col h-full bg-background">
+      <div className="flex items-center justify-between border-b border-border bg-card px-6 py-4 shrink-0">
         <div className="flex items-center gap-3">
           <div className="flex h-9 w-9 items-center justify-center rounded-md bg-primary text-primary-foreground">
             <Building2 className="w-4 h-4" />
           </div>
           <div>
             <h1 className="text-lg font-semibold text-foreground leading-tight">Teams</h1>
-            <p className="text-xs text-muted-foreground">{teams.length} teams</p>
+            <p className="text-xs text-muted-foreground">
+              {filteredTeams.length} team{filteredTeams.length === 1 ? "" : "s"}
+            </p>
           </div>
         </div>
         {canCreate && (
           <button
             id="create-team-btn"
+            type="button"
             onClick={() => setShowCreate(true)}
             className="inline-flex items-center gap-1.5 rounded-md bg-primary px-3.5 py-2 text-sm font-semibold text-primary-foreground hover:bg-primary/90 shadow-sm"
           >
@@ -404,19 +389,93 @@ export function TeamsPage() {
         )}
       </div>
 
+      <div className="flex flex-wrap items-center gap-2 border-b border-border bg-card/50 px-6 py-3 shrink-0">
+        <div className="relative flex-1 min-w-[200px]">
+          <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />
+          <input
+            type="text"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Search teams or managers…"
+            className="w-full rounded-md border border-border bg-background pl-8 pr-3 py-2 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/20"
+          />
+        </div>
+      </div>
+
       <div className="flex-1 overflow-y-auto p-6">
         {isLoading ? (
-          <div className="text-center text-muted-foreground text-sm py-8">Loading teams…</div>
-        ) : teams.length === 0 ? (
-          <div className="flex flex-col items-center justify-center h-48 text-muted-foreground">
+          <div className="flex items-center justify-center h-32 text-muted-foreground text-sm">Loading teams…</div>
+        ) : filteredTeams.length === 0 ? (
+          <div className="flex flex-col items-center justify-center h-48 text-muted-foreground text-center">
             <Building2 className="w-8 h-8 mb-2 opacity-30" />
-            <p className="text-sm">{isManager ? "You are not assigned to a team" : "No teams yet"}</p>
+            <p className="text-sm font-medium text-foreground">
+              {teams.length === 0
+                ? isManager
+                  ? "You are not assigned to a team"
+                  : "No teams yet"
+                : "No teams match your search"}
+            </p>
+            {canCreate && teams.length === 0 && (
+              <button
+                type="button"
+                onClick={() => setShowCreate(true)}
+                className="mt-4 inline-flex items-center gap-1.5 rounded-md bg-primary px-3.5 py-2 text-xs font-semibold text-primary-foreground hover:bg-primary/90"
+              >
+                <Plus className="w-3.5 h-3.5" />
+                New Team
+              </button>
+            )}
           </div>
         ) : (
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-            {teams.map((team) => (
-              <TeamCard key={team.id} team={team} onOpen={() => setSelectedTeamId(team.id)} />
-            ))}
+          <div className="rounded-lg border border-border bg-card shadow-sm overflow-hidden">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-border bg-muted/40 text-[11px] uppercase tracking-wide text-muted-foreground">
+                  <th className="px-5 py-3 text-left font-semibold">Team</th>
+                  <th className="px-4 py-3 text-left font-semibold">Manager</th>
+                  <th className="px-4 py-3 text-left font-semibold">Members</th>
+                  <th className="px-4 py-3 text-left font-semibold">Tickets</th>
+                  <th className="px-4 py-3 text-right font-semibold w-12" />
+                </tr>
+              </thead>
+              <tbody>
+                {filteredTeams.map((team) => (
+                  <tr
+                    key={team.id}
+                    onClick={() => setSelectedTeamId(team.id)}
+                    className="border-b border-border last:border-0 hover:bg-muted/40 transition-colors cursor-pointer"
+                  >
+                    <td className="px-5 py-3.5">
+                      <div className="flex items-center gap-3">
+                        <div className="flex h-8 w-8 items-center justify-center rounded-md bg-primary/10 text-primary">
+                          <Building2 className="w-4 h-4" />
+                        </div>
+                        <span className="font-semibold text-foreground">{team.name}</span>
+                      </div>
+                    </td>
+                    <td className="px-4 py-3.5 text-sm text-foreground">
+                      {team.manager ? (
+                        team.manager.name || team.manager.username
+                      ) : (
+                        <span className="text-muted-foreground">—</span>
+                      )}
+                    </td>
+                    <td className="px-4 py-3.5">
+                      <span className="inline-flex items-center gap-1 text-xs font-medium text-foreground">
+                        <Users className="w-3.5 h-3.5 text-muted-foreground" />
+                        {team._count?.members ?? 0}
+                      </span>
+                    </td>
+                    <td className="px-4 py-3.5 text-xs font-medium text-foreground">
+                      {team._count?.tickets ?? 0}
+                    </td>
+                    <td className="px-4 py-3.5 text-right">
+                      <ChevronRight className="w-4 h-4 text-muted-foreground inline-block" />
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
         )}
       </div>

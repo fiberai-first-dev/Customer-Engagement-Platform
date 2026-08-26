@@ -227,11 +227,14 @@ export class TicketController {
 
     // Team filter: agents/managers can only filter within their scope
     if (teamId) {
-      if (!isAdminOrAbove(user.role) && teamId !== user.teamId) {
-        // Silently return nothing rather than error — avoids info leak
-        return reply.send([]);
+      if (teamId === "NONE" || teamId === "null") {
+        extraFilters.teamId = null;
+      } else {
+        if (!isAdminOrAbove(user.role) && teamId !== user.teamId) {
+          return reply.send([]);
+        }
+        extraFilters.teamId = teamId;
       }
-      extraFilters.teamId = teamId;
     }
 
     // Build final where

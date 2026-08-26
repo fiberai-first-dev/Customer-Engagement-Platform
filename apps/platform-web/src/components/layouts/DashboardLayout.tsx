@@ -11,6 +11,7 @@ import {
   TicketIcon,
   Building2,
   ShieldCheck,
+  UserRound,
 } from "lucide-react";
 import { cn } from "../../utils/utils";
 
@@ -89,17 +90,7 @@ export function DashboardLayout() {
       <aside className="z-10 flex w-[4.75rem] shrink-0 flex-col border-r border-border bg-card">
         <div className="flex flex-col items-center gap-2 border-b border-border px-2 py-4">
           <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-primary text-primary-foreground shadow-sm">
-            <svg
-              className="h-4 w-4"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2.5"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            >
-              <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5" />
-            </svg>
+            <UserRound className="h-5 w-5" />
           </div>
           {user && (
             <span

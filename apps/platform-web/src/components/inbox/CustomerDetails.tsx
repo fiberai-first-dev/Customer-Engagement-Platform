@@ -209,7 +209,7 @@ export function CustomerDetails({ contact, onClose }: Props) {
         </div>
       </div>
 
-      <div className="flex-1 overflow-y-auto bg-background px-4 py-4">
+      <div className="flex-1 overflow-y-auto scrollbar-thin bg-background px-4 py-4">
         {!canLookup && (
           <p className="mb-3 rounded-lg border border-dashed border-border px-3 py-3 text-xs text-muted-foreground">
             Add an email or WhatsApp number to look up Shopify orders.

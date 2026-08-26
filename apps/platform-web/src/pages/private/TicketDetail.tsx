@@ -26,7 +26,6 @@ import {
   MessageSquare,
   Users,
   Tag,
-  AlertCircle,
   ChevronDown,
   Clock,
   Send,
@@ -41,7 +40,6 @@ import {
   XCircle,
   RotateCcw,
   ExternalLink,
-  Inbox,
 } from "lucide-react";
 
 const STATUS_CONFIG: Record<TicketStatus, { label: string; bg: string; text: string; border: string }> = {
@@ -91,6 +89,7 @@ export function TicketDetailPage() {
   const [noteText, setNoteText] = useState("");
   const [statusOpen, setStatusOpen] = useState(false);
   const [priorityOpen, setPriorityOpen] = useState(false);
+  const [activeTab, setActiveTab] = useState<"NOTES" | "THREAD">("NOTES");
 
   const { data: ticket, isLoading } = useTicket(id);
   const { data: events = [] } = useTicketEvents(id);
@@ -103,8 +102,6 @@ export function TicketDetailPage() {
   const addNote = useAddTicketNote();
   const returnTicket = useReturnTicket();
   const setSelectedContactId = useAppStore((s) => s.setSelectedContactId);
-
-  const [activeTab, setActiveTab] = useState<"NOTES" | "THREAD">("NOTES");
 
   const { data: messages = [], isLoading: messagesLoading } = useMessages(
     activeTab === "THREAD" && ticket?.conversationId ? ticket.conversationId : undefined,
@@ -215,14 +212,21 @@ export function TicketDetailPage() {
     }
   };
 
+  const openInbox = () => {
+    if (ticket.customerId) {
+      setSelectedContactId(ticket.customerId);
+      navigate("/inbox");
+    }
+  };
+
   return (
     <div className="flex flex-col h-full bg-background">
-      {/* Header */}
-      <div className="flex items-center gap-3 border-b border-border bg-card px-5 py-3.5 shrink-0">
+      {/* Top bar */}
+      <header className="flex items-center gap-3 border-b border-border bg-card px-4 py-3 shrink-0">
         <button
           type="button"
           onClick={() => navigate("/tickets")}
-          className="rounded-md p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
+          className="rounded-md p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground"
           aria-label="Back to tickets"
         >
           <ArrowLeft className="w-4 h-4" />
@@ -230,48 +234,40 @@ export function TicketDetailPage() {
 
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2 flex-wrap">
-            <span className="font-mono text-xs font-semibold text-muted-foreground bg-muted px-2 py-0.5 rounded-md">
-              #{ticket.number}
-            </span>
-            <span
-              className={`inline-flex items-center rounded-md border px-2 py-0.5 text-[11px] font-semibold ${statusCfg.bg} ${statusCfg.text} ${statusCfg.border}`}
-            >
+            <span className="font-mono text-xs font-bold text-muted-foreground">#{ticket.number}</span>
+            <span className={`rounded-md border px-2 py-0.5 text-[11px] font-semibold ${statusCfg.bg} ${statusCfg.text} ${statusCfg.border}`}>
               {statusCfg.label}
             </span>
-            <span
-              className={`inline-flex items-center rounded-md border px-2 py-0.5 text-[11px] font-semibold ${priorityCfg.bg} ${priorityCfg.color} ${priorityCfg.border}`}
-            >
+            <span className={`rounded-md border px-2 py-0.5 text-[11px] font-semibold ${priorityCfg.bg} ${priorityCfg.color} ${priorityCfg.border}`}>
               {priorityCfg.label}
             </span>
             {isLocked && (
-              <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-orange-700 dark:text-orange-400 bg-orange-50 dark:bg-orange-500/10 border border-orange-200 dark:border-orange-500/20 px-2 py-0.5 rounded-md">
+              <span className="inline-flex items-center gap-1 rounded-md border border-orange-200 bg-orange-50 px-2 py-0.5 text-[11px] font-semibold text-orange-700 dark:border-orange-500/20 dark:bg-orange-500/10 dark:text-orange-400">
                 <Lock className="w-3 h-3" /> Read only
               </span>
             )}
           </div>
-          <h1 className="text-base font-semibold text-foreground truncate mt-0.5">{ticket.subject}</h1>
+          <h1 className="text-sm font-semibold text-foreground truncate mt-0.5">{ticket.subject}</h1>
         </div>
 
         <div className="flex items-center gap-2 shrink-0">
           {canClaim && (
             <button
-              id="claim-ticket-btn"
               type="button"
               onClick={handleClaim}
               disabled={assignTicket.isPending}
-              className="inline-flex items-center gap-1.5 rounded-md bg-primary px-3.5 py-2 text-xs font-semibold text-primary-foreground hover:bg-primary/90 shadow-sm transition-colors disabled:opacity-50"
+              className="inline-flex items-center gap-1.5 rounded-md bg-primary px-3 py-2 text-xs font-semibold text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
             >
               <UserPlus className="w-3.5 h-3.5" />
-              {assignTicket.isPending ? "Claiming…" : "Claim ticket"}
+              Claim
             </button>
           )}
           {isEscalated && isManagerOrAbove && (
             <button
-              id="return-btn"
               type="button"
               onClick={handleReturn}
               disabled={returnTicket.isPending}
-              className="inline-flex items-center gap-1.5 rounded-md border border-border bg-background px-3 py-2 text-xs font-semibold text-foreground hover:bg-muted transition-colors disabled:opacity-50"
+              className="inline-flex items-center gap-1.5 rounded-md border border-border px-3 py-2 text-xs font-semibold hover:bg-muted disabled:opacity-50"
             >
               <ArrowDownCircle className="w-3.5 h-3.5" />
               Return
@@ -279,83 +275,87 @@ export function TicketDetailPage() {
           )}
           {!isLocked && ticket.status !== "CLOSED" && ticket.status !== "RESOLVED" && !isEscalated && (
             <button
-              id="escalate-btn"
               type="button"
               onClick={() => setShowEscalate(true)}
-              className="inline-flex items-center gap-1.5 rounded-md bg-orange-500 px-3.5 py-2 text-xs font-semibold text-white hover:bg-orange-600 shadow-sm transition-colors"
+              className="inline-flex items-center gap-1.5 rounded-md bg-orange-500 px-3 py-2 text-xs font-semibold text-white hover:bg-orange-600"
             >
               <ArrowUpCircle className="w-3.5 h-3.5" />
               Escalate
             </button>
           )}
         </div>
-      </div>
+      </header>
 
-      {/* Body */}
+      {/* Main: left customer | center thread | right props */}
       <div className="flex flex-1 min-h-0">
-        {/* Left: context */}
-        <aside className="w-64 shrink-0 border-r border-border bg-card/40 overflow-y-auto">
-          <div className="p-4 space-y-4">
-            <div className="rounded-lg border border-border bg-card p-3.5 shadow-sm">
-              <div className="flex items-start gap-3">
-                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-md bg-primary text-primary-foreground text-xs font-bold">
-                  {initials(ticket.customer?.name, ticket.customerId || "CU")}
-                </div>
-                <div className="min-w-0">
-                  <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground mb-0.5">Customer</p>
-                  <p className="text-sm font-semibold text-foreground truncate" title={customerLabel}>
-                    {customerLabel}
-                  </p>
-                </div>
+        {/* LEFT — Customer */}
+        <aside className="w-[240px] shrink-0 border-r border-border bg-card flex flex-col">
+          <div className="p-4 border-b border-border">
+            <div className="flex flex-col items-center text-center gap-3">
+              <div className="flex h-14 w-14 items-center justify-center rounded-full bg-primary text-primary-foreground text-base font-bold">
+                {initials(ticket.customer?.name, ticket.customerId || "CU")}
+              </div>
+              <div className="min-w-0 w-full">
+                <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Customer</p>
+                <p className="text-sm font-semibold text-foreground break-words mt-0.5" title={customerLabel}>
+                  {customerLabel}
+                </p>
               </div>
             </div>
 
+            {ticket.conversationId && (
+              <button
+                type="button"
+                onClick={openInbox}
+                className="mt-4 w-full inline-flex items-center justify-center gap-1.5 rounded-md border border-border bg-background px-3 py-2 text-xs font-semibold text-foreground hover:bg-muted"
+              >
+                Open in Inbox
+                <ExternalLink className="w-3 h-3" />
+              </button>
+            )}
+          </div>
+
+          <div className="flex-1 overflow-y-auto p-4 space-y-4">
             {ticket.channel && (
-              <Field label="Channel" icon={<MessageSquare className="w-3.5 h-3.5" />}>
-                <span className="inline-flex items-center rounded-md bg-muted px-2 py-1 text-xs font-medium text-foreground capitalize">
+              <MetaRow label="Channel">
+                <span className="inline-flex rounded-md bg-muted px-2 py-0.5 text-xs font-medium capitalize">
                   {ticket.channel}
                 </span>
-              </Field>
+              </MetaRow>
             )}
 
-            {ticket.conversationId && (
-              <Field label="Conversation" icon={<Inbox className="w-3.5 h-3.5" />}>
-                <button
-                  type="button"
-                  onClick={() => {
-                    if (ticket.customerId) {
-                      setSelectedContactId(ticket.customerId);
-                      navigate("/inbox");
-                    }
-                  }}
-                  className="inline-flex items-center gap-1.5 text-xs font-semibold text-primary hover:underline underline-offset-2"
-                >
-                  Open in Inbox
-                  <ExternalLink className="w-3 h-3" />
-                </button>
-              </Field>
-            )}
-
-            {ticket.description && (
-              <Field label="Description" icon={<AlertCircle className="w-3.5 h-3.5" />}>
-                <p className="text-xs text-muted-foreground leading-relaxed whitespace-pre-wrap">{ticket.description}</p>
-              </Field>
-            )}
-
-            <Field label="Created" icon={<Clock className="w-3.5 h-3.5" />}>
-              <p className="text-xs text-foreground font-medium">
+            <MetaRow label="Created">
+              <p className="text-xs font-medium text-foreground">
                 {formatDistanceToNow(new Date(ticket.createdAt), { addSuffix: true })}
               </p>
               {ticket.creator && (
-                <p className="text-[11px] text-muted-foreground mt-0.5 truncate">{ticket.creator.username}</p>
+                <p className="text-[11px] text-muted-foreground truncate mt-0.5">{ticket.creator.username}</p>
               )}
-            </Field>
+            </MetaRow>
+
+            {(ticket.team || ticket.assignee) && (
+              <MetaRow label="Queue">
+                <p className="text-xs text-foreground">
+                  {ticket.assignee
+                    ? ticket.assignee.username.split("@")[0]
+                    : ticket.team
+                      ? `${ticket.team.name} queue`
+                      : "Open pool"}
+                </p>
+              </MetaRow>
+            )}
+
+            {ticket.description && (
+              <MetaRow label="Description">
+                <p className="text-xs text-muted-foreground leading-relaxed whitespace-pre-wrap">{ticket.description}</p>
+              </MetaRow>
+            )}
           </div>
         </aside>
 
-        {/* Center: notes / thread */}
-        <main className="flex-1 flex flex-col min-w-0 bg-background">
-          <div className="flex items-center gap-1 border-b border-border bg-card px-4 shrink-0">
+        {/* CENTER — Notes / thread + bottom composer */}
+        <section className="flex-1 flex flex-col min-w-0 min-h-0 border-r border-border">
+          <div className="flex items-center gap-0 border-b border-border bg-card px-2 shrink-0">
             <TabButton active={activeTab === "NOTES"} onClick={() => setActiveTab("NOTES")} count={noteCount}>
               Internal notes
             </TabButton>
@@ -366,32 +366,30 @@ export function TicketDetailPage() {
             )}
           </div>
 
-          <div className="flex-1 overflow-y-auto p-5">
+          <div className="flex-1 overflow-y-auto px-4 py-4">
             {activeTab === "NOTES" ? (
               !ticket.notes || ticket.notes.length === 0 ? (
-                <EmptyState
-                  icon={<StickyNote className="w-8 h-8" />}
-                  title="No internal notes yet"
-                  subtitle="Notes stay private — customers never see them."
-                />
+                <div className="flex flex-col items-center justify-center h-full min-h-[180px] text-center">
+                  <StickyNote className="w-7 h-7 text-muted-foreground/30 mb-2" />
+                  <p className="text-sm font-medium text-foreground">No notes yet</p>
+                  <p className="text-xs text-muted-foreground mt-1">Private to your team — never sent to the customer.</p>
+                </div>
               ) : (
-                <div className="space-y-3 max-w-3xl mx-auto">
+                <div className="space-y-3">
                   {ticket.notes.map((note) => (
-                    <article key={note.id} className="rounded-lg border border-border bg-card p-4 shadow-sm">
-                      <div className="flex items-center gap-2 mb-2.5">
-                        <div className="flex h-7 w-7 items-center justify-center rounded-md bg-muted text-[10px] font-bold text-foreground">
+                    <article key={note.id} className="rounded-lg border border-border bg-card p-3.5">
+                      <div className="flex items-center gap-2 mb-2">
+                        <div className="flex h-7 w-7 items-center justify-center rounded-full bg-muted text-[10px] font-bold">
                           {initials(note.author?.username)}
                         </div>
                         <div className="min-w-0 flex-1">
-                          <p className="text-xs font-semibold text-foreground truncate">
-                            {note.author?.username ?? "Unknown"}
-                          </p>
+                          <p className="text-xs font-semibold truncate">{note.author?.username ?? "Unknown"}</p>
                           <p className="text-[11px] text-muted-foreground">
                             {formatDistanceToNow(new Date(note.createdAt), { addSuffix: true })}
                           </p>
                         </div>
                         {note.isInternal && (
-                          <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-amber-700 dark:text-amber-400 bg-amber-50 dark:bg-amber-500/10 border border-amber-200 dark:border-amber-500/20 px-1.5 py-0.5 rounded-md">
+                          <span className="inline-flex items-center gap-1 rounded-md border border-amber-200 bg-amber-50 px-1.5 py-0.5 text-[10px] font-semibold text-amber-700 dark:border-amber-500/20 dark:bg-amber-500/10 dark:text-amber-400">
                             <Lock className="w-2.5 h-2.5" />
                             Internal
                           </span>
@@ -404,16 +402,15 @@ export function TicketDetailPage() {
               )
             ) : messagesLoading ? (
               <div className="flex justify-center py-16">
-                <Loader2 className="w-5 h-5 text-muted-foreground animate-spin" />
+                <Loader2 className="w-5 h-5 animate-spin text-muted-foreground" />
               </div>
             ) : messages.length === 0 ? (
-              <EmptyState
-                icon={<MessageSquare className="w-8 h-8" />}
-                title="No messages found"
-                subtitle="This ticket isn’t linked to a conversation thread."
-              />
+              <div className="flex flex-col items-center justify-center h-full min-h-[180px] text-center">
+                <MessageSquare className="w-7 h-7 text-muted-foreground/30 mb-2" />
+                <p className="text-sm font-medium">No messages</p>
+              </div>
             ) : (
-              <div className="space-y-3 max-w-3xl mx-auto">
+              <div className="space-y-3">
                 {messages.map((msg) => (
                   <div
                     key={msg.id}
@@ -422,10 +419,10 @@ export function TicketDetailPage() {
                     }`}
                   >
                     <div
-                      className={`px-3.5 py-2.5 rounded-2xl text-sm leading-relaxed shadow-sm ${
+                      className={`px-3.5 py-2.5 rounded-2xl text-sm leading-relaxed ${
                         msg.direction === "outgoing"
                           ? "bg-primary text-primary-foreground rounded-br-md"
-                          : "bg-card border border-border text-foreground rounded-bl-md"
+                          : "bg-card border border-border rounded-bl-md"
                       }`}
                     >
                       {msg.content}
@@ -439,62 +436,62 @@ export function TicketDetailPage() {
             )}
           </div>
 
-          {activeTab === "NOTES" && !isLocked && (
-            <div className="border-t border-border bg-card p-4 shrink-0">
-              <div className="max-w-3xl mx-auto flex gap-2 items-end">
-                <div className="flex-1">
-                  <label className="sr-only" htmlFor="note-input">
-                    Internal note
-                  </label>
-                  <textarea
-                    id="note-input"
-                    value={noteText}
-                    onChange={(e) => setNoteText(e.target.value)}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
-                        e.preventDefault();
-                        void handleAddNote();
-                      }
-                    }}
-                    rows={2}
-                    placeholder="Add an internal note… (never sent to customer)"
-                    className="w-full rounded-md border border-border bg-background px-3 py-2.5 text-sm text-foreground placeholder:text-muted-foreground outline-none focus:border-primary focus:ring-2 focus:ring-primary/20 resize-none transition-all"
-                  />
-                  <p className="text-[10px] text-muted-foreground mt-1.5">Ctrl/⌘ + Enter to send</p>
+          {/* Bottom bar — note composer */}
+          {activeTab === "NOTES" && (
+            <div className="shrink-0 border-t border-border bg-card px-4 py-3">
+              {isLocked ? (
+                <div className="rounded-md border border-orange-200 bg-orange-50 px-3 py-2.5 text-xs font-medium text-orange-700 dark:border-orange-500/20 dark:bg-orange-500/10 dark:text-orange-400 text-center">
+                  Escalated — notes disabled until a manager returns this ticket.
                 </div>
-                <button
-                  id="add-note-btn"
-                  type="button"
-                  onClick={handleAddNote}
-                  disabled={addNote.isPending || !noteText.trim()}
-                  className="inline-flex items-center gap-1.5 rounded-md bg-primary px-4 py-2.5 text-sm font-semibold text-primary-foreground hover:bg-primary/90 disabled:opacity-40 transition-colors shadow-sm"
-                >
-                  {addNote.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
-                  Add
-                </button>
-              </div>
+              ) : (
+                <div className="flex items-end gap-2">
+                  <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary text-[10px] font-bold mb-0.5">
+                    {initials(user?.username || user?.name, "ME")}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <textarea
+                      id="note-input"
+                      value={noteText}
+                      onChange={(e) => setNoteText(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
+                          e.preventDefault();
+                          void handleAddNote();
+                        }
+                      }}
+                      rows={2}
+                      placeholder="Add an internal note… (never sent to customer)"
+                      className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/20 resize-none"
+                    />
+                    <p className="text-[10px] text-muted-foreground mt-1">Ctrl/⌘ + Enter to send</p>
+                  </div>
+                  <button
+                    id="add-note-btn"
+                    type="button"
+                    onClick={handleAddNote}
+                    disabled={addNote.isPending || !noteText.trim()}
+                    className="inline-flex items-center gap-1.5 rounded-md bg-primary px-4 py-2.5 text-sm font-semibold text-primary-foreground hover:bg-primary/90 disabled:opacity-40 shrink-0 mb-5"
+                  >
+                    {addNote.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
+                    Add
+                  </button>
+                </div>
+              )}
             </div>
           )}
+        </section>
 
-          {isLocked && (
-            <div className="border-t border-orange-200 dark:border-orange-500/20 bg-orange-50 dark:bg-orange-500/5 px-4 py-3 text-xs text-orange-700 dark:text-orange-400 text-center font-medium shrink-0">
-              Escalated — notes are disabled until a manager returns this ticket.
-            </div>
-          )}
-        </main>
-
-        {/* Right: controls */}
-        <aside className="w-72 shrink-0 border-l border-border bg-card/40 overflow-y-auto">
-          <div className="p-4 space-y-3">
+        {/* RIGHT — Controls */}
+        <aside className="w-[260px] shrink-0 bg-muted/20 overflow-y-auto">
+          <div className="p-3 space-y-2">
             {!isLocked && (
-              <Panel title="Status">
+              <ControlBlock label="Status">
                 <div className="relative">
                   <button
-                    id="status-dropdown"
                     type="button"
                     onClick={() => setStatusOpen(!statusOpen)}
                     disabled={allowedStatuses.length === 0}
-                    className={`flex w-full items-center justify-between rounded-md border px-3 py-2.5 text-xs font-semibold ${statusCfg.bg} ${statusCfg.text} ${statusCfg.border} hover:opacity-90 transition-opacity disabled:opacity-50 disabled:cursor-not-allowed`}
+                    className={`flex w-full items-center justify-between rounded-md border px-3 py-2 text-xs font-semibold ${statusCfg.bg} ${statusCfg.text} ${statusCfg.border} disabled:opacity-50`}
                   >
                     {statusCfg.label}
                     {allowedStatuses.length > 0 && <ChevronDown className="w-3.5 h-3.5 opacity-70" />}
@@ -508,7 +505,7 @@ export function TicketDetailPage() {
                             key={s}
                             type="button"
                             onClick={() => handleStatusChange(s)}
-                            className={`flex w-full items-center gap-2 px-3 py-2.5 text-xs font-medium hover:bg-muted transition-colors ${STATUS_CONFIG[s].text}`}
+                            className={`flex w-full px-3 py-2 text-xs font-medium hover:bg-muted ${STATUS_CONFIG[s].text}`}
                           >
                             {STATUS_CONFIG[s].label}
                           </button>
@@ -517,23 +514,20 @@ export function TicketDetailPage() {
                     </>
                   )}
                 </div>
-              </Panel>
+              </ControlBlock>
             )}
 
-            <Panel title="Priority">
+            <ControlBlock label="Priority">
               {isLocked || isAgent ? (
-                <span
-                  className={`inline-flex rounded-md border px-2.5 py-1.5 text-xs font-semibold ${priorityCfg.bg} ${priorityCfg.color} ${priorityCfg.border}`}
-                >
+                <span className={`inline-flex rounded-md border px-2.5 py-1.5 text-xs font-semibold ${priorityCfg.bg} ${priorityCfg.color} ${priorityCfg.border}`}>
                   {priorityCfg.label}
                 </span>
               ) : (
                 <div className="relative">
                   <button
-                    id="priority-dropdown"
                     type="button"
                     onClick={() => setPriorityOpen(!priorityOpen)}
-                    className={`flex w-full items-center justify-between rounded-md border px-3 py-2.5 text-xs font-semibold ${priorityCfg.bg} ${priorityCfg.color} ${priorityCfg.border} hover:opacity-90 transition-opacity`}
+                    className={`flex w-full items-center justify-between rounded-md border px-3 py-2 text-xs font-semibold ${priorityCfg.bg} ${priorityCfg.color} ${priorityCfg.border}`}
                   >
                     {priorityCfg.label}
                     <ChevronDown className="w-3.5 h-3.5 opacity-70" />
@@ -547,7 +541,7 @@ export function TicketDetailPage() {
                             key={p}
                             type="button"
                             onClick={() => handlePriorityChange(p)}
-                            className={`flex w-full items-center gap-2 px-3 py-2.5 text-xs font-medium hover:bg-muted transition-colors ${PRIORITY_CONFIG[p].color}`}
+                            className={`flex w-full px-3 py-2 text-xs font-medium hover:bg-muted ${PRIORITY_CONFIG[p].color}`}
                           >
                             {PRIORITY_CONFIG[p].label}
                           </button>
@@ -557,32 +551,23 @@ export function TicketDetailPage() {
                   )}
                 </div>
               )}
-            </Panel>
+            </ControlBlock>
 
-            <Panel title="Assign to">
+            <ControlBlock label="Assign to">
               {isOpenPool && !ticket.assignedTo && (
-                <p className="text-[11px] text-muted-foreground mb-2 rounded-md bg-muted/50 px-2.5 py-1.5">
-                  Open pool — any agent can claim this ticket.
-                </p>
+                <p className="text-[11px] text-muted-foreground mb-2">Open pool — any agent can claim.</p>
               )}
               {isLocked ? (
-                <p className="text-xs text-foreground font-medium">
-                  {ticket.assignee
-                    ? `${ticket.assignee.username}${ticket.team?.name ? ` — ${ticket.team.name}` : ""}`
-                    : ticket.team
-                      ? `Team queue: ${ticket.team.name}`
-                      : <span className="text-muted-foreground font-normal">Unassigned</span>}
+                <p className="text-xs font-medium">
+                  {ticket.assignee?.username ?? (ticket.team ? `Queue: ${ticket.team.name}` : "Unassigned")}
                 </p>
               ) : isAgent ? (
                 <div className="space-y-2">
-                  <p className="text-xs text-foreground font-medium">
-                    {ticket.assignee
-                      ? ticket.assignee.username === user?.username || ticket.assignedTo === user?.id
-                        ? "You"
-                        : ticket.assignee.username
-                      : ticket.team
-                        ? `Team queue: ${ticket.team.name}`
-                        : "Unassigned (open pool)"}
+                  <p className="text-xs font-medium">
+                    {ticket.assignedTo === user?.id
+                      ? "You"
+                      : ticket.assignee?.username ??
+                        (ticket.team ? `Queue: ${ticket.team.name}` : "Unassigned")}
                   </p>
                   {canClaim && (
                     <button
@@ -599,11 +584,7 @@ export function TicketDetailPage() {
                       type="button"
                       onClick={() => {
                         assignTicket
-                          .mutateAsync({
-                            id: ticket.id,
-                            assigneeId: "",
-                            teamId: ticket.teamId ?? "",
-                          })
+                          .mutateAsync({ id: ticket.id, assigneeId: "", teamId: ticket.teamId ?? "" })
                           .then(() => toast.success("Released to queue"))
                           .catch((err: any) => toast.error(err.message));
                       }}
@@ -616,7 +597,6 @@ export function TicketDetailPage() {
                 </div>
               ) : (
                 <select
-                  id="assignee-select"
                   value={
                     ticket.assignedTo
                       ? `user:${ticket.assignedTo}`
@@ -628,35 +608,24 @@ export function TicketDetailPage() {
                     const val = e.target.value;
                     let tId: string | undefined;
                     let aId: string | undefined;
-
                     if (val.startsWith("team:")) {
                       tId = val.replace("team:", "");
-                      aId = undefined;
                     } else if (val.startsWith("user:")) {
                       aId = val.replace("user:", "");
-                      const targetUser = agentUsers.find((u) => u.id === aId);
-                      tId = targetUser?.teamId || undefined;
-                    } else {
-                      tId = undefined;
-                      aId = undefined;
+                      tId = agentUsers.find((u) => u.id === aId)?.teamId || undefined;
                     }
-
                     assignTicket
-                      .mutateAsync({
-                        id: ticket.id,
-                        assigneeId: aId ?? "",
-                        teamId: tId ?? "",
-                      })
+                      .mutateAsync({ id: ticket.id, assigneeId: aId ?? "", teamId: tId ?? "" })
                       .then(() => toast.success("Assignment updated"))
                       .catch((err: any) => toast.error(err.message));
                   }}
-                  className="w-full rounded-md border border-border bg-background px-3 py-2.5 text-xs text-foreground outline-none focus:border-primary focus:ring-2 focus:ring-primary/20"
+                  className="w-full rounded-md border border-border bg-background px-2.5 py-2 text-xs outline-none focus:border-primary focus:ring-2 focus:ring-primary/20"
                 >
-                  <option value="unassigned">Unassigned</option>
+                  <option value="unassigned">Unassigned (open pool)</option>
                   {isManagerOrAbove && teams.length > 0 && (
                     <optgroup label="Team queues">
                       {teams.map((t) => (
-                        <option key={`team-${t.id}`} value={`team:${t.id}`}>
+                        <option key={t.id} value={`team:${t.id}`}>
                           {t.name} (open queue)
                         </option>
                       ))}
@@ -664,7 +633,7 @@ export function TicketDetailPage() {
                   )}
                   <optgroup label="People">
                     {agentUsers.map((u) => (
-                      <option key={`user-${u.id}`} value={`user:${u.id}`}>
+                      <option key={u.id} value={`user:${u.id}`}>
                         {u.name || u.username.split("@")[0]}
                         {u.team?.name ? ` — ${u.team.name}` : ""}
                       </option>
@@ -672,13 +641,13 @@ export function TicketDetailPage() {
                   </optgroup>
                 </select>
               )}
-            </Panel>
+            </ControlBlock>
 
-            <Panel title="Activity">
+            <ControlBlock label="Activity">
               {events.length === 0 ? (
                 <p className="text-xs text-muted-foreground">No activity yet</p>
               ) : (
-                <ol className="relative ms-1.5 border-s border-border space-y-0">
+                <ol className="relative ms-1 border-s border-border">
                   {events.map((ev) => {
                     const meta = EVENT_META[ev.type] ?? {
                       label: ev.type,
@@ -688,19 +657,17 @@ export function TicketDetailPage() {
                     };
                     const Icon = meta.icon;
                     return (
-                      <li key={ev.id} className="relative ps-5 pb-4 last:pb-0">
+                      <li key={ev.id} className="relative ps-4 pb-3 last:pb-0">
                         <span
-                          className={`absolute -start-2.5 top-0.5 flex h-5 w-5 items-center justify-center rounded-full border border-border ${meta.bg}`}
+                          className={`absolute -start-2 top-0.5 flex h-4 w-4 items-center justify-center rounded-full border border-border ${meta.bg}`}
                         >
-                          <Icon className={`h-2.5 w-2.5 ${meta.color}`} />
+                          <Icon className={`h-2 w-2 ${meta.color}`} />
                         </span>
-                        <p className={`text-xs font-semibold ${meta.color}`}>{meta.label}</p>
+                        <p className={`text-[11px] font-semibold ${meta.color}`}>{meta.label}</p>
                         {ev.note && (
-                          <p className="mt-1 text-[11px] text-muted-foreground leading-snug rounded-md bg-muted/60 px-2 py-1">
-                            {ev.note}
-                          </p>
+                          <p className="mt-0.5 text-[10px] text-muted-foreground leading-snug">{ev.note}</p>
                         )}
-                        <p className="mt-0.5 text-[10px] text-muted-foreground">
+                        <p className="text-[10px] text-muted-foreground mt-0.5">
                           {formatDistanceToNow(new Date(ev.createdAt), { addSuffix: true })}
                         </p>
                       </li>
@@ -708,7 +675,7 @@ export function TicketDetailPage() {
                   })}
                 </ol>
               )}
-            </Panel>
+            </ControlBlock>
           </div>
         </aside>
       </div>
@@ -718,30 +685,19 @@ export function TicketDetailPage() {
   );
 }
 
-function Field({
-  label,
-  icon,
-  children,
-}: {
-  label: string;
-  icon: React.ReactNode;
-  children: React.ReactNode;
-}) {
+function MetaRow({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div>
-      <div className="flex items-center gap-1.5 text-muted-foreground mb-1.5">
-        {icon}
-        <span className="text-[10px] font-semibold uppercase tracking-wide">{label}</span>
-      </div>
+      <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground mb-1">{label}</p>
       {children}
     </div>
   );
 }
 
-function Panel({ title, children }: { title: string; children: React.ReactNode }) {
+function ControlBlock({ label, children }: { label: string; children: React.ReactNode }) {
   return (
-    <div className="rounded-lg border border-border bg-card p-3.5 shadow-sm">
-      <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground mb-2.5">{title}</p>
+    <div className="rounded-md border border-border bg-card p-3">
+      <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground mb-2">{label}</p>
       {children}
     </div>
   );
@@ -762,7 +718,7 @@ function TabButton({
     <button
       type="button"
       onClick={onClick}
-      className={`relative px-3 py-3 text-xs font-semibold transition-colors ${
+      className={`relative px-3 py-2.5 text-xs font-semibold transition-colors ${
         active ? "text-primary" : "text-muted-foreground hover:text-foreground"
       }`}
     >
@@ -770,7 +726,7 @@ function TabButton({
         {children}
         {typeof count === "number" && (
           <span
-            className={`rounded-md px-1.5 py-0.5 text-[10px] font-bold ${
+            className={`rounded px-1.5 py-0.5 text-[10px] font-bold ${
               active ? "bg-primary/10 text-primary" : "bg-muted text-muted-foreground"
             }`}
           >
@@ -780,23 +736,5 @@ function TabButton({
       </span>
       {active && <span className="absolute inset-x-2 bottom-0 h-0.5 rounded-full bg-primary" />}
     </button>
-  );
-}
-
-function EmptyState({
-  icon,
-  title,
-  subtitle,
-}: {
-  icon: React.ReactNode;
-  title: string;
-  subtitle: string;
-}) {
-  return (
-    <div className="flex flex-col items-center justify-center h-full min-h-[220px] text-center px-6">
-      <div className="mb-3 text-muted-foreground/40">{icon}</div>
-      <p className="text-sm font-semibold text-foreground">{title}</p>
-      <p className="text-xs text-muted-foreground mt-1 max-w-xs">{subtitle}</p>
-    </div>
   );
 }

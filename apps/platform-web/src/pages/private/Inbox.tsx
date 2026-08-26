@@ -22,6 +22,7 @@ import {
   useTickets,
   type ChannelType,
   type Conversation,
+  type TicketStatus,
 } from "../../api";
 import { useNavigate } from "react-router-dom";
 import { useAppStore } from "../../store";
@@ -58,6 +59,13 @@ type PendingDelete =
       messageIds: string[];
       resolve: (ok: boolean) => void;
     };
+
+/** Statuses that block "create without warning" — CLOSED/RESOLVED do not. */
+const ACTIVE_TICKET_STATUSES: TicketStatus[] = ["OPEN", "IN_PROGRESS", "ESCALATED"];
+
+function isActiveTicketStatus(status: TicketStatus): boolean {
+  return ACTIVE_TICKET_STATUSES.includes(status);
+}
 
 /** Compact Instagram glyph — lucide has no brand mark that reads clearly at 12px. */
 function InstagramGlyph({ className }: { className?: string }) {
@@ -96,6 +104,7 @@ export function InboxPage() {
   const [composingNewEmail, setComposingNewEmail] = useState(false);
   const [readScopeKeys, setReadScopeKeys] = useState<Set<string>>(() => new Set());
   const [createTicketConv, setCreateTicketConv] = useState<{conversationId: string; channel: string; customerId?: string} | null>(null);
+  const [confirmCreateAnother, setConfirmCreateAnother] = useState(false);
   const focusedContactRef = useRef<string | null>(null);
   const navigate = useNavigate();
 
@@ -400,7 +409,26 @@ export function InboxPage() {
   const { data: linkedTickets } = useTickets(
     selectedConversation ? { conversationId: selectedConversation.id } : undefined
   );
-  const existingTicket = linkedTickets?.[0];
+  const activeTicket = linkedTickets?.find((t) => isActiveTicketStatus(t.status));
+  /** Prefer active ticket for View CTA; else most recent linked (incl. CLOSED/RESOLVED). */
+  const viewTicket = activeTicket ?? linkedTickets?.[0];
+
+  const openCreateTicket = () => {
+    if (!selectedConversation) return;
+    setCreateTicketConv({
+      conversationId: selectedConversation.id,
+      channel: selectedConversation.channelType,
+      customerId: selectedConversation.contactId,
+    });
+  };
+
+  const handleCreateTicketClick = () => {
+    if (activeTicket) {
+      setConfirmCreateAnother(true);
+      return;
+    }
+    openCreateTicket();
+  };
 
   /**
    * Never paint messages until this exact conversation is ready.
@@ -410,6 +438,9 @@ export function InboxPage() {
   const [messagesReadyFor, setMessagesReadyFor] = useState<string | null>(null);
   useLayoutEffect(() => {
     setMessagesReadyFor(null);
+  }, [conversationId]);
+  useEffect(() => {
+    setConfirmCreateAnother(false);
   }, [conversationId]);
   useEffect(() => {
     if (!conversationId || messagesLoading) return;
@@ -697,6 +728,30 @@ export function InboxPage() {
         onConfirm={() => void confirmPendingDelete()}
         onCancel={() => closeDeleteDialog(false)}
       />
+      <ConfirmDialog
+        open={confirmCreateAnother}
+        title="Active ticket already exists"
+        description={
+          activeTicket ? (
+            <>
+              Ticket #{activeTicket.number} is still{" "}
+              <span className="font-medium text-foreground">
+                {activeTicket.status.replaceAll("_", " ").toLowerCase()}
+              </span>{" "}
+              for this conversation. Create another ticket anyway?
+            </>
+          ) : (
+            "An active ticket already exists for this conversation. Create another one anyway?"
+          )
+        }
+        confirmLabel="Create another"
+        cancelLabel="Cancel"
+        onConfirm={() => {
+          setConfirmCreateAnother(false);
+          openCreateTicket();
+        }}
+        onCancel={() => setConfirmCreateAnother(false)}
+      />
       <PanelGroup direction="horizontal" autoSaveId="inbox-layout-panels" className="flex h-full w-full">
         <Panel defaultSize={25} minSize={20} maxSize={40} className="flex shrink-0 flex-col border-r border-border bg-card">
         <div className="flex h-14 shrink-0 items-center justify-between gap-2 border-b border-border px-4">
@@ -841,49 +896,49 @@ export function InboxPage() {
       )}
       </Panel>
 
-      {/* Create Ticket floating button — visible when a conversation is selected */}
+      {/* Ticket CTA — visible when a conversation is selected */}
       {selectedConversation && (
-        existingTicket ? (
-          <div className="fixed bottom-8 right-8 z-30 flex flex-col items-end gap-2">
+        viewTicket ? (
+          <div className="fixed bottom-6 right-6 z-30 flex flex-col items-end gap-2">
             <button
               id="inbox-view-ticket-btn"
-              onClick={() => navigate(`/tickets/${existingTicket.id}`)}
-              title={`View Ticket #${existingTicket.number}`}
-              className="flex items-center gap-2 rounded-2xl bg-indigo-600 px-4 py-2.5 text-sm font-medium text-white shadow-lg shadow-indigo-500/30 hover:bg-indigo-500 transition-all hover:scale-105 active:scale-95"
+              type="button"
+              onClick={() => navigate(`/tickets/${viewTicket.id}`)}
+              title={`View Ticket #${viewTicket.number}`}
+              className="flex items-center gap-2 rounded-lg border border-border bg-card px-3.5 py-2 text-sm font-medium text-foreground shadow-md hover:bg-muted transition-colors"
             >
-              <TicketIcon className="w-4 h-4" />
-              View Ticket #{existingTicket.number}
+              <TicketIcon className="h-4 w-4 text-muted-foreground" />
+              View Ticket #{viewTicket.number}
+              {!activeTicket && (
+                <span className="rounded border border-border bg-muted px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+                  {viewTicket.status === "RESOLVED" ? "Resolved" : "Closed"}
+                </span>
+              )}
             </button>
             <button
-              onClick={() => {
-                if (window.confirm("An active ticket already exists for this conversation. Are you sure you want to create another one?")) {
-                  setCreateTicketConv({
-                    conversationId: selectedConversation.id,
-                    channel: selectedConversation.channelType,
-                    customerId: selectedConversation.contactId,
-                  });
-                }
-              }}
-              className="flex items-center gap-1.5 rounded-xl bg-card border border-border px-3 py-1.5 text-xs font-medium text-muted-foreground shadow-lg hover:bg-muted hover:text-foreground transition-all"
+              id="inbox-create-ticket-btn"
+              type="button"
+              onClick={handleCreateTicketClick}
+              title={
+                activeTicket
+                  ? "Create another ticket for this conversation"
+                  : "Create Ticket from this conversation"
+              }
+              className="flex items-center gap-2 rounded-lg bg-primary px-3.5 py-2 text-sm font-medium text-primary-foreground shadow-md hover:bg-primary/90 transition-colors"
             >
-              <Plus className="w-3.5 h-3.5" />
-              Create Another
+              <Plus className="h-4 w-4" />
+              {activeTicket ? "Create Another" : "Create Ticket"}
             </button>
           </div>
         ) : (
           <button
             id="inbox-create-ticket-btn"
-            onClick={() =>
-              setCreateTicketConv({
-                conversationId: selectedConversation.id,
-                channel: selectedConversation.channelType,
-                customerId: selectedConversation.contactId,
-              })
-            }
+            type="button"
+            onClick={openCreateTicket}
             title="Create Ticket from this conversation"
-            className="fixed bottom-8 right-8 z-30 flex items-center gap-2 rounded-2xl bg-primary px-4 py-2.5 text-sm font-medium text-primary-foreground shadow-lg shadow-primary/30 hover:bg-primary/90 transition-all hover:scale-105 active:scale-95"
+            className="fixed bottom-6 right-6 z-30 flex items-center gap-2 rounded-lg bg-primary px-3.5 py-2 text-sm font-medium text-primary-foreground shadow-md hover:bg-primary/90 transition-colors"
           >
-            <TicketIcon className="w-4 h-4" />
+            <TicketIcon className="h-4 w-4" />
             Create Ticket
           </button>
         )

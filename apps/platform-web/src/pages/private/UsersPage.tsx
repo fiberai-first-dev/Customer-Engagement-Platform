@@ -14,40 +14,21 @@ import {
   Users,
   Plus,
   X,
-  ShieldCheck,
-  Shield,
-  Briefcase,
-  Headphones,
-  Mail,
   User,
+  Mail,
   Search,
   MoreVertical,
   Pencil,
   Power,
   Trash2,
 } from "lucide-react";
+import { ConfirmDialog } from "../../components/ui/confirm-dialog";
 
-const ROLE_META: Record<UserRole, { label: string; icon: React.ReactNode; className: string }> = {
-  SUPER_ADMIN: {
-    label: "Super Admin",
-    icon: <ShieldCheck className="w-3.5 h-3.5" />,
-    className: "bg-slate-900 text-white dark:bg-slate-100 dark:text-slate-900",
-  },
-  ADMIN: {
-    label: "Admin",
-    icon: <Shield className="w-3.5 h-3.5" />,
-    className: "bg-blue-600 text-white",
-  },
-  MANAGER: {
-    label: "Manager",
-    icon: <Briefcase className="w-3.5 h-3.5" />,
-    className: "bg-amber-500 text-white",
-  },
-  AGENT: {
-    label: "Agent",
-    icon: <Headphones className="w-3.5 h-3.5" />,
-    className: "bg-emerald-600 text-white",
-  },
+const ROLE_LABELS: Record<UserRole, string> = {
+  SUPER_ADMIN: "Super Admin",
+  ADMIN: "Admin",
+  MANAGER: "Manager",
+  AGENT: "Agent",
 };
 
 function allowedRoles(actorRole: UserRole): UserRole[] {
@@ -58,11 +39,15 @@ function allowedRoles(actorRole: UserRole): UserRole[] {
 }
 
 function RoleBadge({ role }: { role: UserRole }) {
-  const m = ROLE_META[role];
+  const meta: Record<UserRole, string> = {
+    SUPER_ADMIN: "bg-slate-900 text-white dark:bg-slate-100 dark:text-slate-900",
+    ADMIN: "bg-blue-600 text-white",
+    MANAGER: "bg-amber-500 text-white",
+    AGENT: "bg-emerald-600 text-white",
+  };
   return (
-    <span className={`inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-xs font-semibold ${m.className}`}>
-      {m.icon}
-      {m.label}
+    <span className={`inline-flex items-center rounded-md px-2 py-1 text-xs font-semibold ${meta[role]}`}>
+      {ROLE_LABELS[role]}
     </span>
   );
 }
@@ -233,8 +218,7 @@ function CreateUserModal({ actorRole, actorTeamId, onClose }: CreateUserModalPro
                       : "border-border text-muted-foreground hover:bg-muted hover:text-foreground"
                   }`}
                 >
-                  {ROLE_META[r].icon}
-                  {ROLE_META[r].label}
+                  {ROLE_LABELS[r]}
                 </button>
               ))}
             </div>
@@ -330,7 +314,7 @@ function EditUserModal({ actorRole, actorTeamId, user, onClose }: EditUserModalP
             <select value={role} onChange={(e) => setRole(e.target.value as UserRole)} className={fieldClass}>
               {rolesAvailable.map((r) => (
                 <option key={r} value={r}>
-                  {ROLE_META[r].label}
+                  {ROLE_LABELS[r]}
                 </option>
               ))}
             </select>
@@ -370,8 +354,11 @@ function EditUserModal({ actorRole, actorTeamId, user, onClose }: EditUserModalP
 export function UsersPage() {
   const [showCreate, setShowCreate] = useState(false);
   const [editingUser, setEditingUser] = useState<OrgUser | null>(null);
+  const [deletingUser, setDeletingUser] = useState<OrgUser | null>(null);
   const [search, setSearch] = useState("");
   const [teamFilter, setTeamFilter] = useState("ALL");
+  const [roleFilter, setRoleFilter] = useState("ALL");
+  const [statusFilter, setStatusFilter] = useState<"ALL" | "ACTIVE" | "INACTIVE">("ALL");
   const actor = useAuthStore((s) => s.user);
   const actorRole = (actor?.role ?? "AGENT") as UserRole;
   const { data: users = [], isLoading } = useOrgUsers();
@@ -386,6 +373,9 @@ export function UsersPage() {
         if (teamFilter === "NONE" && u.teamId) return false;
         if (teamFilter !== "NONE" && u.teamId !== teamFilter) return false;
       }
+      if (roleFilter !== "ALL" && u.role !== roleFilter) return false;
+      if (statusFilter === "ACTIVE" && !u.isActive) return false;
+      if (statusFilter === "INACTIVE" && u.isActive) return false;
       if (!q) return true;
       return (
         u.username.toLowerCase().includes(q) ||
@@ -394,7 +384,7 @@ export function UsersPage() {
         (u.team?.name || "").toLowerCase().includes(q)
       );
     });
-  }, [users, search, teamFilter]);
+  }, [users, search, teamFilter, roleFilter, statusFilter]);
 
   const handleToggleActive = async (user: OrgUser) => {
     try {
@@ -405,12 +395,16 @@ export function UsersPage() {
     }
   };
 
-  const handleDelete = async (user: OrgUser) => {
-    const ok = window.confirm(`Delete ${user.username}? This cannot be undone.`);
-    if (!ok) return;
+  const handleDeleteClick = (user: OrgUser) => {
+    setDeletingUser(user);
+  };
+
+  const confirmDelete = async () => {
+    if (!deletingUser) return;
     try {
-      await deleteUser.mutateAsync(user.id);
+      await deleteUser.mutateAsync(deletingUser.id);
       toast.success("User deleted");
+      setDeletingUser(null);
     } catch (err: any) {
       toast.error(err.message || "Failed to delete user");
     }
@@ -453,6 +447,26 @@ export function UsersPage() {
             className="w-full rounded-md border border-border bg-background pl-8 pr-3 py-2 text-sm text-foreground outline-none focus:border-primary focus:ring-2 focus:ring-primary/20"
           />
         </div>
+        <select
+          value={roleFilter}
+          onChange={(e) => setRoleFilter(e.target.value)}
+          className="rounded-md border border-border bg-background px-3 py-2 text-sm text-foreground outline-none focus:border-primary"
+        >
+          <option value="ALL">All Roles</option>
+          <option value="SUPER_ADMIN">Super Admin</option>
+          <option value="ADMIN">Admin</option>
+          <option value="MANAGER">Manager</option>
+          <option value="AGENT">Agent</option>
+        </select>
+        <select
+          value={statusFilter}
+          onChange={(e) => setStatusFilter(e.target.value as "ALL" | "ACTIVE" | "INACTIVE")}
+          className="rounded-md border border-border bg-background px-3 py-2 text-sm text-foreground outline-none focus:border-primary"
+        >
+          <option value="ALL">All Status</option>
+          <option value="ACTIVE">Active</option>
+          <option value="INACTIVE">Inactive</option>
+        </select>
         {showTeamFilter && (
           <select
             value={teamFilter}
@@ -479,15 +493,15 @@ export function UsersPage() {
             <p className="text-sm">No users found</p>
           </div>
         ) : (
-          <div className="rounded-lg border border-border bg-card overflow-hidden shadow-sm">
+          <div className="rounded-lg border border-border bg-card shadow-sm">
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-border bg-muted/40 text-xs uppercase tracking-wide text-muted-foreground">
-                  <th className="px-5 py-3 text-left font-semibold">User</th>
+                  <th className="px-5 py-3 text-left font-semibold rounded-tl-lg">User</th>
                   <th className="px-4 py-3 text-left font-semibold">Role</th>
                   <th className="px-4 py-3 text-left font-semibold">Team</th>
                   <th className="px-4 py-3 text-left font-semibold">Status</th>
-                  <th className="px-4 py-3 text-right font-semibold">Actions</th>
+                  <th className="px-4 py-3 text-right font-semibold rounded-tr-lg">Actions</th>
                 </tr>
               </thead>
               <tbody>
@@ -526,7 +540,7 @@ export function UsersPage() {
                           user={user}
                           onEdit={() => setEditingUser(user)}
                           onToggle={() => handleToggleActive(user)}
-                          onDelete={() => handleDelete(user)}
+                          onDelete={() => handleDeleteClick(user)}
                         />
                       )}
                     </td>
@@ -553,6 +567,20 @@ export function UsersPage() {
           onClose={() => setEditingUser(null)}
         />
       )}
+      <ConfirmDialog
+        open={Boolean(deletingUser)}
+        title="Delete User"
+        description={
+          <>
+            Are you sure you want to delete <strong>{deletingUser?.username}</strong>? This action cannot be undone.
+          </>
+        }
+        confirmLabel="Delete User"
+        destructive={true}
+        confirming={deleteUser.isPending}
+        onConfirm={confirmDelete}
+        onCancel={() => setDeletingUser(null)}
+      />
     </div>
   );
 }
