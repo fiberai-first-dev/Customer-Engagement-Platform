@@ -12,19 +12,33 @@ function isAdminOrAbove(role: UserRole) {
   return role === "ADMIN" || role === "SUPER_ADMIN";
 }
 
-/** Build a Prisma `where` clause that scopes tickets to the requesting user's visibility. */
+/**
+ * Visibility rules:
+ * - Admin+: everything
+ * - Manager: own team + open pool (no team, unassigned) + tickets escalated to them
+ * - Agent: assigned to me + unassigned on my team + open pool (no team, unassigned)
+ *   Team-less agents only see their own + the open pool.
+ */
 function buildRbacWhere(role: UserRole, userId: string, teamId?: string | null) {
   if (role === "SUPER_ADMIN" || role === "ADMIN") {
-    return {}; // See everything
+    return {};
   }
   if (role === "MANAGER") {
-    return { teamId: teamId ?? "NO_TEAM" };
+    return {
+      OR: [
+        ...(teamId ? [{ teamId }] : []),
+        { teamId: null }, // open pool (any agent / manager can see)
+        { escalatedToUserId: userId },
+        ...(teamId ? [{ escalatedToTeamId: teamId }] : []),
+      ],
+    };
   }
-  // AGENT: tickets assigned to them OR unassigned tickets in their team
+  // AGENT
   return {
     OR: [
       { assignedTo: userId },
-      { teamId: teamId ?? "NO_TEAM", assignedTo: null },
+      ...(teamId ? [{ teamId, assignedTo: null }] : []),
+      { teamId: null, assignedTo: null }, // open pool — any agent can claim
     ],
   };
 }
@@ -34,12 +48,26 @@ function canViewTicket(
   role: UserRole,
   userId: string,
   teamId: string | null | undefined,
-  ticket: { assignedTo: string | null; teamId: string | null },
+  ticket: {
+    assignedTo: string | null;
+    teamId: string | null;
+    escalatedToUserId?: string | null;
+    escalatedToTeamId?: string | null;
+  },
 ): boolean {
   if (role === "SUPER_ADMIN" || role === "ADMIN") return true;
-  if (role === "MANAGER") return ticket.teamId === teamId;
-  // AGENT
-  return ticket.assignedTo === userId || (ticket.teamId === teamId && ticket.assignedTo === null);
+  if (role === "MANAGER") {
+    if (ticket.teamId === null) return true; // open pool
+    if (teamId && ticket.teamId === teamId) return true;
+    if (ticket.escalatedToUserId === userId) return true;
+    if (teamId && ticket.escalatedToTeamId === teamId) return true;
+    return false;
+  }
+  // AGENT: mine, my team queue, or open pool (no team + unassigned)
+  if (ticket.assignedTo === userId) return true;
+  if (ticket.assignedTo === null && ticket.teamId === null) return true;
+  if (ticket.assignedTo === null && teamId && ticket.teamId === teamId) return true;
+  return false;
 }
 
 /** Validate allowed status transitions per role. Returns error string or null. */
@@ -457,11 +485,12 @@ export class TicketController {
       return reply.code(403).send({ error: "access denied" });
     }
 
-    // Agents can only self-assign
+    // Agents can only self-assign / release back to the pool
     if (user.role === "AGENT") {
       if (nextAssignee && nextAssignee !== user.id) {
         return reply.code(403).send({ error: "Agents can only assign tickets to themselves" });
       }
+      // Claiming open-pool or own-team tickets: don't let agents move tickets onto other teams
       if (nextTeam && nextTeam !== user.teamId) {
         return reply.code(403).send({ error: "Agents cannot change the ticket team" });
       }
@@ -484,11 +513,22 @@ export class TicketController {
       if (user.role === "MANAGER" && targetUser.teamId !== user.teamId) {
         return reply.code(403).send({ error: "Managers can only assign to members of their own team" });
       }
-      // Person assignment → their team (ignore separate team-queue)
-      resolvedTeam = targetUser.teamId ?? null;
+      // Person assignment → their team when they have one; keep null for team-less agents (open pool claim)
+      if (targetUser.teamId) {
+        resolvedTeam = targetUser.teamId;
+      } else if (nextTeam !== undefined) {
+        resolvedTeam = nextTeam;
+      } else {
+        // Keep existing teamId when a team-less person claims (null stays open-pool context)
+        resolvedTeam = ticket.teamId;
+      }
     } else if (nextAssignee === null) {
       // Explicit clear of person (team queue or full unassign)
       resolvedAssignee = null;
+      // Admin "Unassigned" with empty team → open pool (any agent can claim)
+      if (nextTeam === null) {
+        resolvedTeam = null;
+      }
     }
 
     if (user.role === "MANAGER" && resolvedTeam && resolvedTeam !== user.teamId) {

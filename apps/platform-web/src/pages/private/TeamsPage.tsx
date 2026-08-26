@@ -1,6 +1,6 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
-import { useTeams, useTeam, useOrgUsers, type Team } from "../../api";
+import { useTeams, useTeam, useOrgUsers, type Team, type UserRole } from "../../api";
 import { useAuthStore } from "../../store/auth";
 import {
   Building2,
@@ -10,7 +10,34 @@ import {
   ChevronRight,
   ArrowLeft,
   Search,
+  ShieldCheck,
+  Shield,
+  Briefcase,
+  Headphones,
 } from "lucide-react";
+
+const ROLE_META: Record<UserRole, { label: string; icon: React.ReactNode; className: string }> = {
+  SUPER_ADMIN: {
+    label: "Super Admin",
+    icon: <ShieldCheck className="w-3.5 h-3.5" />,
+    className: "bg-slate-900 text-white dark:bg-slate-100 dark:text-slate-900",
+  },
+  ADMIN: {
+    label: "Admin",
+    icon: <Shield className="w-3.5 h-3.5" />,
+    className: "bg-blue-600 text-white",
+  },
+  MANAGER: {
+    label: "Manager",
+    icon: <Briefcase className="w-3.5 h-3.5" />,
+    className: "bg-amber-500 text-white",
+  },
+  AGENT: {
+    label: "Agent",
+    icon: <Headphones className="w-3.5 h-3.5" />,
+    className: "bg-emerald-600 text-white",
+  },
+};
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL ?? "";
 
@@ -144,33 +171,76 @@ function TeamCard({ team, onOpen }: { team: Team; onOpen: () => void }) {
 
 function TeamMembersView({ teamId, onBack }: { teamId: string; onBack?: () => void }) {
   const [search, setSearch] = useState("");
-  const { data: team, isLoading } = useTeam(teamId);
+  const [roleFilter, setRoleFilter] = useState<"ALL" | UserRole>("ALL");
+  const { data: teams = [], isLoading: teamsLoading } = useTeams();
+  const { data: detail, isLoading: detailLoading } = useTeam(teamId);
+  const { data: orgUsers = [], isLoading: usersLoading } = useOrgUsers();
 
-  const members = (team?.members ?? []).filter((m) => {
+  const teamFromList = teams.find((t) => t.id === teamId);
+  const team = detail ?? teamFromList;
+  const isLoading = (detailLoading || teamsLoading || usersLoading) && !team;
+
+  const members = useMemo(() => {
+    const fromDetail = detail?.members;
+    const fromOrg = orgUsers
+      .filter((u) => u.teamId === teamId)
+      .map((u) => ({
+        id: u.id,
+        username: u.username,
+        name: u.name,
+        role: u.role,
+        isActive: u.isActive,
+        createdAt: u.createdAt,
+      }));
+    const base = fromDetail && fromDetail.length > 0 ? fromDetail : fromOrg;
     const q = search.trim().toLowerCase();
-    if (!q) return true;
-    return (
-      m.username.toLowerCase().includes(q) ||
-      (m.name || "").toLowerCase().includes(q) ||
-      m.role.toLowerCase().includes(q)
-    );
-  });
+    return base.filter((m) => {
+      if (roleFilter !== "ALL" && m.role !== roleFilter) return false;
+      if (!q) return true;
+      return (
+        m.username.toLowerCase().includes(q) ||
+        (m.name || "").toLowerCase().includes(q) ||
+        m.role.toLowerCase().includes(q)
+      );
+    });
+  }, [detail?.members, orgUsers, teamId, search, roleFilter]);
 
   if (isLoading) {
-    return <div className="flex items-center justify-center h-40 text-sm text-muted-foreground">Loading members…</div>;
+    return (
+      <div className="flex items-center justify-center h-full text-sm text-muted-foreground">Loading members…</div>
+    );
   }
   if (!team) {
-    return <div className="flex items-center justify-center h-40 text-sm text-muted-foreground">Team not found</div>;
+    return (
+      <div className="flex flex-col items-center justify-center h-full gap-3 text-muted-foreground">
+        <Building2 className="w-8 h-8 opacity-30" />
+        <p className="text-sm">Team not found</p>
+        {onBack && (
+          <button
+            type="button"
+            onClick={onBack}
+            className="text-xs font-semibold text-primary hover:underline"
+          >
+            Back to teams
+          </button>
+        )}
+      </div>
+    );
   }
 
+  const managerLabel = team.manager
+    ? team.manager.name || team.manager.username
+    : null;
+
   return (
-    <div className="flex flex-col h-full">
+    <div className="flex flex-col h-full bg-background">
       <div className="flex items-center gap-3 border-b border-border bg-card px-6 py-4">
         {onBack && (
           <button
             type="button"
             onClick={onBack}
             className="rounded-md p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground"
+            aria-label="Back to teams"
           >
             <ArrowLeft className="w-4 h-4" />
           </button>
@@ -181,30 +251,41 @@ function TeamMembersView({ teamId, onBack }: { teamId: string; onBack?: () => vo
         <div className="min-w-0 flex-1">
           <h1 className="text-lg font-semibold text-foreground leading-tight truncate">{team.name}</h1>
           <p className="text-xs text-muted-foreground">
-            {team._count?.members ?? members.length} members
-            {team.manager ? ` · Manager: ${team.manager.name || team.manager.username}` : ""}
+            {members.length} member{members.length === 1 ? "" : "s"}
+            {managerLabel ? ` · Manager: ${managerLabel}` : ""}
+            {team._count?.tickets != null ? ` · ${team._count.tickets} tickets` : ""}
           </p>
         </div>
       </div>
 
-      <div className="border-b border-border px-6 py-3 bg-card/50">
-        <div className="relative max-w-md">
+      <div className="flex flex-wrap items-center gap-2 border-b border-border bg-card/50 px-6 py-3">
+        <div className="relative flex-1 min-w-[200px]">
           <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />
           <input
             type="text"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            placeholder="Search members…"
+            placeholder="Search by name, email, role…"
             className="w-full rounded-md border border-border bg-background pl-8 pr-3 py-2 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/20"
           />
         </div>
+        <select
+          value={roleFilter}
+          onChange={(e) => setRoleFilter(e.target.value as "ALL" | UserRole)}
+          className="rounded-md border border-border bg-background px-3 py-2 text-sm text-foreground outline-none focus:border-primary"
+        >
+          <option value="ALL">All Roles</option>
+          <option value="MANAGER">Manager</option>
+          <option value="AGENT">Agent</option>
+        </select>
       </div>
 
       <div className="flex-1 overflow-y-auto p-6">
         {members.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-40 text-muted-foreground">
             <Users className="w-8 h-8 mb-2 opacity-30" />
-            <p className="text-sm">No members in this team</p>
+            <p className="text-sm font-medium text-foreground">No members found</p>
+            <p className="text-xs mt-1">Assign users to this team from Users & Roles.</p>
           </div>
         ) : (
           <div className="rounded-lg border border-border bg-card overflow-hidden shadow-sm">
@@ -217,28 +298,44 @@ function TeamMembersView({ teamId, onBack }: { teamId: string; onBack?: () => vo
                 </tr>
               </thead>
               <tbody>
-                {members.map((m) => (
-                  <tr key={m.id} className="border-b border-border last:border-0 hover:bg-muted/30">
-                    <td className="px-5 py-3.5">
-                      <div className="flex flex-col min-w-0">
-                        <span className="font-semibold text-foreground truncate">{m.name || m.username.split("@")[0]}</span>
-                        <span className="text-xs text-muted-foreground truncate">{m.username}</span>
-                      </div>
-                    </td>
-                    <td className="px-4 py-3.5 text-xs font-medium text-foreground">{m.role.replace("_", " ")}</td>
-                    <td className="px-4 py-3.5">
-                      <span
-                        className={`inline-flex rounded-md px-2 py-0.5 text-xs font-semibold ${
-                          m.isActive
-                            ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-500/20 dark:text-emerald-300"
-                            : "bg-slate-100 text-slate-600 dark:bg-slate-500/20 dark:text-slate-300"
-                        }`}
-                      >
-                        {m.isActive ? "Active" : "Inactive"}
-                      </span>
-                    </td>
-                  </tr>
-                ))}
+                {members.map((m) => {
+                  const roleMeta = ROLE_META[m.role as UserRole];
+                  return (
+                    <tr key={m.id} className="border-b border-border last:border-0 hover:bg-muted/30 transition-colors">
+                      <td className="px-5 py-3.5">
+                        <div className="flex flex-col min-w-0">
+                          <span className="font-semibold text-foreground truncate">
+                            {m.name || m.username.split("@")[0]}
+                          </span>
+                          <span className="text-xs text-muted-foreground truncate">{m.username}</span>
+                        </div>
+                      </td>
+                      <td className="px-4 py-3.5">
+                        {roleMeta ? (
+                          <span
+                            className={`inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-xs font-semibold ${roleMeta.className}`}
+                          >
+                            {roleMeta.icon}
+                            {roleMeta.label}
+                          </span>
+                        ) : (
+                          <span className="text-xs font-medium">{m.role.replace("_", " ")}</span>
+                        )}
+                      </td>
+                      <td className="px-4 py-3.5">
+                        <span
+                          className={`inline-flex rounded-md px-2 py-0.5 text-xs font-semibold ${
+                            m.isActive
+                              ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-500/20 dark:text-emerald-300"
+                              : "bg-slate-100 text-slate-600 dark:bg-slate-500/20 dark:text-slate-300"
+                          }`}
+                        >
+                          {m.isActive ? "Active" : "Inactive"}
+                        </span>
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>

@@ -24,13 +24,12 @@ import {
   ArrowUpCircle,
   ArrowDownCircle,
   MessageSquare,
-  User2,
   Users,
   Tag,
   AlertCircle,
   ChevronDown,
   Clock,
-  Plus,
+  Send,
   Loader2,
   Lock,
   CircleDot,
@@ -41,38 +40,48 @@ import {
   CheckCircle2,
   XCircle,
   RotateCcw,
+  ExternalLink,
+  Inbox,
 } from "lucide-react";
 
 const STATUS_CONFIG: Record<TicketStatus, { label: string; bg: string; text: string; border: string }> = {
-  OPEN: { label: "Open", bg: "bg-blue-500/15", text: "text-blue-400", border: "border-blue-500/30" },
-  IN_PROGRESS: { label: "In Progress", bg: "bg-amber-500/15", text: "text-amber-400", border: "border-amber-500/30" },
-  ESCALATED: { label: "Escalated", bg: "bg-orange-500/15", text: "text-orange-400", border: "border-orange-500/30" },
-  RESOLVED: { label: "Resolved", bg: "bg-emerald-500/15", text: "text-emerald-400", border: "border-emerald-500/30" },
-  CLOSED: { label: "Closed", bg: "bg-slate-500/15", text: "text-slate-400", border: "border-slate-500/30" },
+  OPEN: { label: "Open", bg: "bg-blue-50 dark:bg-blue-500/15", text: "text-blue-700 dark:text-blue-400", border: "border-blue-200 dark:border-blue-500/30" },
+  IN_PROGRESS: { label: "In Progress", bg: "bg-amber-50 dark:bg-amber-500/15", text: "text-amber-700 dark:text-amber-400", border: "border-amber-200 dark:border-amber-500/30" },
+  ESCALATED: { label: "Escalated", bg: "bg-orange-50 dark:bg-orange-500/15", text: "text-orange-700 dark:text-orange-400", border: "border-orange-200 dark:border-orange-500/30" },
+  RESOLVED: { label: "Resolved", bg: "bg-emerald-50 dark:bg-emerald-500/15", text: "text-emerald-700 dark:text-emerald-400", border: "border-emerald-200 dark:border-emerald-500/30" },
+  CLOSED: { label: "Closed", bg: "bg-slate-100 dark:bg-slate-500/15", text: "text-slate-600 dark:text-slate-400", border: "border-slate-200 dark:border-slate-500/30" },
 };
 
-const PRIORITY_CONFIG: Record<TicketPriority, { label: string; color: string; bg: string }> = {
-  LOW: { label: "Low", color: "text-slate-400", bg: "bg-slate-500/10" },
-  MEDIUM: { label: "Medium", color: "text-blue-400", bg: "bg-blue-500/10" },
-  HIGH: { label: "High", color: "text-amber-400", bg: "bg-amber-500/10" },
-  URGENT: { label: "Urgent", color: "text-red-400", bg: "bg-red-500/10" },
+const PRIORITY_CONFIG: Record<TicketPriority, { label: string; color: string; bg: string; border: string }> = {
+  LOW: { label: "Low", color: "text-slate-600 dark:text-slate-400", bg: "bg-slate-50 dark:bg-slate-500/10", border: "border-slate-200 dark:border-border" },
+  MEDIUM: { label: "Medium", color: "text-blue-700 dark:text-blue-400", bg: "bg-blue-50 dark:bg-blue-500/10", border: "border-blue-200 dark:border-border" },
+  HIGH: { label: "High", color: "text-amber-700 dark:text-amber-400", bg: "bg-amber-50 dark:bg-amber-500/10", border: "border-amber-200 dark:border-border" },
+  URGENT: { label: "Urgent", color: "text-red-700 dark:text-red-400", bg: "bg-red-50 dark:bg-red-500/10", border: "border-red-200 dark:border-border" },
 };
 
 const EVENT_META: Record<string, { label: string; icon: typeof CircleDot; color: string; bg: string }> = {
-  CREATED: { label: "Ticket created", icon: CircleDot, color: "text-blue-400", bg: "bg-blue-500/15" },
-  ASSIGNED: { label: "Assigned", icon: UserPlus, color: "text-violet-400", bg: "bg-violet-500/15" },
-  REASSIGNED: { label: "Reassigned", icon: RefreshCw, color: "text-violet-400", bg: "bg-violet-500/15" },
-  STATUS_CHANGED: { label: "Status changed", icon: ArrowRightLeft, color: "text-sky-400", bg: "bg-sky-500/15" },
-  PRIORITY_CHANGED: { label: "Priority changed", icon: Tag, color: "text-amber-400", bg: "bg-amber-500/15" },
-  TEAM_CHANGED: { label: "Team changed", icon: Users, color: "text-indigo-400", bg: "bg-indigo-500/15" },
-  ESCALATED: { label: "Escalated", icon: ArrowUpCircle, color: "text-orange-400", bg: "bg-orange-500/15" },
-  RETURNED: { label: "Returned to agent", icon: ArrowDownCircle, color: "text-blue-400", bg: "bg-blue-500/15" },
-  NOTE_ADDED: { label: "Note added", icon: StickyNote, color: "text-amber-400", bg: "bg-amber-500/15" },
-  REPLIED: { label: "Reply sent", icon: MessageSquare, color: "text-emerald-400", bg: "bg-emerald-500/15" },
-  RESOLVED: { label: "Resolved", icon: CheckCircle2, color: "text-emerald-400", bg: "bg-emerald-500/15" },
-  CLOSED: { label: "Closed", icon: XCircle, color: "text-slate-400", bg: "bg-slate-500/15" },
-  REOPENED: { label: "Reopened", icon: RotateCcw, color: "text-blue-400", bg: "bg-blue-500/15" },
+  CREATED: { label: "Ticket created", icon: CircleDot, color: "text-blue-600 dark:text-blue-400", bg: "bg-blue-50 dark:bg-blue-500/15" },
+  ASSIGNED: { label: "Assigned", icon: UserPlus, color: "text-primary", bg: "bg-primary/10" },
+  REASSIGNED: { label: "Reassigned", icon: RefreshCw, color: "text-primary", bg: "bg-primary/10" },
+  STATUS_CHANGED: { label: "Status changed", icon: ArrowRightLeft, color: "text-sky-600 dark:text-sky-400", bg: "bg-sky-50 dark:bg-sky-500/15" },
+  PRIORITY_CHANGED: { label: "Priority changed", icon: Tag, color: "text-amber-600 dark:text-amber-400", bg: "bg-amber-50 dark:bg-amber-500/15" },
+  TEAM_CHANGED: { label: "Team changed", icon: Users, color: "text-indigo-600 dark:text-indigo-400", bg: "bg-indigo-50 dark:bg-indigo-500/15" },
+  ESCALATED: { label: "Escalated", icon: ArrowUpCircle, color: "text-orange-600 dark:text-orange-400", bg: "bg-orange-50 dark:bg-orange-500/15" },
+  RETURNED: { label: "Returned to agent", icon: ArrowDownCircle, color: "text-blue-600 dark:text-blue-400", bg: "bg-blue-50 dark:bg-blue-500/15" },
+  NOTE_ADDED: { label: "Note added", icon: StickyNote, color: "text-amber-600 dark:text-amber-400", bg: "bg-amber-50 dark:bg-amber-500/15" },
+  REPLIED: { label: "Reply sent", icon: MessageSquare, color: "text-emerald-600 dark:text-emerald-400", bg: "bg-emerald-50 dark:bg-emerald-500/15" },
+  RESOLVED: { label: "Resolved", icon: CheckCircle2, color: "text-emerald-600 dark:text-emerald-400", bg: "bg-emerald-50 dark:bg-emerald-500/15" },
+  CLOSED: { label: "Closed", icon: XCircle, color: "text-slate-500", bg: "bg-slate-100 dark:bg-slate-500/15" },
+  REOPENED: { label: "Reopened", icon: RotateCcw, color: "text-blue-600 dark:text-blue-400", bg: "bg-blue-50 dark:bg-blue-500/15" },
 };
+
+function initials(name?: string | null, fallback = "?") {
+  const s = (name || "").trim();
+  if (!s) return fallback.slice(0, 2).toUpperCase();
+  const parts = s.split(/\s+/);
+  if (parts.length >= 2) return `${parts[0]![0]}${parts[1]![0]}`.toUpperCase();
+  return s.slice(0, 2).toUpperCase();
+}
 
 export function TicketDetailPage() {
   const { id } = useParams<{ id: string }>();
@@ -98,18 +107,18 @@ export function TicketDetailPage() {
   const [activeTab, setActiveTab] = useState<"NOTES" | "THREAD">("NOTES");
 
   const { data: messages = [], isLoading: messagesLoading } = useMessages(
-    activeTab === "THREAD" && ticket?.conversationId ? ticket.conversationId : undefined
+    activeTab === "THREAD" && ticket?.conversationId ? ticket.conversationId : undefined,
   );
 
   if (isLoading) {
     return (
-      <div className="flex items-center justify-center h-full text-slate-500 gap-2">
+      <div className="flex items-center justify-center h-full text-muted-foreground gap-2 text-sm">
         <Loader2 className="w-5 h-5 animate-spin" /> Loading ticket…
       </div>
     );
   }
   if (!ticket) {
-    return <div className="flex items-center justify-center h-full text-slate-500">Ticket not found</div>;
+    return <div className="flex items-center justify-center h-full text-muted-foreground text-sm">Ticket not found</div>;
   }
 
   const isEscalated = ticket.status === "ESCALATED";
@@ -117,26 +126,20 @@ export function TicketDetailPage() {
   const isManagerOrAbove =
     user?.role === "MANAGER" || user?.role === "ADMIN" || user?.role === "SUPER_ADMIN";
   const isAdminOrAbove = user?.role === "ADMIN" || user?.role === "SUPER_ADMIN";
-
-  // Agents see the ticket as read-only when it's escalated
   const isLocked = isEscalated && isAgent;
-
   const statusCfg = STATUS_CONFIG[ticket.status];
+  const priorityCfg = PRIORITY_CONFIG[ticket.priority];
 
-  // Agents can only assign to self; Managers can assign team members; Admins anyone (managers/agents only)
   const agentUsers = users.filter((u) => {
     if (u.role !== "AGENT" && u.role !== "MANAGER") return false;
     if (!u.isActive) return false;
     if (isAdminOrAbove) return true;
-    if (isManagerOrAbove && !isAdminOrAbove) {
-      return u.teamId === user?.teamId;
-    }
+    if (isManagerOrAbove && !isAdminOrAbove) return u.teamId === user?.teamId;
     return u.id === user?.id;
   });
 
-  // Allowed status transitions per role (excluding ESCALATED — use Escalate button)
   const allowedStatuses = (Object.keys(STATUS_CONFIG) as TicketStatus[]).filter((s) => {
-    if (s === "ESCALATED") return false; // use Escalate button
+    if (s === "ESCALATED") return false;
     if (isAgent) {
       const transitions: Record<string, string[]> = {
         OPEN: ["IN_PROGRESS"],
@@ -190,430 +193,533 @@ export function TicketDetailPage() {
     }
   };
 
+  const customerLabel = ticket.customer?.name || "Unknown customer";
+  const noteCount = ticket.notes?.length ?? 0;
+
   return (
-    <div className="flex flex-col h-full">
-      {/* Top bar */}
-      <div className="flex items-center gap-3 border-b border-border px-6 py-3 bg-card/40">
+    <div className="flex flex-col h-full bg-background">
+      {/* Header */}
+      <div className="flex items-center gap-3 border-b border-border bg-card px-5 py-3.5 shrink-0">
         <button
+          type="button"
           onClick={() => navigate("/tickets")}
           className="rounded-md p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
+          aria-label="Back to tickets"
         >
           <ArrowLeft className="w-4 h-4" />
         </button>
-        <span className="text-muted-foreground font-mono text-sm">#{ticket.number}</span>
-        <h1 className="text-foreground font-semibold truncate flex-1">{ticket.subject}</h1>
-        <span
-          className={`text-xs font-medium px-2.5 py-1 rounded-md border ${statusCfg.bg} ${statusCfg.text} ${statusCfg.border}`}
-        >
-          {statusCfg.label}
-        </span>
 
-        {/* Lock indicator for escalated agents */}
-        {isLocked && (
-          <span className="flex items-center gap-1 text-xs text-orange-400 bg-orange-500/10 border border-orange-500/20 px-2.5 py-1 rounded-md">
-            <Lock className="w-3 h-3" /> Escalated — read only
-          </span>
-        )}
-
-        {/* Return to agent — Manager+ when escalated */}
-        {isEscalated && isManagerOrAbove && (
-          <button
-            id="return-btn"
-            onClick={handleReturn}
-            disabled={returnTicket.isPending}
-            className="inline-flex items-center gap-1.5 rounded-md bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground hover:bg-primary/90 transition-colors disabled:opacity-50"
-          >
-            <ArrowDownCircle className="w-3.5 h-3.5" />
-            Return to Agent
-          </button>
-        )}
-
-        {/* Escalate — not escalated, not locked */}
-        {!isLocked && ticket.status !== "CLOSED" && ticket.status !== "RESOLVED" && !isEscalated && (
-          <button
-            id="escalate-btn"
-            onClick={() => setShowEscalate(true)}
-            className="inline-flex items-center gap-1.5 rounded-md bg-orange-500 px-3 py-1.5 text-xs font-medium text-white hover:bg-orange-600 transition-colors"
-          >
-            <ArrowUpCircle className="w-3.5 h-3.5" />
-            Escalate
-          </button>
-        )}
-      </div>
-
-      {/* 3-column body */}
-      <div className="flex flex-1 min-h-0">
-        {/* LEFT: Customer info */}
-        <div className="w-56 shrink-0 border-r border-white/8 overflow-y-auto p-4 space-y-5">
-          <Section icon={<User2 className="w-3.5 h-3.5" />} title="Customer">
-            <p className="text-sm text-white">{ticket.customer?.name ?? "Unknown"}</p>
-          </Section>
-          {ticket.channel && (
-            <Section icon={<MessageSquare className="w-3.5 h-3.5" />} title="Channel">
-              <span className="text-xs capitalize text-slate-300 bg-white/8 px-2 py-0.5 rounded-full">
-                {ticket.channel}
+        <div className="min-w-0 flex-1">
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className="font-mono text-xs font-semibold text-muted-foreground bg-muted px-2 py-0.5 rounded-md">
+              #{ticket.number}
+            </span>
+            <span
+              className={`inline-flex items-center rounded-md border px-2 py-0.5 text-[11px] font-semibold ${statusCfg.bg} ${statusCfg.text} ${statusCfg.border}`}
+            >
+              {statusCfg.label}
+            </span>
+            <span
+              className={`inline-flex items-center rounded-md border px-2 py-0.5 text-[11px] font-semibold ${priorityCfg.bg} ${priorityCfg.color} ${priorityCfg.border}`}
+            >
+              {priorityCfg.label}
+            </span>
+            {isLocked && (
+              <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-orange-700 dark:text-orange-400 bg-orange-50 dark:bg-orange-500/10 border border-orange-200 dark:border-orange-500/20 px-2 py-0.5 rounded-md">
+                <Lock className="w-3 h-3" /> Read only
               </span>
-            </Section>
-          )}
-          {ticket.conversationId && (
-            <Section icon={<MessageSquare className="w-3.5 h-3.5" />} title="Inbox Link">
-              <button
-                onClick={() => {
-                  if (ticket.customerId) {
-                    setSelectedContactId(ticket.customerId);
-                    navigate("/inbox");
-                  }
-                }}
-                className="text-xs text-purple-400 hover:text-purple-300 underline underline-offset-2 transition-colors"
-              >
-                View conversation in Inbox
-              </button>
-            </Section>
-          )}
-          {ticket.description && (
-            <Section icon={<AlertCircle className="w-3.5 h-3.5" />} title="Description">
-              <p className="text-xs text-slate-400 leading-relaxed">{ticket.description}</p>
-            </Section>
-          )}
-          <Section icon={<Clock className="w-3.5 h-3.5" />} title="Created">
-            <p className="text-xs text-slate-400">
-              {formatDistanceToNow(new Date(ticket.createdAt), { addSuffix: true })}
-            </p>
-            {ticket.creator && (
-              <p className="text-xs text-slate-500">by {ticket.creator.username}</p>
             )}
-          </Section>
+          </div>
+          <h1 className="text-base font-semibold text-foreground truncate mt-0.5">{ticket.subject}</h1>
         </div>
 
-        {/* CENTER: Notes / thread */}
-        <div className="flex-1 flex flex-col min-w-0 overflow-hidden bg-white/5 border-r border-white/8">
-          {/* Tabs */}
-          <div className="flex items-center gap-6 px-5 border-b border-white/8 pt-2">
+        <div className="flex items-center gap-2 shrink-0">
+          {isEscalated && isManagerOrAbove && (
             <button
-              onClick={() => setActiveTab("NOTES")}
-              className={`pb-3 text-xs font-semibold tracking-wide transition-colors border-b-2 ${
-                activeTab === "NOTES"
-                  ? "border-purple-500 text-purple-400"
-                  : "border-transparent text-slate-500 hover:text-slate-300"
-              }`}
+              id="return-btn"
+              type="button"
+              onClick={handleReturn}
+              disabled={returnTicket.isPending}
+              className="inline-flex items-center gap-1.5 rounded-md border border-border bg-background px-3 py-2 text-xs font-semibold text-foreground hover:bg-muted transition-colors disabled:opacity-50"
             >
-              INTERNAL NOTES
+              <ArrowDownCircle className="w-3.5 h-3.5" />
+              Return
             </button>
+          )}
+          {!isLocked && ticket.status !== "CLOSED" && ticket.status !== "RESOLVED" && !isEscalated && (
+            <button
+              id="escalate-btn"
+              type="button"
+              onClick={() => setShowEscalate(true)}
+              className="inline-flex items-center gap-1.5 rounded-md bg-orange-500 px-3.5 py-2 text-xs font-semibold text-white hover:bg-orange-600 shadow-sm transition-colors"
+            >
+              <ArrowUpCircle className="w-3.5 h-3.5" />
+              Escalate
+            </button>
+          )}
+        </div>
+      </div>
+
+      {/* Body */}
+      <div className="flex flex-1 min-h-0">
+        {/* Left: context */}
+        <aside className="w-64 shrink-0 border-r border-border bg-card/40 overflow-y-auto">
+          <div className="p-4 space-y-4">
+            <div className="rounded-lg border border-border bg-card p-3.5 shadow-sm">
+              <div className="flex items-start gap-3">
+                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-md bg-primary text-primary-foreground text-xs font-bold">
+                  {initials(ticket.customer?.name, ticket.customerId || "CU")}
+                </div>
+                <div className="min-w-0">
+                  <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground mb-0.5">Customer</p>
+                  <p className="text-sm font-semibold text-foreground truncate" title={customerLabel}>
+                    {customerLabel}
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            {ticket.channel && (
+              <Field label="Channel" icon={<MessageSquare className="w-3.5 h-3.5" />}>
+                <span className="inline-flex items-center rounded-md bg-muted px-2 py-1 text-xs font-medium text-foreground capitalize">
+                  {ticket.channel}
+                </span>
+              </Field>
+            )}
+
             {ticket.conversationId && (
-              <button
-                onClick={() => setActiveTab("THREAD")}
-                className={`pb-3 text-xs font-semibold tracking-wide transition-colors border-b-2 ${
-                  activeTab === "THREAD"
-                    ? "border-purple-500 text-purple-400"
-                    : "border-transparent text-slate-500 hover:text-slate-300"
-                }`}
-              >
-                CUSTOMER THREAD
-              </button>
+              <Field label="Conversation" icon={<Inbox className="w-3.5 h-3.5" />}>
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (ticket.customerId) {
+                      setSelectedContactId(ticket.customerId);
+                      navigate("/inbox");
+                    }
+                  }}
+                  className="inline-flex items-center gap-1.5 text-xs font-semibold text-primary hover:underline underline-offset-2"
+                >
+                  Open in Inbox
+                  <ExternalLink className="w-3 h-3" />
+                </button>
+              </Field>
+            )}
+
+            {ticket.description && (
+              <Field label="Description" icon={<AlertCircle className="w-3.5 h-3.5" />}>
+                <p className="text-xs text-muted-foreground leading-relaxed whitespace-pre-wrap">{ticket.description}</p>
+              </Field>
+            )}
+
+            <Field label="Created" icon={<Clock className="w-3.5 h-3.5" />}>
+              <p className="text-xs text-foreground font-medium">
+                {formatDistanceToNow(new Date(ticket.createdAt), { addSuffix: true })}
+              </p>
+              {ticket.creator && (
+                <p className="text-[11px] text-muted-foreground mt-0.5 truncate">{ticket.creator.username}</p>
+              )}
+            </Field>
+          </div>
+        </aside>
+
+        {/* Center: notes / thread */}
+        <main className="flex-1 flex flex-col min-w-0 bg-background">
+          <div className="flex items-center gap-1 border-b border-border bg-card px-4 shrink-0">
+            <TabButton active={activeTab === "NOTES"} onClick={() => setActiveTab("NOTES")} count={noteCount}>
+              Internal notes
+            </TabButton>
+            {ticket.conversationId && (
+              <TabButton active={activeTab === "THREAD"} onClick={() => setActiveTab("THREAD")}>
+                Customer thread
+              </TabButton>
             )}
           </div>
 
-          <div className="flex-1 overflow-y-auto p-5 space-y-3">
+          <div className="flex-1 overflow-y-auto p-5">
             {activeTab === "NOTES" ? (
-              <>
-                {!ticket.notes || ticket.notes.length === 0 ? (
-                  <p className="text-muted-foreground text-sm text-center py-8">No notes yet.</p>
-                ) : (
-                  ticket.notes.map((note) => (
-                    <div key={note.id} className="rounded-xl border border-border bg-card p-3">
-                      <div className="flex items-center gap-1.5 mb-2">
-                        <span className="text-xs font-medium text-foreground">
-                          {note.author?.username ?? "Unknown"}
-                        </span>
-                        <span className="text-xs text-muted-foreground">·</span>
-                        <span className="text-xs text-muted-foreground">
-                          {formatDistanceToNow(new Date(note.createdAt), { addSuffix: true })}
-                        </span>
+              !ticket.notes || ticket.notes.length === 0 ? (
+                <EmptyState
+                  icon={<StickyNote className="w-8 h-8" />}
+                  title="No internal notes yet"
+                  subtitle="Notes stay private — customers never see them."
+                />
+              ) : (
+                <div className="space-y-3 max-w-3xl mx-auto">
+                  {ticket.notes.map((note) => (
+                    <article key={note.id} className="rounded-lg border border-border bg-card p-4 shadow-sm">
+                      <div className="flex items-center gap-2 mb-2.5">
+                        <div className="flex h-7 w-7 items-center justify-center rounded-md bg-muted text-[10px] font-bold text-foreground">
+                          {initials(note.author?.username)}
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <p className="text-xs font-semibold text-foreground truncate">
+                            {note.author?.username ?? "Unknown"}
+                          </p>
+                          <p className="text-[11px] text-muted-foreground">
+                            {formatDistanceToNow(new Date(note.createdAt), { addSuffix: true })}
+                          </p>
+                        </div>
                         {note.isInternal && (
-                          <span className="ml-auto text-[10px] font-medium text-amber-500 bg-amber-500/10 px-1.5 py-0.5 rounded-full">
+                          <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-amber-700 dark:text-amber-400 bg-amber-50 dark:bg-amber-500/10 border border-amber-200 dark:border-amber-500/20 px-1.5 py-0.5 rounded-md">
+                            <Lock className="w-2.5 h-2.5" />
                             Internal
                           </span>
                         )}
                       </div>
-                      <p className="text-sm text-foreground whitespace-pre-wrap">{note.body}</p>
-                    </div>
-                  ))
-                )}
-              </>
+                      <p className="text-sm text-foreground whitespace-pre-wrap leading-relaxed">{note.body}</p>
+                    </article>
+                  ))}
+                </div>
+              )
+            ) : messagesLoading ? (
+              <div className="flex justify-center py-16">
+                <Loader2 className="w-5 h-5 text-muted-foreground animate-spin" />
+              </div>
+            ) : messages.length === 0 ? (
+              <EmptyState
+                icon={<MessageSquare className="w-8 h-8" />}
+                title="No messages found"
+                subtitle="This ticket isn’t linked to a conversation thread."
+              />
             ) : (
-              <>
-                {messagesLoading ? (
-                  <div className="flex justify-center py-8">
-                    <Loader2 className="w-5 h-5 text-muted-foreground animate-spin" />
+              <div className="space-y-3 max-w-3xl mx-auto">
+                {messages.map((msg) => (
+                  <div
+                    key={msg.id}
+                    className={`flex flex-col max-w-[85%] ${
+                      msg.direction === "outgoing" ? "ml-auto items-end" : "mr-auto items-start"
+                    }`}
+                  >
+                    <div
+                      className={`px-3.5 py-2.5 rounded-2xl text-sm leading-relaxed shadow-sm ${
+                        msg.direction === "outgoing"
+                          ? "bg-primary text-primary-foreground rounded-br-md"
+                          : "bg-card border border-border text-foreground rounded-bl-md"
+                      }`}
+                    >
+                      {msg.content}
+                    </div>
+                    <span className="text-[10px] text-muted-foreground mt-1 px-1">
+                      {formatDistanceToNow(new Date(msg.createdAt), { addSuffix: true })}
+                    </span>
                   </div>
-                ) : messages.length === 0 ? (
-                  <p className="text-muted-foreground text-sm text-center py-8">No messages found.</p>
-                ) : (
-                  <div className="space-y-4">
-                    {messages.map((msg) => (
-                      <div
-                        key={msg.id}
-                        className={`flex flex-col max-w-[85%] ${
-                          msg.direction === "outgoing"
-                            ? "ml-auto items-end"
-                            : "mr-auto items-start"
-                        }`}
-                      >
-                        <div
-                          className={`px-4 py-2 rounded-2xl text-sm ${
-                            msg.direction === "outgoing"
-                              ? "bg-primary text-primary-foreground rounded-br-sm"
-                              : "bg-card border border-border text-foreground rounded-bl-sm"
-                          }`}
-                        >
-                          {msg.content}
-                        </div>
-                        <span className="text-[10px] text-muted-foreground mt-1 px-1">
-                          {formatDistanceToNow(new Date(msg.createdAt), { addSuffix: true })}
-                        </span>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </>
+                ))}
+              </div>
             )}
           </div>
 
-          {/* Note composer */}
           {activeTab === "NOTES" && !isLocked && (
-            <div className="border-t border-border p-4 bg-card">
-              <div className="flex gap-2">
-                <textarea
-                  id="note-input"
-                  value={noteText}
-                  onChange={(e) => setNoteText(e.target.value)}
-                  rows={2}
-                  placeholder="Add an internal note… (never sent to customer)"
-                  className="flex-1 rounded-xl border border-border bg-background px-3 py-2 text-sm text-foreground placeholder-muted-foreground outline-none focus:border-primary focus:ring-1 focus:ring-primary resize-none transition-all"
-                />
+            <div className="border-t border-border bg-card p-4 shrink-0">
+              <div className="max-w-3xl mx-auto flex gap-2 items-end">
+                <div className="flex-1">
+                  <label className="sr-only" htmlFor="note-input">
+                    Internal note
+                  </label>
+                  <textarea
+                    id="note-input"
+                    value={noteText}
+                    onChange={(e) => setNoteText(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
+                        e.preventDefault();
+                        void handleAddNote();
+                      }
+                    }}
+                    rows={2}
+                    placeholder="Add an internal note… (never sent to customer)"
+                    className="w-full rounded-md border border-border bg-background px-3 py-2.5 text-sm text-foreground placeholder:text-muted-foreground outline-none focus:border-primary focus:ring-2 focus:ring-primary/20 resize-none transition-all"
+                  />
+                  <p className="text-[10px] text-muted-foreground mt-1.5">Ctrl/⌘ + Enter to send</p>
+                </div>
                 <button
                   id="add-note-btn"
+                  type="button"
                   onClick={handleAddNote}
                   disabled={addNote.isPending || !noteText.trim()}
-                  className="self-end rounded-xl bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-40 transition-colors"
+                  className="inline-flex items-center gap-1.5 rounded-md bg-primary px-4 py-2.5 text-sm font-semibold text-primary-foreground hover:bg-primary/90 disabled:opacity-40 transition-colors shadow-sm"
                 >
-                  <Plus className="w-4 h-4" />
+                  {addNote.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
+                  Add
                 </button>
               </div>
             </div>
           )}
+
           {isLocked && (
-            <div className="border-t border-border p-3 bg-orange-500/5 text-xs text-orange-400 text-center">
-              Ticket is escalated. Notes are disabled until a manager returns it.
+            <div className="border-t border-orange-200 dark:border-orange-500/20 bg-orange-50 dark:bg-orange-500/5 px-4 py-3 text-xs text-orange-700 dark:text-orange-400 text-center font-medium shrink-0">
+              Escalated — notes are disabled until a manager returns this ticket.
             </div>
           )}
-        </div>
+        </main>
 
-        {/* RIGHT: Actions sidebar */}
-        <div className="w-56 shrink-0 border-l border-border overflow-y-auto p-4 space-y-5">
-          {/* Status */}
-          {!isLocked && (
-            <Section icon={<ChevronDown className="w-3.5 h-3.5" />} title="Status">
-              <div className="relative">
-                <button
-                  id="status-dropdown"
-                  onClick={() => setStatusOpen(!statusOpen)}
-                  disabled={allowedStatuses.length === 0}
-                  className={`flex w-full items-center justify-between rounded-lg border px-3 py-2 text-xs font-medium ${statusCfg.bg} ${statusCfg.text} ${statusCfg.border} hover:opacity-80 transition-opacity disabled:opacity-50 disabled:cursor-not-allowed`}
-                >
-                  {statusCfg.label}
-                  {allowedStatuses.length > 0 && <ChevronDown className="w-3 h-3 opacity-60" />}
-                </button>
-                {statusOpen && allowedStatuses.length > 0 && (
-                  <>
-                    <div className="fixed inset-0 z-10" onClick={() => setStatusOpen(false)} />
-                    <div className="absolute top-full left-0 right-0 mt-1 z-20 rounded-xl border border-border bg-card shadow-xl overflow-hidden">
-                      {allowedStatuses.map((s) => (
-                        <button
-                          key={s}
-                          onClick={() => handleStatusChange(s)}
-                          className={`flex w-full items-center gap-2 px-3 py-2 text-xs hover:bg-muted transition-colors ${STATUS_CONFIG[s].text}`}
-                        >
-                          {STATUS_CONFIG[s].label}
-                        </button>
-                      ))}
-                    </div>
-                  </>
-                )}
-              </div>
-            </Section>
-          )}
-
-          {/* Priority */}
-          <Section icon={<Tag className="w-3.5 h-3.5" />} title="Priority">
-            {isLocked || isAgent ? (
-              <span className={`text-xs font-semibold ${PRIORITY_CONFIG[ticket.priority].color}`}>
-                {PRIORITY_CONFIG[ticket.priority].label}
-              </span>
-            ) : (
-              <div className="relative">
-                <button
-                  id="priority-dropdown"
-                  onClick={() => setPriorityOpen(!priorityOpen)}
-                  className={`flex w-full items-center justify-between rounded-lg border px-3 py-2 text-xs font-medium ${PRIORITY_CONFIG[ticket.priority].bg} ${PRIORITY_CONFIG[ticket.priority].color} border-border hover:opacity-80 transition-opacity`}
-                >
-                  {PRIORITY_CONFIG[ticket.priority].label}
-                  <ChevronDown className="w-3 h-3 opacity-60" />
-                </button>
-                {priorityOpen && (
-                  <>
-                    <div className="fixed inset-0 z-10" onClick={() => setPriorityOpen(false)} />
-                    <div className="absolute top-full left-0 right-0 mt-1 z-20 rounded-xl border border-border bg-card shadow-xl overflow-hidden">
-                      {(Object.keys(PRIORITY_CONFIG) as TicketPriority[]).map((p) => (
-                        <button
-                          key={p}
-                          onClick={() => handlePriorityChange(p)}
-                          className={`flex w-full items-center gap-2 px-3 py-2 text-xs hover:bg-muted transition-colors ${PRIORITY_CONFIG[p].color}`}
-                        >
-                          {PRIORITY_CONFIG[p].label}
-                        </button>
-                      ))}
-                    </div>
-                  </>
-                )}
-              </div>
+        {/* Right: controls */}
+        <aside className="w-72 shrink-0 border-l border-border bg-card/40 overflow-y-auto">
+          <div className="p-4 space-y-3">
+            {!isLocked && (
+              <Panel title="Status">
+                <div className="relative">
+                  <button
+                    id="status-dropdown"
+                    type="button"
+                    onClick={() => setStatusOpen(!statusOpen)}
+                    disabled={allowedStatuses.length === 0}
+                    className={`flex w-full items-center justify-between rounded-md border px-3 py-2.5 text-xs font-semibold ${statusCfg.bg} ${statusCfg.text} ${statusCfg.border} hover:opacity-90 transition-opacity disabled:opacity-50 disabled:cursor-not-allowed`}
+                  >
+                    {statusCfg.label}
+                    {allowedStatuses.length > 0 && <ChevronDown className="w-3.5 h-3.5 opacity-70" />}
+                  </button>
+                  {statusOpen && allowedStatuses.length > 0 && (
+                    <>
+                      <div className="fixed inset-0 z-10" onClick={() => setStatusOpen(false)} />
+                      <div className="absolute top-full left-0 right-0 mt-1 z-20 rounded-md border border-border bg-card shadow-lg overflow-hidden">
+                        {allowedStatuses.map((s) => (
+                          <button
+                            key={s}
+                            type="button"
+                            onClick={() => handleStatusChange(s)}
+                            className={`flex w-full items-center gap-2 px-3 py-2.5 text-xs font-medium hover:bg-muted transition-colors ${STATUS_CONFIG[s].text}`}
+                          >
+                            {STATUS_CONFIG[s].label}
+                          </button>
+                        ))}
+                      </div>
+                    </>
+                  )}
+                </div>
+              </Panel>
             )}
-          </Section>
 
-          {/* Assign To — person XOR team queue */}
-          <Section icon={<User2 className="w-3.5 h-3.5" />} title="Assign To">
-            {isLocked ? (
-              <div className="flex flex-col gap-0.5">
-                <p className="text-xs text-foreground">
+            <Panel title="Priority">
+              {isLocked || isAgent ? (
+                <span
+                  className={`inline-flex rounded-md border px-2.5 py-1.5 text-xs font-semibold ${priorityCfg.bg} ${priorityCfg.color} ${priorityCfg.border}`}
+                >
+                  {priorityCfg.label}
+                </span>
+              ) : (
+                <div className="relative">
+                  <button
+                    id="priority-dropdown"
+                    type="button"
+                    onClick={() => setPriorityOpen(!priorityOpen)}
+                    className={`flex w-full items-center justify-between rounded-md border px-3 py-2.5 text-xs font-semibold ${priorityCfg.bg} ${priorityCfg.color} ${priorityCfg.border} hover:opacity-90 transition-opacity`}
+                  >
+                    {priorityCfg.label}
+                    <ChevronDown className="w-3.5 h-3.5 opacity-70" />
+                  </button>
+                  {priorityOpen && (
+                    <>
+                      <div className="fixed inset-0 z-10" onClick={() => setPriorityOpen(false)} />
+                      <div className="absolute top-full left-0 right-0 mt-1 z-20 rounded-md border border-border bg-card shadow-lg overflow-hidden">
+                        {(Object.keys(PRIORITY_CONFIG) as TicketPriority[]).map((p) => (
+                          <button
+                            key={p}
+                            type="button"
+                            onClick={() => handlePriorityChange(p)}
+                            className={`flex w-full items-center gap-2 px-3 py-2.5 text-xs font-medium hover:bg-muted transition-colors ${PRIORITY_CONFIG[p].color}`}
+                          >
+                            {PRIORITY_CONFIG[p].label}
+                          </button>
+                        ))}
+                      </div>
+                    </>
+                  )}
+                </div>
+              )}
+            </Panel>
+
+            <Panel title="Assign to">
+              {isLocked ? (
+                <p className="text-xs text-foreground font-medium">
                   {ticket.assignee
                     ? `${ticket.assignee.username}${ticket.team?.name ? ` — ${ticket.team.name}` : ""}`
                     : ticket.team
                       ? `Team queue: ${ticket.team.name}`
-                      : <span className="text-muted-foreground">Unassigned</span>}
+                      : <span className="text-muted-foreground font-normal">Unassigned</span>}
                 </p>
-              </div>
-            ) : (
-              <select
-                id="assignee-select"
-                value={
-                  ticket.assignedTo
-                    ? `user:${ticket.assignedTo}`
-                    : ticket.teamId
-                      ? `team:${ticket.teamId}`
-                      : "unassigned"
-                }
-                onChange={(e) => {
-                  const val = e.target.value;
-                  let tId: string | undefined;
-                  let aId: string | undefined;
-
-                  if (val.startsWith("team:")) {
-                    tId = val.replace("team:", "");
-                    aId = undefined; // team queue — clear person
-                  } else if (val.startsWith("user:")) {
-                    aId = val.replace("user:", "");
-                    const targetUser = agentUsers.find((u) => u.id === aId);
-                    tId = targetUser?.teamId || undefined;
-                  } else {
-                    tId = undefined;
-                    aId = undefined;
+              ) : (
+                <select
+                  id="assignee-select"
+                  value={
+                    ticket.assignedTo
+                      ? `user:${ticket.assignedTo}`
+                      : ticket.teamId
+                        ? `team:${ticket.teamId}`
+                        : "unassigned"
                   }
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    let tId: string | undefined;
+                    let aId: string | undefined;
 
-                  assignTicket
-                    .mutateAsync({
-                      id: ticket.id,
-                      assigneeId: aId ?? "",
-                      teamId: tId ?? "",
-                    })
-                    .then(() => toast.success("Assignment updated"))
-                    .catch((err: any) => toast.error(err.message));
-                }}
-                className="w-full rounded-md border border-border bg-background px-2.5 py-2 text-xs text-foreground outline-none focus:border-primary focus:ring-2 focus:ring-primary/20"
-              >
-                <option value="unassigned">Unassigned</option>
-                {isManagerOrAbove && teams.length > 0 && (
-                  <optgroup label="Team queues">
-                    {teams.map((t) => (
-                      <option key={`team-${t.id}`} value={`team:${t.id}`}>
-                        {t.name} (open queue)
+                    if (val.startsWith("team:")) {
+                      tId = val.replace("team:", "");
+                      aId = undefined;
+                    } else if (val.startsWith("user:")) {
+                      aId = val.replace("user:", "");
+                      const targetUser = agentUsers.find((u) => u.id === aId);
+                      tId = targetUser?.teamId || undefined;
+                    } else {
+                      tId = undefined;
+                      aId = undefined;
+                    }
+
+                    assignTicket
+                      .mutateAsync({
+                        id: ticket.id,
+                        assigneeId: aId ?? "",
+                        teamId: tId ?? "",
+                      })
+                      .then(() => toast.success("Assignment updated"))
+                      .catch((err: any) => toast.error(err.message));
+                  }}
+                  className="w-full rounded-md border border-border bg-background px-3 py-2.5 text-xs text-foreground outline-none focus:border-primary focus:ring-2 focus:ring-primary/20"
+                >
+                  <option value="unassigned">Unassigned</option>
+                  {isManagerOrAbove && teams.length > 0 && (
+                    <optgroup label="Team queues">
+                      {teams.map((t) => (
+                        <option key={`team-${t.id}`} value={`team:${t.id}`}>
+                          {t.name} (open queue)
+                        </option>
+                      ))}
+                    </optgroup>
+                  )}
+                  <optgroup label="People">
+                    {agentUsers.map((u) => (
+                      <option key={`user-${u.id}`} value={`user:${u.id}`}>
+                        {u.name || u.username.split("@")[0]}
+                        {u.team?.name ? ` — ${u.team.name}` : ""}
                       </option>
                     ))}
                   </optgroup>
-                )}
-                <optgroup label="People">
-                  {agentUsers.map((u) => (
-                    <option key={`user-${u.id}`} value={`user:${u.id}`}>
-                      {(u.name || u.username.split("@")[0])}
-                      {u.team?.name ? ` — ${u.team.name}` : ""}
-                    </option>
-                  ))}
-                </optgroup>
-              </select>
-            )}
-          </Section>
+                </select>
+              )}
+            </Panel>
 
-          {/* Activity log */}
-          <Section icon={<Clock className="w-3.5 h-3.5" />} title="Activity">
-            {events.length === 0 ? (
-              <p className="text-xs text-muted-foreground">No activity yet</p>
-            ) : (
-              <ol className="relative ms-2 border-s border-border space-y-0">
-                {events.map((ev) => {
-                  const meta = EVENT_META[ev.type] ?? {
-                    label: ev.type,
-                    icon: CircleDot,
-                    color: "text-muted-foreground",
-                    bg: "bg-muted",
-                  };
-                  const Icon = meta.icon;
-                  return (
-                    <li key={ev.id} className="relative ps-5 pb-4 last:pb-0">
-                      <span
-                        className={`absolute -start-2.5 top-0.5 flex h-5 w-5 items-center justify-center rounded-full border border-border ${meta.bg}`}
-                      >
-                        <Icon className={`h-2.5 w-2.5 ${meta.color}`} />
-                      </span>
-                      <p className={`text-xs font-medium ${meta.color}`}>{meta.label}</p>
-                      {ev.note && (
-                        <p className="mt-1 text-[11px] text-muted-foreground leading-snug rounded-md bg-muted/50 px-2 py-1">
-                          {ev.note}
+            <Panel title="Activity">
+              {events.length === 0 ? (
+                <p className="text-xs text-muted-foreground">No activity yet</p>
+              ) : (
+                <ol className="relative ms-1.5 border-s border-border space-y-0">
+                  {events.map((ev) => {
+                    const meta = EVENT_META[ev.type] ?? {
+                      label: ev.type,
+                      icon: CircleDot,
+                      color: "text-muted-foreground",
+                      bg: "bg-muted",
+                    };
+                    const Icon = meta.icon;
+                    return (
+                      <li key={ev.id} className="relative ps-5 pb-4 last:pb-0">
+                        <span
+                          className={`absolute -start-2.5 top-0.5 flex h-5 w-5 items-center justify-center rounded-full border border-border ${meta.bg}`}
+                        >
+                          <Icon className={`h-2.5 w-2.5 ${meta.color}`} />
+                        </span>
+                        <p className={`text-xs font-semibold ${meta.color}`}>{meta.label}</p>
+                        {ev.note && (
+                          <p className="mt-1 text-[11px] text-muted-foreground leading-snug rounded-md bg-muted/60 px-2 py-1">
+                            {ev.note}
+                          </p>
+                        )}
+                        <p className="mt-0.5 text-[10px] text-muted-foreground">
+                          {formatDistanceToNow(new Date(ev.createdAt), { addSuffix: true })}
                         </p>
-                      )}
-                      <p className="mt-0.5 text-[10px] text-muted-foreground/80">
-                        {formatDistanceToNow(new Date(ev.createdAt), { addSuffix: true })}
-                      </p>
-                    </li>
-                  );
-                })}
-              </ol>
-            )}
-          </Section>
-        </div>
+                      </li>
+                    );
+                  })}
+                </ol>
+              )}
+            </Panel>
+          </div>
+        </aside>
       </div>
 
-      {showEscalate && (
-        <EscalateModal ticket={ticket} onClose={() => setShowEscalate(false)} />
-      )}
+      {showEscalate && <EscalateModal ticket={ticket} onClose={() => setShowEscalate(false)} />}
     </div>
   );
 }
 
-function Section({
+function Field({
+  label,
   icon,
-  title,
   children,
 }: {
+  label: string;
   icon: React.ReactNode;
-  title: string;
   children: React.ReactNode;
 }) {
   return (
     <div>
-      <div className="flex items-center gap-1.5 text-muted-foreground mb-2">
+      <div className="flex items-center gap-1.5 text-muted-foreground mb-1.5">
         {icon}
-        <span className="text-[10px] font-semibold uppercase tracking-wide">{title}</span>
+        <span className="text-[10px] font-semibold uppercase tracking-wide">{label}</span>
       </div>
       {children}
+    </div>
+  );
+}
+
+function Panel({ title, children }: { title: string; children: React.ReactNode }) {
+  return (
+    <div className="rounded-lg border border-border bg-card p-3.5 shadow-sm">
+      <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground mb-2.5">{title}</p>
+      {children}
+    </div>
+  );
+}
+
+function TabButton({
+  active,
+  onClick,
+  children,
+  count,
+}: {
+  active: boolean;
+  onClick: () => void;
+  children: React.ReactNode;
+  count?: number;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={`relative px-3 py-3 text-xs font-semibold transition-colors ${
+        active ? "text-primary" : "text-muted-foreground hover:text-foreground"
+      }`}
+    >
+      <span className="inline-flex items-center gap-1.5">
+        {children}
+        {typeof count === "number" && (
+          <span
+            className={`rounded-md px-1.5 py-0.5 text-[10px] font-bold ${
+              active ? "bg-primary/10 text-primary" : "bg-muted text-muted-foreground"
+            }`}
+          >
+            {count}
+          </span>
+        )}
+      </span>
+      {active && <span className="absolute inset-x-2 bottom-0 h-0.5 rounded-full bg-primary" />}
+    </button>
+  );
+}
+
+function EmptyState({
+  icon,
+  title,
+  subtitle,
+}: {
+  icon: React.ReactNode;
+  title: string;
+  subtitle: string;
+}) {
+  return (
+    <div className="flex flex-col items-center justify-center h-full min-h-[220px] text-center px-6">
+      <div className="mb-3 text-muted-foreground/40">{icon}</div>
+      <p className="text-sm font-semibold text-foreground">{title}</p>
+      <p className="text-xs text-muted-foreground mt-1 max-w-xs">{subtitle}</p>
     </div>
   );
 }
