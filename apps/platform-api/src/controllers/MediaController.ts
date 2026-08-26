@@ -10,6 +10,8 @@ import {
 import {
   channelSupportsAttachments,
   normalizeMediaItems,
+  getChannelMediaLimit,
+  formatBytes,
 } from "../services/channel-media/index.js";
 import { parseConversationId } from "../utils/conversationId.js";
 
@@ -81,21 +83,23 @@ export class MediaController {
     const part = await request.file();
     if (!part) return reply.code(400).send({ error: "file is required" });
 
+    const mimeType = part.mimetype || "application/octet-stream";
+    const filename = part.filename || "file";
+    
     const chunks: Buffer[] = [];
     let total = 0;
-    const max = channelMediaMaxBytes();
+    const max = getChannelMediaLimit(channelType, mimeType);
+    
     for await (const chunk of part.file) {
       total += chunk.length;
       if (total > max) {
         return reply.code(413).send({
-          error: `File exceeds ${Math.floor(max / (1024 * 1024))}MB limit`,
+          error: `File exceeds ${formatBytes(max)} limit for ${channelType}`,
         });
       }
       chunks.push(chunk);
     }
     const buffer = Buffer.concat(chunks);
-    const mimeType = part.mimetype || "application/octet-stream";
-    const filename = part.filename || "file";
     const key = channelMediaKey(channelType, customerId, filename);
     await putObject({ key, body: buffer, contentType: mimeType });
 

@@ -19,9 +19,11 @@ import {
   useSuppressConversation,
   useUpdateConversation,
   markConversationRead,
+  useTickets,
   type ChannelType,
   type Conversation,
 } from "../../api";
+import { useNavigate } from "react-router-dom";
 import { useAppStore } from "../../store";
 import {
   CHANNELS,
@@ -42,6 +44,8 @@ import {
   pickPrimaryEmailThread,
 } from "../../components/inbox";
 import { ConfirmDialog } from "../../components/ui/confirm-dialog";
+import { CreateTicketModal } from "../../components/tickets/CreateTicketModal";
+import { TicketIcon, Plus } from "lucide-react";
 
 type ChannelFilter = "all" | ChannelType;
 type PendingDelete =
@@ -90,7 +94,9 @@ export function InboxPage() {
   const [selectedEmailThreadId, setSelectedEmailThreadId] = useState<string | null>(null);
   const [composingNewEmail, setComposingNewEmail] = useState(false);
   const [readScopeKeys, setReadScopeKeys] = useState<Set<string>>(() => new Set());
+  const [createTicketConv, setCreateTicketConv] = useState<{conversationId: string; channel: string; customerId?: string} | null>(null);
   const focusedContactRef = useRef<string | null>(null);
+  const navigate = useNavigate();
 
   const {
     data: conversations,
@@ -386,10 +392,14 @@ export function InboxPage() {
   ]);
 
   const conversationId = selectedConversation?.id;
-  const {
-    data: messages,
-    isPending: messagesPending,
-  } = useMessages(conversationId);
+  const { data: messages = [], isLoading: messagesLoading } = useMessages(
+    selectedConversation?.id
+  );
+
+  const { data: linkedTickets } = useTickets(
+    selectedConversation ? { conversationId: selectedConversation.id } : undefined
+  );
+  const existingTicket = linkedTickets?.[0];
 
   /**
    * Never paint messages until this exact conversation is ready.
@@ -401,9 +411,9 @@ export function InboxPage() {
     setMessagesReadyFor(null);
   }, [conversationId]);
   useEffect(() => {
-    if (!conversationId || messagesPending) return;
+    if (!conversationId || messagesLoading) return;
     setMessagesReadyFor(conversationId);
-  }, [conversationId, messagesPending]);
+  }, [conversationId, messagesLoading]);
   const showMessagesLoader =
     Boolean(conversationId) && messagesReadyFor !== conversationId;
 
@@ -823,6 +833,54 @@ export function InboxPage() {
         />
       )}
 
+      {/* Create Ticket floating button — visible when a conversation is selected */}
+      {selectedConversation && (
+        existingTicket ? (
+          <div className="fixed bottom-8 right-8 z-30 flex flex-col items-end gap-2">
+            <button
+              id="inbox-view-ticket-btn"
+              onClick={() => navigate(`/tickets/${existingTicket.id}`)}
+              title={`View Ticket #${existingTicket.number}`}
+              className="flex items-center gap-2 rounded-2xl bg-indigo-600 px-4 py-2.5 text-sm font-medium text-white shadow-lg shadow-indigo-500/30 hover:bg-indigo-500 transition-all hover:scale-105 active:scale-95"
+            >
+              <TicketIcon className="w-4 h-4" />
+              View Ticket #{existingTicket.number}
+            </button>
+            <button
+              onClick={() => {
+                if (window.confirm("An active ticket already exists for this conversation. Are you sure you want to create another one?")) {
+                  setCreateTicketConv({
+                    conversationId: selectedConversation.id,
+                    channel: selectedConversation.channelType,
+                    customerId: selectedConversation.contactId,
+                  });
+                }
+              }}
+              className="flex items-center gap-1.5 rounded-xl bg-card border border-border px-3 py-1.5 text-xs font-medium text-muted-foreground shadow-lg hover:bg-muted hover:text-foreground transition-all"
+            >
+              <Plus className="w-3.5 h-3.5" />
+              Create Another
+            </button>
+          </div>
+        ) : (
+          <button
+            id="inbox-create-ticket-btn"
+            onClick={() =>
+              setCreateTicketConv({
+                conversationId: selectedConversation.id,
+                channel: selectedConversation.channelType,
+                customerId: selectedConversation.contactId,
+              })
+            }
+            title="Create Ticket from this conversation"
+            className="fixed bottom-8 right-8 z-30 flex items-center gap-2 rounded-2xl bg-primary px-4 py-2.5 text-sm font-medium text-primary-foreground shadow-lg shadow-primary/30 hover:bg-primary/90 transition-all hover:scale-105 active:scale-95"
+          >
+            <TicketIcon className="w-4 h-4" />
+            Create Ticket
+          </button>
+        )
+      )}
+
       {customerContextOpen && (
         <CustomerDetails
           key={selectedContactId ?? "none"}
@@ -831,6 +889,16 @@ export function InboxPage() {
           onClose={() => setCustomerContextOpen(false)}
         />
       )}
+
+      {createTicketConv && (
+        <CreateTicketModal
+          conversationId={createTicketConv.conversationId}
+          channel={createTicketConv.channel}
+          customerId={createTicketConv.customerId}
+          onClose={() => setCreateTicketConv(null)}
+        />
+      )}
     </div>
   );
 }
+

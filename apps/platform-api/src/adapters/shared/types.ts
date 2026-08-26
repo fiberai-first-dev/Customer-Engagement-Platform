@@ -78,6 +78,7 @@ export interface InboundAttachment {
 }
 
 export interface NormalizedInboundMessage {
+  type?: "message";
   externalId: string;
   externalThreadId?: string;
   /** WhatsApp phone E.164, IG scoped id, email address */
@@ -103,6 +104,15 @@ export interface NormalizedInboundMessage {
   raw: unknown;
 }
 
+export interface NormalizedStatusUpdate {
+  type: "status";
+  externalId: string;
+  status: "sent" | "delivered" | "read" | "failed";
+  error?: string;
+  occurredAt: Date;
+  raw: unknown;
+}
+
 export interface WebhookVerifyQuery {
   "hub.mode"?: string;
   "hub.verify_token"?: string;
@@ -115,6 +125,6 @@ export interface WebhookVerifyQuery {
 export interface ChannelAdapter<TConfig extends ChannelConfig = ChannelConfig> {
   readonly channelType: ChannelType;
   verifyWebhook?(config: TConfig, query: WebhookVerifyQuery): string | null;
-  parseInbound(config: TConfig, payload: unknown): NormalizedInboundMessage[];
+  parseInbound(config: TConfig, payload: unknown): (NormalizedInboundMessage | NormalizedStatusUpdate)[];
   sendMessage(config: TConfig, message: OutboundTextMessage): Promise<SendResult>;
 }

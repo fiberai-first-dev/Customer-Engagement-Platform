@@ -37,15 +37,54 @@ enum ContentType {
   unknown
 }
 
-/// Login users (password stored as bcrypt hash)
+enum Role {
+  SUPER_ADMIN
+  ADMIN
+  MANAGER
+  AGENT
+}
+
+/// Login users (Google Auth)
 model User {
   id           String   @id
-  username     String   @unique
-  passwordHash String   @map("password_hash")
+  username     String   @unique // We'll map this to their email
+  googleId     String?  @unique @map("google_id")
+  role         Role     @default(AGENT)
+  teamId       String?  @map("team_id")
+  isActive     Boolean  @default(true) @map("is_active")
+  createdById  String?  @map("created_by_id")
   createdAt    DateTime @default(now()) @map("created_at")
   updatedAt    DateTime @updatedAt @map("updated_at")
 
+  team         Team?    @relation(fields: [teamId], references: [id])
+  createdBy    User?    @relation("UserCreator", fields: [createdById], references: [id])
+  createdUsers User[]   @relation("UserCreator")
+
+  tickets      Ticket[] @relation("TicketAssignee")
+  ticketsCreated Ticket[] @relation("TicketCreator")
+  ticketNotes  TicketNote[] @relation("TicketNoteAuthor")
+  
+  // Teams where user is manager
+  managedTeams Team[]   @relation("TeamManager")
+
   @@map("users")
+}
+
+model Team {
+  id             String   @id
+  name           String
+  parentTeamId   String?  @map("parent_team_id")
+  managerId      String?  @map("manager_id")
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  parentTeam     Team?    @relation("TeamHierarchy", fields: [parentTeamId], references: [id])
+  subTeams       Team[]   @relation("TeamHierarchy")
+  
+  manager        User?    @relation("TeamManager", fields: [managerId], references: [id])
+  members        User[]
+  tickets        Ticket[]
+
+  @@map("teams")
 }
 
 /// Unified customer (person) across channels
@@ -61,6 +100,7 @@ model Customer {
   whatsappIdentities  WhatsAppChannel[]
   instagramIdentities InstagramChannel[]
   emailIdentities     EmailChannel[]
+  tickets             Ticket[]
 
   @@index([resolved])
   @@map("customers")
@@ -219,4 +259,109 @@ model SuppressedInbound {
   @@unique([channelType, externalId])
   @@index([customerId])
   @@map("suppressed_inbounds")
+}
+
+enum TicketStatus {
+  OPEN
+  IN_PROGRESS
+  ESCALATED
+  RESOLVED
+  CLOSED
+}
+
+enum TicketPriority {
+  LOW
+  MEDIUM
+  HIGH
+  URGENT
+}
+
+model Ticket {
+  id          String         @id
+  number      Int            @default(autoincrement())
+  orgId       String?        @map("org_id")
+  conversationId String?     @map("conversation_id")
+  subject     String
+  description String?
+  status      TicketStatus   @default(OPEN)
+  priority    TicketPriority @default(MEDIUM)
+  channel     String?
+  customerId  String?        @map("customer_id")
+  
+  assignedTo  String?        @map("assigned_to")
+  assignee    User?          @relation("TicketAssignee", fields: [assignedTo], references: [id])
+  
+  teamId      String?        @map("team_id")
+  team        Team?          @relation(fields: [teamId], references: [id])
+  
+  createdBy   String?        @map("created_by")
+  creator     User?          @relation("TicketCreator", fields: [createdBy], references: [id])
+
+  escalatedToUserId String?  @map("escalated_to_user_id")
+  escalatedToTeamId String?  @map("escalated_to_team_id")
+
+  resolvedAt  DateTime?      @map("resolved_at")
+  closedAt    DateTime?      @map("closed_at")
+
+  createdAt   DateTime       @default(now()) @map("created_at")
+  updatedAt   DateTime       @updatedAt @map("updated_at")
+
+  events      TicketEvent[]
+  notes       TicketNote[]
+  
+  customer    Customer?      @relation(fields: [customerId], references: [id])
+
+  @@index([status])
+  @@index([assignedTo])
+  @@index([teamId])
+  @@index([createdBy])
+  @@index([customerId])
+  @@map("tickets")
+}
+
+enum TicketEventType {
+  CREATED
+  ASSIGNED
+  REASSIGNED
+  STATUS_CHANGED
+  PRIORITY_CHANGED
+  TEAM_CHANGED
+  ESCALATED
+  RETURNED
+  NOTE_ADDED
+  REPLIED
+  RESOLVED
+  CLOSED
+  REOPENED
+}
+
+model TicketEvent {
+  id          String          @id
+  ticketId    String          @map("ticket_id")
+  actorId     String?         @map("actor_id")
+  type        TicketEventType
+  fromValue   Json?           @map("from_value")
+  toValue     Json?           @map("to_value")
+  note        String?
+  createdAt   DateTime        @default(now()) @map("created_at")
+
+  ticket      Ticket          @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+
+  @@index([ticketId])
+  @@map("ticket_events")
+}
+
+model TicketNote {
+  id          String    @id
+  ticketId    String    @map("ticket_id")
+  authorId    String    @map("author_id")
+  body        String
+  isInternal  Boolean   @default(true) @map("is_internal")
+  createdAt   DateTime  @default(now()) @map("created_at")
+
+  ticket      Ticket    @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  author      User      @relation("TicketNoteAuthor", fields: [authorId], references: [id])
+
+  @@index([ticketId])
+  @@map("ticket_notes")
 }

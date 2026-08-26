@@ -2,6 +2,7 @@ import type {
   ChannelAdapter,
   InstagramChannelConfig,
   NormalizedInboundMessage,
+  NormalizedStatusUpdate,
   OutboundTextMessage,
   SendResult,
   WebhookVerifyQuery,
@@ -71,13 +72,14 @@ export async function resolveInstagramSenderProfile(
 
 export async function enrichInstagramInboundNames(
   config: InstagramChannelConfig,
-  messages: NormalizedInboundMessage[],
-): Promise<NormalizedInboundMessage[]> {
+  messages: (NormalizedInboundMessage | NormalizedStatusUpdate)[],
+): Promise<(NormalizedInboundMessage | NormalizedStatusUpdate)[]> {
   const cache = new Map<
     string,
     { username?: string; name?: string; profilePic?: string } | null
   >();
   for (const message of messages) {
+    if (message.type !== "message") continue;
     const id = message.senderId;
     if (!cache.has(id)) {
       cache.set(id, await resolveInstagramSenderProfile(config, id));
@@ -124,10 +126,47 @@ function extractText(messaging: Record<string, unknown>): {
 
 function pushFromEvent(
   ev: Record<string, unknown>,
-  out: NormalizedInboundMessage[],
+  out: (NormalizedInboundMessage | NormalizedStatusUpdate)[],
 ) {
-  // Ignore delivery/read/reaction webhooks — they are not DMs
-  if (ev.read || ev.delivery || ev.reaction || ev.optin) return;
+  // Ignore reaction/optin webhooks — they are not DMs
+  if (ev.reaction || ev.optin) return;
+
+  if (ev.delivery || ev.read) {
+    const delivery = asRecord(ev.delivery);
+    const read = asRecord(ev.read);
+    const ts = Number(ev.timestamp);
+    const occurredAt = Number.isFinite(ts)
+      ? new Date(ts < 1e12 ? ts * 1000 : ts)
+      : new Date();
+
+    if (delivery) {
+      const mids = Array.isArray(delivery.mids) ? delivery.mids : [];
+      for (const mid of mids) {
+        out.push({
+          type: "status",
+          externalId: String(mid),
+          status: "delivered",
+          occurredAt,
+          raw: ev,
+        });
+      }
+    } else if (read) {
+      // Instagram read receipts often don't have mids, they are just watermark.
+      // But we can parse if they provide mids, otherwise we may need watermark logic.
+      // For now, if no mids, we skip.
+      const mids = Array.isArray(read.mids) ? read.mids : [];
+      for (const mid of mids) {
+        out.push({
+          type: "status",
+          externalId: String(mid),
+          status: "read",
+          occurredAt,
+          raw: ev,
+        });
+      }
+    }
+    return;
+  }
 
   const sender = asRecord(ev.sender);
   const recipient = asRecord(ev.recipient);
@@ -157,6 +196,7 @@ function pushFromEvent(
     : new Date();
 
   out.push({
+    type: "message",
     externalId: mid,
     externalThreadId: customerId,
     senderId: customerId,
@@ -183,11 +223,14 @@ export const instagramAdapter: ChannelAdapter<InstagramChannelConfig> = {
     return null;
   },
 
-  parseInbound(_config: InstagramChannelConfig, payload: unknown): NormalizedInboundMessage[] {
+  parseInbound(_config: InstagramChannelConfig, payload: unknown): (NormalizedInboundMessage | NormalizedStatusUpdate)[] {
     const root = asRecord(payload);
     if (!root) return [];
+    if (root.object !== "instagram" && root.object !== "page") {
+      return [];
+    }
 
-    const out: NormalizedInboundMessage[] = [];
+    const out: (NormalizedInboundMessage | NormalizedStatusUpdate)[] = [];
 
     // Meta dashboard "Send to My Server" sample:
     // { field: "messages", value: { sender, recipient, timestamp, message } }

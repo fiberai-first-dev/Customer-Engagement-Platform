@@ -1,8 +1,9 @@
 /**
  * Database bootstrap without `prisma migrate deploy` (hangs on Supabase pooler).
  *
- * Empty / legacy / incomplete DB → wipe CEP objects and apply the current migration.
- * Current schema → no-op (baseline history if needed).
+ * Never DROPs tables. Fresh DB → apply all migration folders.
+ * Existing DB → apply pending only.
+ * To wipe data: `docker compose down -v` (removes the Postgres volume).
  */
 import "../config/load-env.js";
 import { existsSync, readFileSync, readdirSync } from "node:fs";
@@ -117,11 +118,6 @@ async function markApplied(prisma: PrismaClient, name: string) {
   );
 }
 
-async function baselineAllMigrations(prisma: PrismaClient) {
-  await ensureMigrationsTable(prisma);
-  for (const folder of listMigrationFolders()) await markApplied(prisma, folder);
-}
-
 function splitSql(sql: string): string[] {
   const chunks: string[] = [];
   let buf = "";
@@ -154,35 +150,6 @@ async function applySqlFile(prisma: PrismaClient, filePath: string) {
   }
 }
 
-async function resetCepSchema(prisma: PrismaClient) {
-  console.log("[migrate] Resetting CEP tables and enums…");
-  await prisma.$executeRawUnsafe(`
-    DROP TABLE IF EXISTS
-      "messages",
-      "webhook_events",
-      "suppressed_inbounds",
-      "whatsapp_channel",
-      "instagram_channel",
-      "email_channel",
-      "channels_config",
-      "shopify_config",
-      "customers",
-      "users",
-      "conversations",
-      "contacts",
-      "inboxes",
-      "accounts",
-      "contact_identities",
-      "_prisma_migrations"
-    CASCADE
-  `);
-  await prisma.$executeRawUnsafe(`DROP TYPE IF EXISTS "ChannelType" CASCADE`);
-  await prisma.$executeRawUnsafe(`DROP TYPE IF EXISTS "ConversationStatus" CASCADE`);
-  await prisma.$executeRawUnsafe(`DROP TYPE IF EXISTS "MessageDirection" CASCADE`);
-  await prisma.$executeRawUnsafe(`DROP TYPE IF EXISTS "MessageStatus" CASCADE`);
-  await prisma.$executeRawUnsafe(`DROP TYPE IF EXISTS "ContentType" CASCADE`);
-}
-
 async function appliedMigrationNames(prisma: PrismaClient): Promise<Set<string>> {
   await ensureMigrationsTable(prisma);
   const rows = await prisma.$queryRawUnsafe<Array<{ migration_name: string }>>(
@@ -193,37 +160,17 @@ async function appliedMigrationNames(prisma: PrismaClient): Promise<Set<string>>
 
 async function applyPendingMigrations(prisma: PrismaClient, folders: string[]) {
   const applied = await appliedMigrationNames(prisma);
+  let appliedCount = 0;
   for (const folder of folders) {
     if (applied.has(folder)) continue;
     await applySqlFile(prisma, migrationSqlPath(folder));
     await markApplied(prisma, folder);
+    appliedCount += 1;
     console.log(`[migrate] applied pending ${folder}`);
   }
-}
-
-async function schemaLooksCurrent(prisma: PrismaClient): Promise<boolean> {
-  return (
-    (await tableExists(prisma, "users")) &&
-    (await tableExists(prisma, "customers")) &&
-    (await tableExists(prisma, "channels_config")) &&
-    (await tableExists(prisma, "shopify_config")) &&
-    (await tableExists(prisma, "whatsapp_channel")) &&
-    (await tableExists(prisma, "instagram_channel")) &&
-    (await tableExists(prisma, "email_channel")) &&
-    (await tableExists(prisma, "messages")) &&
-    (await tableExists(prisma, "webhook_events")) &&
-    !(await tableExists(prisma, "accounts")) &&
-    !(await tableExists(prisma, "contacts")) &&
-    !(await tableExists(prisma, "inboxes"))
-  );
-}
-
-async function isLegacySchema(prisma: PrismaClient): Promise<boolean> {
-  return (
-    (await tableExists(prisma, "accounts")) ||
-    (await tableExists(prisma, "contacts")) ||
-    (await tableExists(prisma, "inboxes"))
-  );
+  if (appliedCount === 0) {
+    console.log("[migrate] No pending migrations — schema up to date");
+  }
 }
 
 function redactDbHost(url: string): string {
@@ -255,24 +202,15 @@ export async function runDatabaseMigrations(): Promise<void> {
     }
     console.log(`[migrate] found ${folders.length} migration folder(s)`);
 
-    if (await schemaLooksCurrent(prisma)) {
-      console.log("[migrate] Core schema present — applying any pending migrations");
-      await applyPendingMigrations(prisma, folders);
-      return;
-    }
+    const empty =
+      !(await tableExists(prisma, "users")) && !(await tableExists(prisma, "customers"));
+    console.log(
+      empty
+        ? "[migrate] Empty database — applying migrations"
+        : "[migrate] Existing database — applying pending migrations only (never wipes)",
+    );
 
-    if (await isLegacySchema(prisma)) {
-      console.log("[migrate] Legacy schema detected — wiping for customers/channels rebuild");
-    } else {
-      console.log("[migrate] Empty or incomplete schema — applying fresh migrations");
-    }
-
-    await resetCepSchema(prisma);
-    for (const folder of folders) {
-      await applySqlFile(prisma, migrationSqlPath(folder));
-    }
-    await baselineAllMigrations(prisma);
-    console.log("[migrate] Fresh schema ready");
+    await applyPendingMigrations(prisma, folders);
   } finally {
     await prisma.$disconnect();
   }

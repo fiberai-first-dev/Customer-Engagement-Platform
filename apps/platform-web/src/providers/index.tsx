@@ -1,3 +1,4 @@
+import { GoogleOAuthProvider } from "@react-oauth/google";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { useEffect } from "react";
 import { useAppStore } from "../store";
@@ -21,9 +22,11 @@ export function Providers({ children }: { children: React.ReactNode }) {
   }, [theme]);
 
   return (
-    <QueryClientProvider client={queryClient}>
-      {children}
-      <Toaster richColors position="top-center" />
-    </QueryClientProvider>
+    <GoogleOAuthProvider clientId={import.meta.env.VITE_GOOGLE_CLIENT_ID ?? ""}>
+      <QueryClientProvider client={queryClient}>
+        {children}
+        <Toaster richColors position="top-center" />
+      </QueryClientProvider>
+    </GoogleOAuthProvider>
   );
 }

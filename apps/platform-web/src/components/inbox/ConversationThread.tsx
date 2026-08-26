@@ -11,9 +11,20 @@ import {
   Send,
   Trash2,
   X,
+  FileImage,
+  FileVideo,
+  FileAudio,
+  FileText,
+  AlertTriangle,
 } from "lucide-react";
 import type { ChannelType, Conversation, Message } from "../../api";
-import { uploadConversationAttachment, channelSupportsAttachments } from "../../lib/channel-media";
+import {
+  uploadConversationAttachment,
+  channelSupportsAttachments,
+  getChannelMediaLimit,
+  formatBytes,
+} from "../../lib/channel-media";
+import { useAuthStore } from "../../store/auth";
 import { MessageMedia } from "./MessageMedia";
 import { Button } from "../ui/button";
 import { toast } from "sonner";
@@ -180,9 +191,13 @@ export function ConversationThread({
   onToggleCustomerContext,
   enabledChannels,
 }: Props) {
+  const user = useAuthStore((s) => s.user);
+  const isAdmin = user?.role === "SUPER_ADMIN" || user?.role === "ADMIN";
+
   const [draft, setDraft] = useState("");
   const [subject, setSubject] = useState("");
   const [pendingFile, setPendingFile] = useState<File | null>(null);
+  const [fileError, setFileError] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [selecting, setSelecting] = useState(false);
@@ -273,6 +288,7 @@ export function ConversationThread({
       setDraft("");
       setSubject("");
       setPendingFile(null);
+      setFileError(null);
     }
   };
 
@@ -406,7 +422,7 @@ export function ConversationThread({
                       Select messages
                     </button>
                   )}
-                  {onClearChat && (
+                  {onClearChat && isAdmin && (
                     <button
                       type="button"
                       role="menuitem"
@@ -449,21 +465,22 @@ export function ConversationThread({
             >
               Select all
             </Button>
-            <Button
-              type="button"
-              variant="destructive"
-              size="sm"
-              className="gap-2"
-              disabled={selectedIds.size === 0 || busy}
-              onClick={() => void handleDeleteSelected()}
-            >
-              {deletingMessages ? (
-                <Loader2 className="h-4 w-4 animate-spin" />
-              ) : (
-                <Trash2 className="h-4 w-4" />
-              )}
-              Delete
-            </Button>
+            {isAdmin && (
+              <Button
+                type="button"
+                variant="destructive"
+                size="sm"
+                onClick={() => void handleDeleteSelected()}
+                disabled={selectedIds.size === 0 || busy}
+              >
+                {deletingMessages ? (
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                ) : (
+                  <Trash2 className="mr-2 h-4 w-4" />
+                )}
+                Delete selected
+              </Button>
+            )}
             <Button
               type="button"
               variant="ghost"
@@ -779,14 +796,45 @@ export function ConversationThread({
                     className="w-full border-b border-border bg-transparent px-2 py-2 text-sm font-semibold placeholder:font-normal focus:outline-none"
                   />
                 )}
-                {pendingFile && (
-                  <div className="flex items-center gap-2 rounded-md bg-muted/50 px-2 py-1.5 text-xs">
-                    <Paperclip className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
-                    <span className="min-w-0 flex-1 truncate">{pendingFile.name}</span>
+                {fileError && (
+                  <div className="flex items-center justify-between rounded-md bg-red-500/10 border border-red-500/20 px-3 py-2 text-xs text-red-600 dark:text-red-400">
+                    <div className="flex items-center gap-2">
+                      <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
+                      <span>{fileError}</span>
+                    </div>
                     <button
                       type="button"
-                      className="text-muted-foreground hover:text-foreground"
-                      onClick={() => setPendingFile(null)}
+                      className="text-red-500 hover:text-red-700"
+                      onClick={() => setFileError(null)}
+                    >
+                      <X className="h-3.5 w-3.5" />
+                    </button>
+                  </div>
+                )}
+                {pendingFile && (
+                  <div className="flex items-center gap-2 rounded-md bg-muted/50 px-3 py-2 text-sm border border-border">
+                    {pendingFile.type.startsWith("image/") ? (
+                      <FileImage className="h-4 w-4 shrink-0 text-blue-400" />
+                    ) : pendingFile.type.startsWith("video/") ? (
+                      <FileVideo className="h-4 w-4 shrink-0 text-purple-400" />
+                    ) : pendingFile.type.startsWith("audio/") ? (
+                      <FileAudio className="h-4 w-4 shrink-0 text-amber-400" />
+                    ) : pendingFile.type.includes("pdf") ? (
+                      <FileText className="h-4 w-4 shrink-0 text-red-400" />
+                    ) : (
+                      <Paperclip className="h-4 w-4 shrink-0 text-muted-foreground" />
+                    )}
+                    <span className="min-w-0 flex-1 truncate font-medium">{pendingFile.name}</span>
+                    <span className="text-xs text-muted-foreground whitespace-nowrap">
+                      {formatBytes(pendingFile.size)}
+                    </span>
+                    <button
+                      type="button"
+                      className="ml-2 rounded-full p-1 text-muted-foreground hover:bg-background hover:text-foreground transition-colors"
+                      onClick={() => {
+                        setPendingFile(null);
+                        setFileError(null);
+                      }}
                       aria-label="Remove attachment"
                     >
                       <X className="h-3.5 w-3.5" />
@@ -803,7 +851,16 @@ export function ConversationThread({
                         accept="image/*,video/*,audio/*,.pdf,.doc,.docx,.xls,.xlsx,.txt,.zip"
                         onChange={(e) => {
                           const file = e.target.files?.[0];
-                          if (file) setPendingFile(file);
+                          if (!file) return;
+                          
+                          const limit = getChannelMediaLimit(activeTab, file.type || "application/octet-stream");
+                          if (file.size > limit) {
+                            setFileError(`File too large (${formatBytes(limit)} limit for ${channelLabel(activeTab)})`);
+                            setPendingFile(null);
+                          } else {
+                            setFileError(null);
+                            setPendingFile(file);
+                          }
                           e.target.value = "";
                         }}
                       />
@@ -842,7 +899,12 @@ export function ConversationThread({
                   <Button
                     size="icon"
                     onClick={handleSend}
-                    disabled={(!draft.trim() && !pendingFile) || sending || uploading}
+                    disabled={
+                      (!draft.trim() && !pendingFile) || 
+                      sending || 
+                      uploading || 
+                      fileError !== null
+                    }
                     className="mb-0.5 h-9 w-9 shrink-0"
                   >
                     {sending || uploading ? (

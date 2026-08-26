@@ -8,3 +8,4 @@ export type {
 export { resolveInboundMedia, normalizeMediaItems } from "./types.js";
 export { getChannelMediaHandler, channelSupportsAttachments } from "./registry.js";
 export { listGmailAttachmentParts } from "./email.js";
+export * from "./limits.js";

@@ -110,6 +110,9 @@ export class ConversationController {
     request: FastifyRequest<{ Params: { id: string } }>,
     reply: FastifyReply,
   ) {
+    if (request.user?.role !== "SUPER_ADMIN" && request.user?.role !== "ADMIN") {
+      return reply.code(403).send({ error: "Only admins can delete conversations" });
+    }
     try {
       const result = await ConversationService.suppress(request.params.id);
       return reply.send(result);
@@ -125,6 +128,9 @@ export class ConversationController {
     }>,
     reply: FastifyReply,
   ) {
+    if (request.user?.role !== "SUPER_ADMIN" && request.user?.role !== "ADMIN") {
+      return reply.code(403).send({ error: "Only admins can delete messages" });
+    }
     const messageIds = request.body?.messageIds;
     if (!Array.isArray(messageIds) || messageIds.length === 0) {
       return reply.code(400).send({ error: "messageIds required" });

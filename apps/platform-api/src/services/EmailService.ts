@@ -139,6 +139,10 @@ async function processGmailMessageIds(input: {
       }
 
       const first = normalized[0]!;
+      if (first.type === "status") {
+        skipped++;
+        continue;
+      }
       const peer =
         first.direction === "outgoing"
           ? first.peerId ?? first.senderEmail ?? first.senderId

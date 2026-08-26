@@ -20,5 +20,5 @@ COPY --from=build /app/prisma ./prisma
 COPY --from=build /app/public ./public
 COPY package.json ./
 EXPOSE 4100
-# server.ts runs SQL migrate/repair before listen (no prisma migrate deploy)
+# On boot: server.ts applies pending SQL migrations only (never DROPs tables).
 CMD ["node", "dist/server.js"]

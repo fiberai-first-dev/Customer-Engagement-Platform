@@ -46,4 +46,6 @@ services:
       - platform-api
 
 volumes:
+  # Named volume — survives `docker compose down` (data lost only with `down -v`)
   cep_pg_data:
+    name: cep-apps-pg-data

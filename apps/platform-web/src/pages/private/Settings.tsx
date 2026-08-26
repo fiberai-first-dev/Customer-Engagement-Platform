@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
-import { useSearchParams } from "react-router-dom";
+import { useSearchParams, Navigate } from "react-router-dom";
+import { useAuthStore } from "../../store/auth";
 import { useQueryClient } from "@tanstack/react-query";
 import { Button } from "../../components/ui/button";
 import { Input } from "../../components/ui/input";
@@ -360,6 +361,7 @@ function ChannelRow({
 export function SettingsPage() {
   const [searchParams, setSearchParams] = useSearchParams();
   const queryClient = useQueryClient();
+  const user = useAuthStore((s) => s.user);
 
   const { data: accounts, isLoading: accountsLoading } = useAccounts();
   const activeAccount = accounts?.[0];
@@ -597,6 +599,10 @@ export function SettingsPage() {
       setSubmitting(false);
     }
   };
+
+  if (user?.role !== "SUPER_ADMIN" && user?.role !== "ADMIN") {
+    return <Navigate to="/inbox" replace />;
+  }
 
   if (accountsLoading || inboxesLoading || shopifyLoading) {
     return (

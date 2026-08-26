@@ -631,7 +631,7 @@ export async function ingestInboundMessages(input: {
       inboundMessages,
     );
     for (const m of inboundMessages) {
-      if (!m.senderName?.trim()) m.senderName = "Unknown";
+      if (m.type === "message" && !m.senderName?.trim()) m.senderName = "Unknown";
     }
   }
 
@@ -659,8 +659,25 @@ export async function ingestInboundMessages(input: {
   }
 
   const created = [];
-  for (const inbound of inboundMessages) {
-    if (!inbound.externalId) continue;
+  for (const inboundEvent of inboundMessages) {
+    if (!inboundEvent.externalId) continue;
+
+    if (inboundEvent.type === "status") {
+      const newStatus = inboundEvent.status === "read" ? "delivered" : inboundEvent.status;
+      await prisma.message.updateMany({
+        where: {
+          channelType: channelCfg.channelType,
+          externalId: inboundEvent.externalId,
+        },
+        data: {
+          status: newStatus as any,
+          ...(inboundEvent.status === "read" ? { isRead: true } : {}),
+        },
+      });
+      continue;
+    }
+
+    const inbound = inboundEvent as NormalizedInboundMessage;
 
     // Agent dismissed / deleted — do not resurrect via Pub/Sub or catch-up.
     if (await isInboundSuppressed(channelCfg.channelType, inbound.externalId)) {

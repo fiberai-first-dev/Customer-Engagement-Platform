@@ -11,9 +11,13 @@ import { authRoutes } from "./v1/auth.routes.js";
 import { contactsRoutes } from "./v1/contacts.routes.js";
 import { dashboardRoutes } from "./v1/dashboard.routes.js";
 import { orderRoutes } from "./v1/orders.routes.js";
+import { shopifyConfigRoutes } from "./v1/shopify.routes.js";
 import { publicOAuthRoutes } from "./v1/oauth.routes.js";
 import { oauthConnectRoutes } from "./v1/oauth-connect.routes.js";
-import { shopifyConfigRoutes } from "./v1/shopify.routes.js";
+import { ticketRoutes } from "./v1/ticket.routes.js";
+import { mediaRoutes } from "./v1/media.routes.js";
+import { teamRoutes } from "./v1/teams.routes.js";
+import { userRoutes } from "./v1/users.routes.js";
 import { requireAuth } from "../middleware/auth.js";
 import { prisma } from "../config/db.js";
 import { ulid } from "ulid";
@@ -73,7 +77,7 @@ export async function registerRoutes(app: FastifyInstance) {
       reqPath === "/docs/channel-setup-guide.pdf" ||
       reqPath.startsWith("/webhooks/") ||
       reqPath.startsWith("/oauth/") ||
-      reqPath === "/api/v1/auth/login"
+      reqPath === "/api/v1/auth/google"
     ) {
       return;
     }
@@ -91,6 +95,10 @@ export async function registerRoutes(app: FastifyInstance) {
   app.register(orderRoutes, { prefix: "/api/v1/orders" });
   app.register(emailRoutes, { prefix: "/api/v1/email" });
   app.register(shopifyConfigRoutes, { prefix: "/api/v1/shopify" });
+  app.register(ticketRoutes, { prefix: "/api/v1/tickets" });
+  app.register(mediaRoutes, { prefix: "/api/v1/media" });
+  app.register(teamRoutes, { prefix: "/api/v1/teams" });
+  app.register(userRoutes, { prefix: "/api/v1/users" });
   // Back-compat alias
   app.register(emailRoutes, { prefix: "/api/v1/gmail" });
   app.register(oauthConnectRoutes, { prefix: "/api/v1/oauth" });

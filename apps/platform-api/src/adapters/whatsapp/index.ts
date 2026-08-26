@@ -1,6 +1,7 @@
 import type {
   ChannelAdapter,
   NormalizedInboundMessage,
+  NormalizedStatusUpdate,
   OutboundTextMessage,
   SendResult,
   WebhookVerifyQuery,
@@ -56,12 +57,12 @@ export const whatsappAdapter: ChannelAdapter<WhatsAppChannelConfig> = {
     return null;
   },
 
-  parseInbound(_config: WhatsAppChannelConfig, payload: unknown): NormalizedInboundMessage[] {
+  parseInbound(_config: WhatsAppChannelConfig, payload: unknown): (NormalizedInboundMessage | NormalizedStatusUpdate)[] {
     const root = asRecord(payload);
     if (!root) return [];
 
     const entries = Array.isArray(root.entry) ? root.entry : [];
-    const out: NormalizedInboundMessage[] = [];
+    const out: (NormalizedInboundMessage | NormalizedStatusUpdate)[] = [];
 
     for (const entry of entries) {
       const entryObj = asRecord(entry);
@@ -88,6 +89,7 @@ export const whatsappAdapter: ChannelAdapter<WhatsAppChannelConfig> = {
           const { content, contentType } = textFromMessage(msg);
           const ts = Number(msg.timestamp);
           out.push({
+            type: "message",
             externalId: String(msg.id),
             externalThreadId: from,
             senderId: from,
@@ -116,6 +118,7 @@ export const whatsappAdapter: ChannelAdapter<WhatsAppChannelConfig> = {
           if (!content) continue;
           const ts = Number(msg.timestamp);
           out.push({
+            type: "message",
             externalId: String(msg.id),
             externalThreadId: to,
             senderId: to,
@@ -127,6 +130,31 @@ export const whatsappAdapter: ChannelAdapter<WhatsAppChannelConfig> = {
             contentType,
             occurredAt: Number.isFinite(ts) ? new Date(ts * 1000) : new Date(),
             raw: msg,
+          });
+        }
+
+        const statuses = Array.isArray(value.statuses) ? value.statuses : [];
+        for (const status of statuses) {
+          const sObj = asRecord(status);
+          if (!sObj?.id || !sObj.status) continue;
+          
+          let mappedStatus: "sent" | "delivered" | "read" | "failed" = "sent";
+          if (sObj.status === "delivered") mappedStatus = "delivered";
+          if (sObj.status === "read") mappedStatus = "read";
+          if (sObj.status === "failed") mappedStatus = "failed";
+          if (sObj.status === "sent") mappedStatus = "sent";
+
+          const errors = Array.isArray(sObj.errors) ? sObj.errors : [];
+          const errorMsg = errors.length > 0 ? String(asRecord(errors[0])?.message ?? "") : undefined;
+
+          const ts = Number(sObj.timestamp);
+          out.push({
+            type: "status",
+            externalId: String(sObj.id),
+            status: mappedStatus,
+            error: errorMsg,
+            occurredAt: Number.isFinite(ts) ? new Date(ts * 1000) : new Date(),
+            raw: status,
           });
         }
       }

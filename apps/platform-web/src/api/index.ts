@@ -1,4 +1,4 @@
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+﻿import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useAuthStore } from "../store/auth";
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL ?? "";
@@ -33,7 +33,7 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
     },
   });
 
-  if (res.status === 401 && !path.includes("/auth/login")) {
+  if (res.status === 401 && !path.includes("/auth/google")) {
     useAuthStore.getState().logout();
   }
 
@@ -633,20 +633,271 @@ export const useAuthUsers = () =>
     queryKey: ["auth-users"],
     queryFn: () => request<AuthUser[]>("/api/v1/auth/users"),
   });
+// ─── Ticket API ──────────────────────────────────────────────────────────────
 
-export const useCreateAuthUser = () => {
+export type TicketStatus = "OPEN" | "IN_PROGRESS" | "ESCALATED" | "RESOLVED" | "CLOSED";
+export type TicketPriority = "LOW" | "MEDIUM" | "HIGH" | "URGENT";
+
+export interface TicketNoteAuthor {
+  id: string;
+  username: string;
+}
+
+export interface TicketNote {
+  id: string;
+  ticketId: string;
+  authorId: string;
+  author?: TicketNoteAuthor | null;
+  body: string;
+  isInternal: boolean;
+  createdAt: string;
+}
+
+export interface TicketEvent {
+  id: string;
+  ticketId: string;
+  actorId?: string | null;
+  type: string;
+  fromValue?: unknown;
+  toValue?: unknown;
+  note?: string | null;
+  createdAt: string;
+}
+
+export interface Ticket {
+  id: string;
+  number: number;
+  subject: string;
+  description?: string | null;
+  status: TicketStatus;
+  priority: TicketPriority;
+  channel?: string | null;
+  conversationId?: string | null;
+  customerId?: string | null;
+  assignedTo?: string | null;
+  teamId?: string | null;
+  createdBy?: string | null;
+  escalatedToUserId?: string | null;
+  escalatedToTeamId?: string | null;
+  resolvedAt?: string | null;
+  closedAt?: string | null;
+  createdAt: string;
+  updatedAt: string;
+  assignee?: { id: string; username: string } | null;
+  creator?: { id: string; username: string } | null;
+  team?: { id: string; name: string } | null;
+  customer?: { name: string | null } | null;
+  notes?: TicketNote[];
+}
+
+export const useTickets = (filters?: {
+  status?: TicketStatus;
+  teamId?: string;
+  assigneeId?: string;
+  priority?: TicketPriority;
+  channel?: string;
+  conversationId?: string;
+  search?: string;
+}) =>
+  useQuery({
+    queryKey: ["tickets", filters],
+    queryFn: () => {
+      const q = new URLSearchParams();
+      if (filters?.status) q.set("status", filters.status);
+      if (filters?.teamId) q.set("teamId", filters.teamId);
+      if (filters?.assigneeId) q.set("assigneeId", filters.assigneeId);
+      if (filters?.priority) q.set("priority", filters.priority);
+      if (filters?.channel) q.set("channel", filters.channel);
+      if (filters?.conversationId) q.set("conversationId", filters.conversationId);
+      if (filters?.search) q.set("search", filters.search);
+      return request<Ticket[]>(`/api/v1/tickets${q.toString() ? `?${q}` : ""}`);
+    },
+    refetchInterval: 10000,
+  });
+
+export const useTicket = (id?: string) =>
+  useQuery({
+    queryKey: ["ticket", id],
+    queryFn: () => request<Ticket>(`/api/v1/tickets/${id}`),
+    enabled: !!id,
+  });
+
+export const useCreateTicket = () => {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (body: { username: string; password: string }) =>
-      request<{ ok: boolean; id: string; username: string }>("/api/v1/auth/users", {
+    mutationFn: (body: {
+      subject: string;
+      description?: string;
+      channel?: string;
+      customerId?: string;
+      conversationId?: string;
+      priority?: TicketPriority;
+      teamId?: string;
+      assignedTo?: string;
+    }) =>
+      request<Ticket>("/api/v1/tickets", {
         method: "POST",
         body: JSON.stringify(body),
       }),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["auth-users"] });
+      queryClient.invalidateQueries({ queryKey: ["tickets"] });
     },
   });
 };
+
+export const useUpdateTicketStatus = () => {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, status }: { id: string; status: TicketStatus }) =>
+      request<Ticket>(`/api/v1/tickets/${id}/status`, {
+        method: "PATCH",
+        body: JSON.stringify({ status }),
+      }),
+    onSuccess: (_data, { id }) => {
+      queryClient.invalidateQueries({ queryKey: ["tickets"] });
+      queryClient.invalidateQueries({ queryKey: ["ticket", id] });
+      queryClient.invalidateQueries({ queryKey: ["ticket-events", id] });
+    },
+  });
+};
+
+export const useUpdateTicket = () => {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({
+      id,
+      ...body
+    }: {
+      id: string;
+      subject?: string;
+      description?: string;
+      priority?: TicketPriority;
+      teamId?: string;
+    }) =>
+      request<Ticket>(`/api/v1/tickets/${id}`, {
+        method: "PATCH",
+        body: JSON.stringify(body),
+      }),
+    onSuccess: (_data, { id }) => {
+      queryClient.invalidateQueries({ queryKey: ["tickets"] });
+      queryClient.invalidateQueries({ queryKey: ["ticket", id] });
+      queryClient.invalidateQueries({ queryKey: ["ticket-events", id] });
+    },
+  });
+};
+
+export const useAssignTicket = () => {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({
+      id,
+      assigneeId,
+      teamId,
+    }: {
+      id: string;
+      assigneeId?: string;
+      teamId?: string;
+    }) =>
+      request<Ticket>(`/api/v1/tickets/${id}/assign`, {
+        method: "POST",
+        body: JSON.stringify({ assigneeId, teamId }),
+      }),
+    onSuccess: (_data, { id }) => {
+      queryClient.invalidateQueries({ queryKey: ["tickets"] });
+      queryClient.invalidateQueries({ queryKey: ["ticket", id] });
+      queryClient.invalidateQueries({ queryKey: ["ticket-events", id] });
+    },
+  });
+};
+
+export const useEscalateTicket = () => {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({
+      id,
+      teamId,
+      note,
+    }: {
+      id: string;
+      teamId?: string;
+      note?: string;
+    }) =>
+      request<Ticket>(`/api/v1/tickets/${id}/escalate`, {
+        method: "POST",
+        body: JSON.stringify({ teamId, note }),
+      }),
+    onSuccess: (_data, { id }) => {
+      queryClient.invalidateQueries({ queryKey: ["tickets"] });
+      queryClient.invalidateQueries({ queryKey: ["ticket", id] });
+      queryClient.invalidateQueries({ queryKey: ["ticket-events", id] });
+    },
+  });
+};
+
+export const useReturnTicket = () => {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, note }: { id: string; note?: string }) =>
+      request<Ticket>(`/api/v1/tickets/${id}/return`, {
+        method: "POST",
+        body: JSON.stringify({ note }),
+      }),
+    onSuccess: (_data, { id }) => {
+      queryClient.invalidateQueries({ queryKey: ["tickets"] });
+      queryClient.invalidateQueries({ queryKey: ["ticket", id] });
+      queryClient.invalidateQueries({ queryKey: ["ticket-events", id] });
+    },
+  });
+};
+
+export const useTicketEvents = (ticketId?: string) =>
+  useQuery({
+    queryKey: ["ticket-events", ticketId],
+    queryFn: () => request<TicketEvent[]>(`/api/v1/tickets/${ticketId}/events`),
+    enabled: !!ticketId,
+  });
+
+export const useAddTicketNote = () => {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({
+      id,
+      body,
+      isInternal = true,
+    }: {
+      id: string;
+      body: string;
+      isInternal?: boolean;
+    }) =>
+      request<TicketNote>(`/api/v1/tickets/${id}/notes`, {
+        method: "POST",
+        body: JSON.stringify({ body, isInternal }),
+      }),
+    onSuccess: (_data, { id }) => {
+      queryClient.invalidateQueries({ queryKey: ["ticket", id] });
+      queryClient.invalidateQueries({ queryKey: ["ticket-events", id] });
+    },
+  });
+};
+
+// ─── Team API ─────────────────────────────────────────────────────────────────
+
+export interface Team {
+  id: string;
+  name: string;
+  managerId?: string | null;
+  parentTeamId?: string | null;
+  manager?: { username: string } | null;
+  _count?: { members: number; tickets: number };
+}
+
+export const useTeams = () =>
+  useQuery({
+    queryKey: ["teams"],
+    queryFn: () => request<Team[]>("/api/v1/teams"),
+  });
+
+// ─── Dashboard ────────────────────────────────────────────────────────────────
 
 export interface DashboardMetrics {
   totalMessages: number;
@@ -670,3 +921,92 @@ export const useDashboardMetrics = (accountId?: string) =>
       return request<DashboardMetrics>(`/api/v1/dashboard/metrics${q.toString() ? `?${q}` : ""}`);
     },
   });
+
+// ─── User Management API ──────────────────────────────────────────────────────
+
+export type UserRole = "SUPER_ADMIN" | "ADMIN" | "MANAGER" | "AGENT";
+
+export interface OrgUser {
+  id: string;
+  username: string;
+  role: UserRole;
+  isActive: boolean;
+  teamId?: string | null;
+  team?: { name: string } | null;
+  createdAt: string;
+}
+
+export const useOrgUsers = () =>
+  useQuery({
+    queryKey: ["org-users"],
+    queryFn: () => request<OrgUser[]>("/api/v1/users"),
+  });
+
+export const useCreateOrgUser = () => {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (body: { email: string; role: UserRole; teamId?: string }) =>
+      request<OrgUser>("/api/v1/users", {
+        method: "POST",
+        body: JSON.stringify(body),
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["org-users"] });
+    },
+  });
+};
+
+export const useUpdateOrgUser = () => {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({
+      id,
+      ...body
+    }: {
+      id: string;
+      role?: UserRole;
+      teamId?: string;
+      isActive?: boolean;
+    }) =>
+      request<OrgUser>(`/api/v1/users/${id}`, {
+        method: "PATCH",
+        body: JSON.stringify(body),
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["org-users"] });
+    },
+  });
+};
+
+export const useUploadMedia = () => {
+  return useMutation({
+    mutationFn: async (file: File) => {
+      const formData = new FormData();
+      formData.append("file", file);
+
+      const response = await fetch(`${API_BASE}/api/v1/media/upload`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${localStorage.getItem("token")}`,
+        },
+        body: formData,
+      });
+
+      if (!response.ok) {
+        throw new Error("Failed to upload media");
+      }
+      return response.json() as Promise<{
+        mediaKey: string;
+        mimeType: string;
+        filename: string;
+      }>;
+    },
+  });
+};
+
+export const useAuthUsers = () =>
+  useQuery({
+    queryKey: ["auth-users"],
+    queryFn: () => request<AuthUser[]>("/api/v1/auth/users"),
+  });
+
