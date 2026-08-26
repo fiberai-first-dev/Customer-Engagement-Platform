@@ -41,7 +41,7 @@ export function EscalateModal({ ticket, onClose }: EscalateModalProps) {
       await escalate.mutateAsync({
         id: ticket.id,
         teamId: teamId || undefined,
-        userId: isAgent ? undefined : (userId || undefined), // Enforce agent constraint
+        targetUserId: isAgent ? undefined : (userId || undefined), // Enforce agent constraint
         note: note.trim() || undefined,
       });
       toast.success(`Ticket #${ticket.number} escalated`);

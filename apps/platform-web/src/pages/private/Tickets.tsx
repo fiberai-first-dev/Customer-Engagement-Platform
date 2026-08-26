@@ -41,7 +41,7 @@ function StatusBadge({ status }: { status: TicketStatus }) {
   );
 }
 
-function TicketStatusMenu({ ticket, onClick }: { ticket: Ticket; onClick: (e: React.MouseEvent) => void }) {
+function TicketStatusMenu({ ticket }: { ticket: Ticket }) {
   const [open, setOpen] = useState(false);
   const update = useUpdateTicketStatus();
   const user = useAuthStore((s) => s.user);
@@ -299,7 +299,7 @@ export function TicketsPage() {
                     )}
                   </td>
                   <td className="px-3 py-3" onClick={(e) => e.stopPropagation()}>
-                    <TicketStatusMenu ticket={ticket} onClick={(e) => e.stopPropagation()} />
+                    <TicketStatusMenu ticket={ticket} />
                   </td>
                   <td className={`px-3 py-3 text-xs font-medium ${PRIORITY_COLORS[ticket.priority]}`}>
                     {ticket.priority.charAt(0) + ticket.priority.slice(1).toLowerCase()}

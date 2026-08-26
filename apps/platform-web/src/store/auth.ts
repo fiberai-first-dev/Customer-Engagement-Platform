@@ -7,6 +7,7 @@ interface User {
   id: string;
   username: string;
   role: UserRole;
+  teamId?: string | null;
 }
 
 interface AuthState {

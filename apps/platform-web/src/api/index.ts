@@ -1,4 +1,4 @@
-﻿import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useAuthStore } from "../store/auth";
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL ?? "";
@@ -816,15 +816,17 @@ export const useEscalateTicket = () => {
     mutationFn: ({
       id,
       teamId,
+      targetUserId,
       note,
     }: {
       id: string;
       teamId?: string;
+      targetUserId?: string;
       note?: string;
     }) =>
       request<Ticket>(`/api/v1/tickets/${id}/escalate`, {
         method: "POST",
-        body: JSON.stringify({ teamId, note }),
+        body: JSON.stringify({ teamId, targetUserId, note }),
       }),
     onSuccess: (_data, { id }) => {
       queryClient.invalidateQueries({ queryKey: ["tickets"] });
@@ -1003,10 +1005,3 @@ export const useUploadMedia = () => {
     },
   });
 };
-
-export const useAuthUsers = () =>
-  useQuery({
-    queryKey: ["auth-users"],
-    queryFn: () => request<AuthUser[]>("/api/v1/auth/users"),
-  });
-
