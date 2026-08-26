@@ -27,7 +27,6 @@ import {
   Users,
   Tag,
   ChevronDown,
-  Clock,
   Send,
   Loader2,
   Lock,
@@ -446,7 +445,7 @@ export function TicketDetailPage() {
               ) : (
                 <div className="flex items-end gap-2">
                   <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary text-[10px] font-bold mb-0.5">
-                    {initials(user?.username || user?.name, "ME")}
+                    {initials(user?.username, "ME")}
                   </div>
                   <div className="flex-1 min-w-0">
                     <textarea
