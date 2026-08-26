@@ -64,7 +64,16 @@ function CreateTeamModal({ token, onClose, onCreated }: CreateTeamModalProps) {
   const [managerId, setManagerId] = useState("");
   const [loading, setLoading] = useState(false);
   const { data: users = [] } = useOrgUsers();
-  const managers = users.filter((u) => u.role === "MANAGER");
+  const { data: teams = [] } = useTeams();
+
+  // Managers who already manage a team cannot be assigned to another
+  const assignedManagerIds = useMemo(
+    () => new Set(teams.map((t) => t.managerId).filter(Boolean) as string[]),
+    [teams],
+  );
+  const managers = users.filter(
+    (u) => u.role === "MANAGER" && u.isActive && !assignedManagerIds.has(u.id),
+  );
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -119,6 +128,9 @@ function CreateTeamModal({ token, onClose, onCreated }: CreateTeamModalProps) {
                 </option>
               ))}
             </select>
+            <p className="mt-1.5 text-[11px] text-muted-foreground">
+              Each team has one manager. Managers already assigned to a team are hidden.
+            </p>
           </div>
           <div className="flex gap-2 pt-1">
             <button type="button" onClick={onClose} className="flex-1 rounded-md border border-border py-2.5 text-sm font-medium hover:bg-muted">
@@ -204,7 +216,7 @@ function TeamMembersView({ teamId, onBack }: { teamId: string; onBack?: () => vo
 
   return (
     <div className="flex flex-col h-full bg-background">
-      <div className="flex items-center gap-3 border-b border-border bg-card px-6 py-4">
+        <div className="flex items-center gap-3 border-b border-border bg-card px-6 py-4">
         {onBack && (
           <button
             type="button"
@@ -215,9 +227,6 @@ function TeamMembersView({ teamId, onBack }: { teamId: string; onBack?: () => vo
             <ArrowLeft className="w-4 h-4" />
           </button>
         )}
-        <div className="flex h-9 w-9 items-center justify-center rounded-md bg-primary text-primary-foreground">
-          <Building2 className="w-4 h-4" />
-        </div>
         <div className="min-w-0 flex-1">
           <h1 className="text-lg font-semibold text-foreground leading-tight truncate">{team.name}</h1>
           <p className="text-xs text-muted-foreground">
@@ -295,9 +304,7 @@ function TeamMembersView({ teamId, onBack }: { teamId: string; onBack?: () => vo
                       <td className="px-4 py-3.5">
                         <span
                           className={`inline-flex rounded-md px-2 py-0.5 text-xs font-semibold ${
-                            m.isActive
-                              ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-500/20 dark:text-emerald-300"
-                              : "bg-slate-100 text-slate-600 dark:bg-slate-500/20 dark:text-slate-300"
+                            m.isActive ? "bg-emerald-600 text-white" : "bg-slate-500 text-white"
                           }`}
                         >
                           {m.isActive ? "Active" : "Inactive"}
@@ -365,16 +372,11 @@ export function TeamsPage() {
   return (
     <div className="flex flex-col h-full bg-background">
       <div className="flex items-center justify-between border-b border-border bg-card px-6 py-4 shrink-0">
-        <div className="flex items-center gap-3">
-          <div className="flex h-9 w-9 items-center justify-center rounded-md bg-primary text-primary-foreground">
-            <Building2 className="w-4 h-4" />
-          </div>
-          <div>
-            <h1 className="text-lg font-semibold text-foreground leading-tight">Teams</h1>
-            <p className="text-xs text-muted-foreground">
-              {filteredTeams.length} team{filteredTeams.length === 1 ? "" : "s"}
-            </p>
-          </div>
+        <div>
+          <h1 className="text-lg font-semibold text-foreground leading-tight">Teams</h1>
+          <p className="text-xs text-muted-foreground">
+            {filteredTeams.length} team{filteredTeams.length === 1 ? "" : "s"}
+          </p>
         </div>
         {canCreate && (
           <button
@@ -446,12 +448,7 @@ export function TeamsPage() {
                     className="border-b border-border last:border-0 hover:bg-muted/40 transition-colors cursor-pointer"
                   >
                     <td className="px-5 py-3.5">
-                      <div className="flex items-center gap-3">
-                        <div className="flex h-8 w-8 items-center justify-center rounded-md bg-primary/10 text-primary">
-                          <Building2 className="w-4 h-4" />
-                        </div>
-                        <span className="font-semibold text-foreground">{team.name}</span>
-                      </div>
+                      <span className="font-semibold text-foreground">{team.name}</span>
                     </td>
                     <td className="px-4 py-3.5 text-sm text-foreground">
                       {team.manager ? (
@@ -462,7 +459,6 @@ export function TeamsPage() {
                     </td>
                     <td className="px-4 py-3.5">
                       <span className="inline-flex items-center gap-1 text-xs font-medium text-foreground">
-                        <Users className="w-3.5 h-3.5 text-muted-foreground" />
                         {team._count?.members ?? 0}
                       </span>
                     </td>

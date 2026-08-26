@@ -19,6 +19,18 @@ export class TeamController {
       return reply.code(403).send({ error: "Only admins can create teams" });
     }
 
+    if (managerId) {
+      const alreadyManaging = await prisma.team.findFirst({
+        where: { managerId },
+        select: { id: true, name: true },
+      });
+      if (alreadyManaging) {
+        return reply.code(400).send({
+          error: `This manager is already assigned to team "${alreadyManaging.name}". Each manager can only manage one team.`,
+        });
+      }
+    }
+
     try {
       const team = await prisma.team.create({
         data: {
@@ -112,6 +124,28 @@ export class TeamController {
     const userRole = (request.user as any)?.role as Role;
     if (userRole !== "SUPER_ADMIN" && userRole !== "ADMIN") {
       return reply.code(403).send({ error: "Only admins can update teams" });
+    }
+
+    const existing = await prisma.team.findUnique({ where: { id } });
+    if (!existing) return reply.code(404).send({ error: "team not found" });
+
+    // One manager per team — cannot replace without clearing first
+    if (managerId && existing.managerId && managerId !== existing.managerId) {
+      return reply.code(400).send({
+        error: "This team already has a manager. Clear the current manager before assigning another.",
+      });
+    }
+
+    if (managerId) {
+      const alreadyManaging = await prisma.team.findFirst({
+        where: { managerId, NOT: { id } },
+        select: { id: true, name: true },
+      });
+      if (alreadyManaging) {
+        return reply.code(400).send({
+          error: `This manager is already assigned to team "${alreadyManaging.name}". Each manager can only manage one team.`,
+        });
+      }
     }
 
     try {

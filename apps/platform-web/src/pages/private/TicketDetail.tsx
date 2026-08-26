@@ -24,52 +24,44 @@ import {
   ArrowUpCircle,
   ArrowDownCircle,
   MessageSquare,
-  Users,
-  Tag,
   ChevronDown,
   Send,
   Loader2,
   Lock,
-  CircleDot,
   UserPlus,
-  RefreshCw,
-  ArrowRightLeft,
-  StickyNote,
-  CheckCircle2,
-  XCircle,
-  RotateCcw,
   ExternalLink,
+  StickyNote,
 } from "lucide-react";
 
 const STATUS_CONFIG: Record<TicketStatus, { label: string; bg: string; text: string; border: string }> = {
-  OPEN: { label: "Open", bg: "bg-blue-50 dark:bg-blue-500/15", text: "text-blue-700 dark:text-blue-400", border: "border-blue-200 dark:border-blue-500/30" },
-  IN_PROGRESS: { label: "In Progress", bg: "bg-amber-50 dark:bg-amber-500/15", text: "text-amber-700 dark:text-amber-400", border: "border-amber-200 dark:border-amber-500/30" },
-  ESCALATED: { label: "Escalated", bg: "bg-orange-50 dark:bg-orange-500/15", text: "text-orange-700 dark:text-orange-400", border: "border-orange-200 dark:border-orange-500/30" },
-  RESOLVED: { label: "Resolved", bg: "bg-emerald-50 dark:bg-emerald-500/15", text: "text-emerald-700 dark:text-emerald-400", border: "border-emerald-200 dark:border-emerald-500/30" },
-  CLOSED: { label: "Closed", bg: "bg-slate-100 dark:bg-slate-500/15", text: "text-slate-600 dark:text-slate-400", border: "border-slate-200 dark:border-slate-500/30" },
+  OPEN: { label: "Open", bg: "bg-blue-600", text: "text-white", border: "border-blue-600" },
+  IN_PROGRESS: { label: "In Progress", bg: "bg-amber-500", text: "text-white", border: "border-amber-500" },
+  ESCALATED: { label: "Escalated", bg: "bg-orange-600", text: "text-white", border: "border-orange-600" },
+  RESOLVED: { label: "Resolved", bg: "bg-emerald-600", text: "text-white", border: "border-emerald-600" },
+  CLOSED: { label: "Closed", bg: "bg-slate-600", text: "text-white", border: "border-slate-600" },
 };
 
 const PRIORITY_CONFIG: Record<TicketPriority, { label: string; color: string; bg: string; border: string }> = {
-  LOW: { label: "Low", color: "text-slate-600 dark:text-slate-400", bg: "bg-slate-50 dark:bg-slate-500/10", border: "border-slate-200 dark:border-border" },
-  MEDIUM: { label: "Medium", color: "text-blue-700 dark:text-blue-400", bg: "bg-blue-50 dark:bg-blue-500/10", border: "border-blue-200 dark:border-border" },
-  HIGH: { label: "High", color: "text-amber-700 dark:text-amber-400", bg: "bg-amber-50 dark:bg-amber-500/10", border: "border-amber-200 dark:border-border" },
-  URGENT: { label: "Urgent", color: "text-red-700 dark:text-red-400", bg: "bg-red-50 dark:bg-red-500/10", border: "border-red-200 dark:border-border" },
+  LOW: { label: "Low", color: "text-slate-800 dark:text-slate-200", bg: "bg-slate-100 dark:bg-slate-800", border: "border-slate-300 dark:border-slate-600" },
+  MEDIUM: { label: "Medium", color: "text-blue-800 dark:text-blue-200", bg: "bg-blue-100 dark:bg-blue-900/40", border: "border-blue-300 dark:border-blue-700" },
+  HIGH: { label: "High", color: "text-amber-900 dark:text-amber-200", bg: "bg-amber-100 dark:bg-amber-900/40", border: "border-amber-400 dark:border-amber-700" },
+  URGENT: { label: "Urgent", color: "text-white", bg: "bg-red-600", border: "border-red-600" },
 };
 
-const EVENT_META: Record<string, { label: string; icon: typeof CircleDot; color: string; bg: string }> = {
-  CREATED: { label: "Ticket created", icon: CircleDot, color: "text-blue-600 dark:text-blue-400", bg: "bg-blue-50 dark:bg-blue-500/15" },
-  ASSIGNED: { label: "Assigned", icon: UserPlus, color: "text-primary", bg: "bg-primary/10" },
-  REASSIGNED: { label: "Reassigned", icon: RefreshCw, color: "text-primary", bg: "bg-primary/10" },
-  STATUS_CHANGED: { label: "Status changed", icon: ArrowRightLeft, color: "text-sky-600 dark:text-sky-400", bg: "bg-sky-50 dark:bg-sky-500/15" },
-  PRIORITY_CHANGED: { label: "Priority changed", icon: Tag, color: "text-amber-600 dark:text-amber-400", bg: "bg-amber-50 dark:bg-amber-500/15" },
-  TEAM_CHANGED: { label: "Team changed", icon: Users, color: "text-indigo-600 dark:text-indigo-400", bg: "bg-indigo-50 dark:bg-indigo-500/15" },
-  ESCALATED: { label: "Escalated", icon: ArrowUpCircle, color: "text-orange-600 dark:text-orange-400", bg: "bg-orange-50 dark:bg-orange-500/15" },
-  RETURNED: { label: "Returned to agent", icon: ArrowDownCircle, color: "text-blue-600 dark:text-blue-400", bg: "bg-blue-50 dark:bg-blue-500/15" },
-  NOTE_ADDED: { label: "Note added", icon: StickyNote, color: "text-amber-600 dark:text-amber-400", bg: "bg-amber-50 dark:bg-amber-500/15" },
-  REPLIED: { label: "Reply sent", icon: MessageSquare, color: "text-emerald-600 dark:text-emerald-400", bg: "bg-emerald-50 dark:bg-emerald-500/15" },
-  RESOLVED: { label: "Resolved", icon: CheckCircle2, color: "text-emerald-600 dark:text-emerald-400", bg: "bg-emerald-50 dark:bg-emerald-500/15" },
-  CLOSED: { label: "Closed", icon: XCircle, color: "text-slate-500", bg: "bg-slate-100 dark:bg-slate-500/15" },
-  REOPENED: { label: "Reopened", icon: RotateCcw, color: "text-blue-600 dark:text-blue-400", bg: "bg-blue-50 dark:bg-blue-500/15" },
+const EVENT_META: Record<string, { label: string; color: string }> = {
+  CREATED: { label: "Ticket created", color: "text-foreground" },
+  ASSIGNED: { label: "Assigned", color: "text-foreground" },
+  REASSIGNED: { label: "Reassigned", color: "text-foreground" },
+  STATUS_CHANGED: { label: "Status changed", color: "text-foreground" },
+  PRIORITY_CHANGED: { label: "Priority changed", color: "text-foreground" },
+  TEAM_CHANGED: { label: "Team changed", color: "text-foreground" },
+  ESCALATED: { label: "Escalated", color: "text-orange-700 dark:text-orange-400" },
+  RETURNED: { label: "Returned to agent", color: "text-foreground" },
+  NOTE_ADDED: { label: "Note added", color: "text-foreground" },
+  REPLIED: { label: "Reply sent", color: "text-foreground" },
+  RESOLVED: { label: "Resolved", color: "text-emerald-700 dark:text-emerald-400" },
+  CLOSED: { label: "Closed", color: "text-foreground" },
+  REOPENED: { label: "Reopened", color: "text-foreground" },
 };
 
 function initials(name?: string | null, fallback = "?") {
@@ -437,41 +429,35 @@ export function TicketDetailPage() {
 
           {/* Bottom bar — note composer */}
           {activeTab === "NOTES" && (
-            <div className="shrink-0 border-t border-border bg-card px-4 py-3">
+            <div className="shrink-0 border-t border-border bg-card p-3">
               {isLocked ? (
-                <div className="rounded-md border border-orange-200 bg-orange-50 px-3 py-2.5 text-xs font-medium text-orange-700 dark:border-orange-500/20 dark:bg-orange-500/10 dark:text-orange-400 text-center">
+                <div className="rounded-md border border-orange-200 bg-orange-50 px-3 py-2.5 text-xs font-medium text-orange-800 dark:border-orange-500/20 dark:bg-orange-500/10 dark:text-orange-300 text-center">
                   Escalated — notes disabled until a manager returns this ticket.
                 </div>
               ) : (
-                <div className="flex items-end gap-2">
-                  <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary text-[10px] font-bold mb-0.5">
-                    {initials(user?.username, "ME")}
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <textarea
-                      id="note-input"
-                      value={noteText}
-                      onChange={(e) => setNoteText(e.target.value)}
-                      onKeyDown={(e) => {
-                        if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
-                          e.preventDefault();
-                          void handleAddNote();
-                        }
-                      }}
-                      rows={2}
-                      placeholder="Add an internal note… (never sent to customer)"
-                      className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/20 resize-none"
-                    />
-                    <p className="text-[10px] text-muted-foreground mt-1">Ctrl/⌘ + Enter to send</p>
-                  </div>
+                <div className="flex items-stretch gap-2 rounded-md border border-border bg-background p-2 focus-within:border-primary focus-within:ring-2 focus-within:ring-primary/20">
+                  <textarea
+                    id="note-input"
+                    value={noteText}
+                    onChange={(e) => setNoteText(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
+                        e.preventDefault();
+                        void handleAddNote();
+                      }
+                    }}
+                    rows={2}
+                    placeholder="Add an internal note… (never sent to customer)"
+                    className="flex-1 min-w-0 resize-none bg-transparent px-2 py-1.5 text-sm outline-none placeholder:text-muted-foreground"
+                  />
                   <button
                     id="add-note-btn"
                     type="button"
                     onClick={handleAddNote}
                     disabled={addNote.isPending || !noteText.trim()}
-                    className="inline-flex items-center gap-1.5 rounded-md bg-primary px-4 py-2.5 text-sm font-semibold text-primary-foreground hover:bg-primary/90 disabled:opacity-40 shrink-0 mb-5"
+                    className="self-end inline-flex items-center gap-1.5 rounded-md bg-primary px-3 py-2 text-xs font-semibold text-primary-foreground hover:bg-primary/90 disabled:opacity-40 shrink-0"
                   >
-                    {addNote.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
+                    {addNote.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Send className="w-3.5 h-3.5" />}
                     Add
                   </button>
                 </div>
@@ -504,9 +490,13 @@ export function TicketDetailPage() {
                             key={s}
                             type="button"
                             onClick={() => handleStatusChange(s)}
-                            className={`flex w-full px-3 py-2 text-xs font-medium hover:bg-muted ${STATUS_CONFIG[s].text}`}
+                            className="flex w-full items-center gap-2 px-3 py-2 text-xs font-medium text-foreground hover:bg-muted"
                           >
-                            {STATUS_CONFIG[s].label}
+                            <span
+                              className={`inline-flex rounded-md border px-2 py-0.5 text-[11px] font-semibold ${STATUS_CONFIG[s].bg} ${STATUS_CONFIG[s].text} ${STATUS_CONFIG[s].border}`}
+                            >
+                              {STATUS_CONFIG[s].label}
+                            </span>
                           </button>
                         ))}
                       </div>
@@ -646,25 +636,17 @@ export function TicketDetailPage() {
               {events.length === 0 ? (
                 <p className="text-xs text-muted-foreground">No activity yet</p>
               ) : (
-                <ol className="relative ms-1 border-s border-border">
+                <ul className="space-y-2.5">
                   {events.map((ev) => {
                     const meta = EVENT_META[ev.type] ?? {
                       label: ev.type,
-                      icon: CircleDot,
-                      color: "text-muted-foreground",
-                      bg: "bg-muted",
+                      color: "text-foreground",
                     };
-                    const Icon = meta.icon;
                     return (
-                      <li key={ev.id} className="relative ps-4 pb-3 last:pb-0">
-                        <span
-                          className={`absolute -start-2 top-0.5 flex h-4 w-4 items-center justify-center rounded-full border border-border ${meta.bg}`}
-                        >
-                          <Icon className={`h-2 w-2 ${meta.color}`} />
-                        </span>
-                        <p className={`text-[11px] font-semibold ${meta.color}`}>{meta.label}</p>
+                      <li key={ev.id} className="border-b border-border/60 pb-2.5 last:border-0 last:pb-0">
+                        <p className={`text-xs font-medium ${meta.color}`}>{meta.label}</p>
                         {ev.note && (
-                          <p className="mt-0.5 text-[10px] text-muted-foreground leading-snug">{ev.note}</p>
+                          <p className="mt-0.5 text-[11px] text-muted-foreground leading-snug">{ev.note}</p>
                         )}
                         <p className="text-[10px] text-muted-foreground mt-0.5">
                           {formatDistanceToNow(new Date(ev.createdAt), { addSuffix: true })}
@@ -672,7 +654,7 @@ export function TicketDetailPage() {
                       </li>
                     );
                   })}
-                </ol>
+                </ul>
               )}
             </ControlBlock>
           </div>

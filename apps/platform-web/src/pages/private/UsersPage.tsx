@@ -369,6 +369,7 @@ export function UsersPage() {
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
     return users.filter((u) => {
+      if (actor?.id && u.id === actor.id) return false; // hide self
       if (teamFilter !== "ALL") {
         if (teamFilter === "NONE" && u.teamId) return false;
         if (teamFilter !== "NONE" && u.teamId !== teamFilter) return false;
@@ -384,7 +385,7 @@ export function UsersPage() {
         (u.team?.name || "").toLowerCase().includes(q)
       );
     });
-  }, [users, search, teamFilter, roleFilter, statusFilter]);
+  }, [users, search, teamFilter, roleFilter, statusFilter, actor?.id]);
 
   const handleToggleActive = async (user: OrgUser) => {
     try {
@@ -415,14 +416,9 @@ export function UsersPage() {
   return (
     <div className="flex flex-col h-full bg-background">
       <div className="flex items-center justify-between border-b border-border bg-card px-6 py-4">
-        <div className="flex items-center gap-3">
-          <div className="flex h-9 w-9 items-center justify-center rounded-md bg-primary text-primary-foreground">
-            <Users className="w-4 h-4" />
-          </div>
-          <div>
-            <h1 className="text-lg font-semibold text-foreground leading-tight">Users & Roles</h1>
-            <p className="text-xs text-muted-foreground">{filtered.length} members</p>
-          </div>
+        <div>
+          <h1 className="text-lg font-semibold text-foreground leading-tight">Users & Roles</h1>
+          <p className="text-xs text-muted-foreground">{filtered.length} members</p>
         </div>
         {allowedRoles(actorRole).length > 0 && (
           <button
@@ -525,24 +521,20 @@ export function UsersPage() {
                       <span
                         className={`inline-flex items-center rounded-md px-2 py-0.5 text-xs font-semibold ${
                           user.isActive
-                            ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-500/20 dark:text-emerald-300"
-                            : "bg-slate-100 text-slate-600 dark:bg-slate-500/20 dark:text-slate-300"
+                            ? "bg-emerald-600 text-white"
+                            : "bg-slate-500 text-white"
                         }`}
                       >
                         {user.isActive ? "Active" : "Inactive"}
                       </span>
                     </td>
                     <td className="px-4 py-3.5">
-                      {user.id === actor?.id ? (
-                        <span className="block text-right text-xs text-muted-foreground">You</span>
-                      ) : (
-                        <ActionsMenu
-                          user={user}
-                          onEdit={() => setEditingUser(user)}
-                          onToggle={() => handleToggleActive(user)}
-                          onDelete={() => handleDeleteClick(user)}
-                        />
-                      )}
+                      <ActionsMenu
+                        user={user}
+                        onEdit={() => setEditingUser(user)}
+                        onToggle={() => handleToggleActive(user)}
+                        onDelete={() => handleDeleteClick(user)}
+                      />
                     </td>
                   </tr>
                 ))}
