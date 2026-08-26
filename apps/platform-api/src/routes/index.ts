@@ -82,7 +82,7 @@ export async function registerRoutes(app: FastifyInstance) {
       return;
     }
     await requireAuth(request, reply);
-    if (reply.sent) return;
+    if (reply.sent) return reply;
   });
 
   app.register(authRoutes, { prefix: "/api/v1/auth" });

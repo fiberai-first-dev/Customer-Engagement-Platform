@@ -56,6 +56,10 @@ export class AuthController {
 
       const user = await findOrCreateGoogleUser(email, googleId);
 
+      if (!user.isActive) {
+        return reply.code(403).send({ error: "Account is deactivated" });
+      }
+
       const token = jwt.sign(
         { id: user.id, username: user.username, role: user.role },
         env.jwtSecret,

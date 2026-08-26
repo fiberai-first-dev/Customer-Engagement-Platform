@@ -19,7 +19,7 @@ declare module "fastify" {
 export async function requireAuth(
   request: FastifyRequest,
   reply: FastifyReply,
-): Promise<void> {
+): Promise<FastifyReply | void> {
   const header = request.headers.authorization;
   const token = header?.startsWith("Bearer ") ? header.slice(7) : undefined;
   
@@ -50,9 +50,9 @@ export async function requireAuth(
 export async function requireAdmin(
   request: FastifyRequest,
   reply: FastifyReply,
-): Promise<void> {
+): Promise<FastifyReply | void> {
   await requireAuth(request, reply);
-  if (reply.sent) return;
+  if (reply.sent) return reply;
 
   if (request.user?.role !== "ADMIN" && request.user?.role !== "SUPER_ADMIN") {
     return reply.code(403).send({ error: "forbidden, admin+ only" });
@@ -62,9 +62,9 @@ export async function requireAdmin(
 export async function requireManager(
   request: FastifyRequest,
   reply: FastifyReply,
-): Promise<void> {
+): Promise<FastifyReply | void> {
   await requireAuth(request, reply);
-  if (reply.sent) return;
+  if (reply.sent) return reply;
 
   const role = request.user?.role;
   if (role !== "MANAGER" && role !== "ADMIN" && role !== "SUPER_ADMIN") {
@@ -75,9 +75,9 @@ export async function requireManager(
 export async function requireSuperAdmin(
   request: FastifyRequest,
   reply: FastifyReply,
-): Promise<void> {
+): Promise<FastifyReply | void> {
   await requireAuth(request, reply);
-  if (reply.sent) return;
+  if (reply.sent) return reply;
 
   if (request.user?.role !== "SUPER_ADMIN") {
     return reply.code(403).send({ error: "forbidden, super admin only" });
