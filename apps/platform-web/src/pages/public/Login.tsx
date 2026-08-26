@@ -61,8 +61,8 @@ export function LoginPage() {
 
         {/* Card */}
         <div className="rounded-2xl border border-border bg-card p-8 shadow-2xl">
-          <h2 className="text-xl font-semibold text-foreground mb-2">Sign in</h2>
-          <p className="text-muted-foreground text-sm mb-6">
+          <h2 className="text-xl font-semibold text-foreground mb-2 text-center">Sign in</h2>
+          <p className="text-muted-foreground text-sm mb-6 text-center">
             Use your company Google account to continue
           </p>
 

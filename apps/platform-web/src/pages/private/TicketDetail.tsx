@@ -34,35 +34,40 @@ import {
 } from "lucide-react";
 
 const STATUS_CONFIG: Record<TicketStatus, { label: string; bg: string; text: string; border: string }> = {
-  OPEN: { label: "Open", bg: "bg-blue-600", text: "text-white", border: "border-blue-600" },
-  IN_PROGRESS: { label: "In Progress", bg: "bg-amber-500", text: "text-white", border: "border-amber-500" },
-  ESCALATED: { label: "Escalated", bg: "bg-orange-600", text: "text-white", border: "border-orange-600" },
-  RESOLVED: { label: "Resolved", bg: "bg-emerald-600", text: "text-white", border: "border-emerald-600" },
-  CLOSED: { label: "Closed", bg: "bg-slate-600", text: "text-white", border: "border-slate-600" },
+  OPEN: { label: "Open", bg: "bg-blue-600", text: "text-white", border: "border-blue-700" },
+  IN_PROGRESS: { label: "In Progress", bg: "bg-amber-600", text: "text-white", border: "border-amber-700" },
+  ESCALATED: { label: "Escalated", bg: "bg-orange-600", text: "text-white", border: "border-orange-700" },
+  RESOLVED: { label: "Resolved", bg: "bg-emerald-600", text: "text-white", border: "border-emerald-700" },
+  CLOSED: { label: "Closed", bg: "bg-slate-600", text: "text-white", border: "border-slate-700" },
 };
 
-const PRIORITY_CONFIG: Record<TicketPriority, { label: string; color: string; bg: string; border: string }> = {
-  LOW: { label: "Low", color: "text-slate-800 dark:text-slate-200", bg: "bg-slate-100 dark:bg-slate-800", border: "border-slate-300 dark:border-slate-600" },
-  MEDIUM: { label: "Medium", color: "text-blue-800 dark:text-blue-200", bg: "bg-blue-100 dark:bg-blue-900/40", border: "border-blue-300 dark:border-blue-700" },
-  HIGH: { label: "High", color: "text-amber-900 dark:text-amber-200", bg: "bg-amber-100 dark:bg-amber-900/40", border: "border-amber-400 dark:border-amber-700" },
-  URGENT: { label: "Urgent", color: "text-white", bg: "bg-red-600", border: "border-red-600" },
+const PRIORITY_CONFIG: Record<TicketPriority, { label: string; bg: string; text: string; border: string }> = {
+  LOW: { label: "Low", bg: "bg-slate-500", text: "text-white", border: "border-slate-600" },
+  MEDIUM: { label: "Medium", bg: "bg-blue-600", text: "text-white", border: "border-blue-700" },
+  HIGH: { label: "High", bg: "bg-amber-600", text: "text-white", border: "border-amber-700" },
+  URGENT: { label: "Urgent", bg: "bg-red-600", text: "text-white", border: "border-red-700" },
 };
 
-const EVENT_META: Record<string, { label: string; color: string }> = {
-  CREATED: { label: "Ticket created", color: "text-foreground" },
-  ASSIGNED: { label: "Assigned", color: "text-foreground" },
-  REASSIGNED: { label: "Reassigned", color: "text-foreground" },
-  STATUS_CHANGED: { label: "Status changed", color: "text-foreground" },
-  PRIORITY_CHANGED: { label: "Priority changed", color: "text-foreground" },
-  TEAM_CHANGED: { label: "Team changed", color: "text-foreground" },
-  ESCALATED: { label: "Escalated", color: "text-orange-700 dark:text-orange-400" },
-  RETURNED: { label: "Returned to agent", color: "text-foreground" },
-  NOTE_ADDED: { label: "Note added", color: "text-foreground" },
-  REPLIED: { label: "Reply sent", color: "text-foreground" },
-  RESOLVED: { label: "Resolved", color: "text-emerald-700 dark:text-emerald-400" },
-  CLOSED: { label: "Closed", color: "text-foreground" },
-  REOPENED: { label: "Reopened", color: "text-foreground" },
+const EVENT_META: Record<string, { label: string }> = {
+  CREATED: { label: "Ticket created" },
+  ASSIGNED: { label: "Assigned" },
+  REASSIGNED: { label: "Reassigned" },
+  STATUS_CHANGED: { label: "Status changed" },
+  PRIORITY_CHANGED: { label: "Priority changed" },
+  TEAM_CHANGED: { label: "Team changed" },
+  ESCALATED: { label: "Escalated" },
+  RETURNED: { label: "Returned to agent" },
+  NOTE_ADDED: { label: "Note added" },
+  REPLIED: { label: "Reply sent" },
+  RESOLVED: { label: "Resolved" },
+  CLOSED: { label: "Closed" },
+  REOPENED: { label: "Reopened" },
 };
+
+const controlTriggerClass =
+  "flex w-full items-center justify-between rounded-md border border-border bg-background px-3 py-2 text-xs font-semibold text-foreground hover:bg-muted/50 disabled:opacity-50";
+const selectClass =
+  "w-full rounded-md border border-border bg-background px-3 py-2 text-xs text-foreground outline-none focus:border-primary focus:ring-2 focus:ring-primary/20";
 
 function initials(name?: string | null, fallback = "?") {
   const s = (name || "").trim();
@@ -225,23 +230,23 @@ export function TicketDetailPage() {
 
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2 flex-wrap">
-            <span className="font-mono text-xs font-bold text-muted-foreground">#{ticket.number}</span>
-            <span className={`rounded-md border px-2 py-0.5 text-[11px] font-semibold ${statusCfg.bg} ${statusCfg.text} ${statusCfg.border}`}>
+            <span className="font-mono text-xs font-semibold text-muted-foreground">#{ticket.number}</span>
+            <span className={`inline-flex items-center rounded-md border px-2 py-0.5 text-[11px] font-semibold ${statusCfg.bg} ${statusCfg.text} ${statusCfg.border}`}>
               {statusCfg.label}
             </span>
-            <span className={`rounded-md border px-2 py-0.5 text-[11px] font-semibold ${priorityCfg.bg} ${priorityCfg.color} ${priorityCfg.border}`}>
+            <span className={`inline-flex items-center rounded-md border px-2 py-0.5 text-[11px] font-semibold ${priorityCfg.bg} ${priorityCfg.text} ${priorityCfg.border}`}>
               {priorityCfg.label}
             </span>
             {isLocked && (
-              <span className="inline-flex items-center gap-1 rounded-md border border-orange-200 bg-orange-50 px-2 py-0.5 text-[11px] font-semibold text-orange-700 dark:border-orange-500/20 dark:bg-orange-500/10 dark:text-orange-400">
+              <span className="inline-flex items-center gap-1 rounded-md border border-border bg-muted px-2 py-0.5 text-[11px] font-semibold text-foreground">
                 <Lock className="w-3 h-3" /> Read only
               </span>
             )}
           </div>
-          <h1 className="text-sm font-semibold text-foreground truncate mt-0.5">{ticket.subject}</h1>
+          <h1 className="text-sm font-semibold text-foreground truncate mt-1">{ticket.subject}</h1>
         </div>
 
-        <div className="flex items-center gap-2 shrink-0">
+        <div className="flex items-center gap-2 shrink-0 self-center">
           {canClaim && (
             <button
               type="button"
@@ -268,7 +273,7 @@ export function TicketDetailPage() {
             <button
               type="button"
               onClick={() => setShowEscalate(true)}
-              className="inline-flex items-center gap-1.5 rounded-md bg-orange-500 px-3 py-2 text-xs font-semibold text-white hover:bg-orange-600"
+              className="inline-flex items-center gap-1.5 rounded-md bg-orange-600 px-3 py-2 text-xs font-semibold text-white hover:bg-orange-700"
             >
               <ArrowUpCircle className="w-3.5 h-3.5" />
               Escalate
@@ -429,13 +434,13 @@ export function TicketDetailPage() {
 
           {/* Bottom bar — note composer */}
           {activeTab === "NOTES" && (
-            <div className="shrink-0 border-t border-border bg-card p-3">
+            <div className="shrink-0 border-t border-border bg-card px-4 py-3">
               {isLocked ? (
-                <div className="rounded-md border border-orange-200 bg-orange-50 px-3 py-2.5 text-xs font-medium text-orange-800 dark:border-orange-500/20 dark:bg-orange-500/10 dark:text-orange-300 text-center">
+                <div className="rounded-md border border-border bg-muted px-3 py-2.5 text-xs font-medium text-foreground text-center">
                   Escalated — notes disabled until a manager returns this ticket.
                 </div>
               ) : (
-                <div className="flex items-stretch gap-2 rounded-md border border-border bg-background p-2 focus-within:border-primary focus-within:ring-2 focus-within:ring-primary/20">
+                <div className="flex items-center gap-2">
                   <textarea
                     id="note-input"
                     value={noteText}
@@ -446,16 +451,16 @@ export function TicketDetailPage() {
                         void handleAddNote();
                       }
                     }}
-                    rows={2}
+                    rows={1}
                     placeholder="Add an internal note… (never sent to customer)"
-                    className="flex-1 min-w-0 resize-none bg-transparent px-2 py-1.5 text-sm outline-none placeholder:text-muted-foreground"
+                    className="flex-1 min-w-0 min-h-[40px] max-h-28 resize-y rounded-md border border-border bg-background px-3 py-2.5 text-sm outline-none placeholder:text-muted-foreground focus:border-primary focus:ring-2 focus:ring-primary/20"
                   />
                   <button
                     id="add-note-btn"
                     type="button"
                     onClick={handleAddNote}
                     disabled={addNote.isPending || !noteText.trim()}
-                    className="self-end inline-flex items-center gap-1.5 rounded-md bg-primary px-3 py-2 text-xs font-semibold text-primary-foreground hover:bg-primary/90 disabled:opacity-40 shrink-0"
+                    className="inline-flex h-10 shrink-0 items-center gap-1.5 rounded-md bg-primary px-4 text-xs font-semibold text-primary-foreground hover:bg-primary/90 disabled:opacity-40"
                   >
                     {addNote.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Send className="w-3.5 h-3.5" />}
                     Add
@@ -476,15 +481,21 @@ export function TicketDetailPage() {
                     type="button"
                     onClick={() => setStatusOpen(!statusOpen)}
                     disabled={allowedStatuses.length === 0}
-                    className={`flex w-full items-center justify-between rounded-md border px-3 py-2 text-xs font-semibold ${statusCfg.bg} ${statusCfg.text} ${statusCfg.border} disabled:opacity-50`}
+                    className={controlTriggerClass}
                   >
-                    {statusCfg.label}
-                    {allowedStatuses.length > 0 && <ChevronDown className="w-3.5 h-3.5 opacity-70" />}
+                    <span className="inline-flex items-center gap-2">
+                      <span
+                        className={`inline-flex rounded-md border px-2 py-0.5 text-[11px] font-semibold ${statusCfg.bg} ${statusCfg.text} ${statusCfg.border}`}
+                      >
+                        {statusCfg.label}
+                      </span>
+                    </span>
+                    {allowedStatuses.length > 0 && <ChevronDown className="w-3.5 h-3.5 text-muted-foreground" />}
                   </button>
                   {statusOpen && allowedStatuses.length > 0 && (
                     <>
                       <div className="fixed inset-0 z-10" onClick={() => setStatusOpen(false)} />
-                      <div className="absolute top-full left-0 right-0 mt-1 z-20 rounded-md border border-border bg-card shadow-lg overflow-hidden">
+                      <div className="absolute top-full left-0 right-0 mt-1 z-20 rounded-md border border-border bg-card shadow-lg overflow-hidden py-1">
                         {allowedStatuses.map((s) => (
                           <button
                             key={s}
@@ -508,31 +519,37 @@ export function TicketDetailPage() {
 
             <ControlBlock label="Priority">
               {isLocked || isAgent ? (
-                <span className={`inline-flex rounded-md border px-2.5 py-1.5 text-xs font-semibold ${priorityCfg.bg} ${priorityCfg.color} ${priorityCfg.border}`}>
+                <span
+                  className={`inline-flex rounded-md border px-2.5 py-1.5 text-xs font-semibold ${priorityCfg.bg} ${priorityCfg.text} ${priorityCfg.border}`}
+                >
                   {priorityCfg.label}
                 </span>
               ) : (
                 <div className="relative">
-                  <button
-                    type="button"
-                    onClick={() => setPriorityOpen(!priorityOpen)}
-                    className={`flex w-full items-center justify-between rounded-md border px-3 py-2 text-xs font-semibold ${priorityCfg.bg} ${priorityCfg.color} ${priorityCfg.border}`}
-                  >
-                    {priorityCfg.label}
-                    <ChevronDown className="w-3.5 h-3.5 opacity-70" />
+                  <button type="button" onClick={() => setPriorityOpen(!priorityOpen)} className={controlTriggerClass}>
+                    <span
+                      className={`inline-flex rounded-md border px-2 py-0.5 text-[11px] font-semibold ${priorityCfg.bg} ${priorityCfg.text} ${priorityCfg.border}`}
+                    >
+                      {priorityCfg.label}
+                    </span>
+                    <ChevronDown className="w-3.5 h-3.5 text-muted-foreground" />
                   </button>
                   {priorityOpen && (
                     <>
                       <div className="fixed inset-0 z-10" onClick={() => setPriorityOpen(false)} />
-                      <div className="absolute top-full left-0 right-0 mt-1 z-20 rounded-md border border-border bg-card shadow-lg overflow-hidden">
+                      <div className="absolute top-full left-0 right-0 mt-1 z-20 rounded-md border border-border bg-card shadow-lg overflow-hidden py-1">
                         {(Object.keys(PRIORITY_CONFIG) as TicketPriority[]).map((p) => (
                           <button
                             key={p}
                             type="button"
                             onClick={() => handlePriorityChange(p)}
-                            className={`flex w-full px-3 py-2 text-xs font-medium hover:bg-muted ${PRIORITY_CONFIG[p].color}`}
+                            className="flex w-full items-center gap-2 px-3 py-2 text-xs font-medium text-foreground hover:bg-muted"
                           >
-                            {PRIORITY_CONFIG[p].label}
+                            <span
+                              className={`inline-flex rounded-md border px-2 py-0.5 text-[11px] font-semibold ${PRIORITY_CONFIG[p].bg} ${PRIORITY_CONFIG[p].text} ${PRIORITY_CONFIG[p].border}`}
+                            >
+                              {PRIORITY_CONFIG[p].label}
+                            </span>
                           </button>
                         ))}
                       </div>
@@ -547,12 +564,12 @@ export function TicketDetailPage() {
                 <p className="text-[11px] text-muted-foreground mb-2">Open pool — any agent can claim.</p>
               )}
               {isLocked ? (
-                <p className="text-xs font-medium">
+                <p className="text-xs font-medium text-foreground">
                   {ticket.assignee?.username ?? (ticket.team ? `Queue: ${ticket.team.name}` : "Unassigned")}
                 </p>
               ) : isAgent ? (
                 <div className="space-y-2">
-                  <p className="text-xs font-medium">
+                  <p className="text-xs font-medium text-foreground">
                     {ticket.assignedTo === user?.id
                       ? "You"
                       : ticket.assignee?.username ??
@@ -608,7 +625,7 @@ export function TicketDetailPage() {
                       .then(() => toast.success("Assignment updated"))
                       .catch((err: any) => toast.error(err.message));
                   }}
-                  className="w-full rounded-md border border-border bg-background px-2.5 py-2 text-xs outline-none focus:border-primary focus:ring-2 focus:ring-primary/20"
+                  className={selectClass}
                 >
                   <option value="unassigned">Unassigned (open pool)</option>
                   {isManagerOrAbove && teams.length > 0 && (
@@ -636,15 +653,12 @@ export function TicketDetailPage() {
               {events.length === 0 ? (
                 <p className="text-xs text-muted-foreground">No activity yet</p>
               ) : (
-                <ul className="space-y-2.5">
+                <ul className="space-y-0 divide-y divide-border">
                   {events.map((ev) => {
-                    const meta = EVENT_META[ev.type] ?? {
-                      label: ev.type,
-                      color: "text-foreground",
-                    };
+                    const meta = EVENT_META[ev.type] ?? { label: ev.type };
                     return (
-                      <li key={ev.id} className="border-b border-border/60 pb-2.5 last:border-0 last:pb-0">
-                        <p className={`text-xs font-medium ${meta.color}`}>{meta.label}</p>
+                      <li key={ev.id} className="py-2.5 first:pt-0 last:pb-0">
+                        <p className="text-xs font-medium text-foreground">{meta.label}</p>
                         {ev.note && (
                           <p className="mt-0.5 text-[11px] text-muted-foreground leading-snug">{ev.note}</p>
                         )}

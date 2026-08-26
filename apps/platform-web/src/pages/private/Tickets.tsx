@@ -18,66 +18,21 @@ const STATUS_CONFIG: Record<
   TicketStatus,
   { label: string; bg: string; text: string; border: string }
 > = {
-  OPEN: {
-    label: "Open",
-    bg: "bg-blue-600",
-    text: "text-white",
-    border: "border-blue-600",
-  },
-  IN_PROGRESS: {
-    label: "In Progress",
-    bg: "bg-amber-500",
-    text: "text-white",
-    border: "border-amber-500",
-  },
-  ESCALATED: {
-    label: "Escalated",
-    bg: "bg-orange-600",
-    text: "text-white",
-    border: "border-orange-600",
-  },
-  RESOLVED: {
-    label: "Resolved",
-    bg: "bg-emerald-600",
-    text: "text-white",
-    border: "border-emerald-600",
-  },
-  CLOSED: {
-    label: "Closed",
-    bg: "bg-slate-600",
-    text: "text-white",
-    border: "border-slate-600",
-  },
+  OPEN: { label: "Open", bg: "bg-blue-600", text: "text-white", border: "border-blue-700" },
+  IN_PROGRESS: { label: "In Progress", bg: "bg-amber-600", text: "text-white", border: "border-amber-700" },
+  ESCALATED: { label: "Escalated", bg: "bg-orange-600", text: "text-white", border: "border-orange-700" },
+  RESOLVED: { label: "Resolved", bg: "bg-emerald-600", text: "text-white", border: "border-emerald-700" },
+  CLOSED: { label: "Closed", bg: "bg-slate-600", text: "text-white", border: "border-slate-700" },
 };
 
 const PRIORITY_CONFIG: Record<
   TicketPriority,
   { label: string; bg: string; text: string; border: string }
 > = {
-  LOW: {
-    label: "Low",
-    bg: "bg-slate-100 dark:bg-slate-800",
-    text: "text-slate-800 dark:text-slate-200",
-    border: "border-slate-300 dark:border-slate-600",
-  },
-  MEDIUM: {
-    label: "Medium",
-    bg: "bg-blue-100 dark:bg-blue-900/40",
-    text: "text-blue-800 dark:text-blue-200",
-    border: "border-blue-300 dark:border-blue-700",
-  },
-  HIGH: {
-    label: "High",
-    bg: "bg-amber-100 dark:bg-amber-900/40",
-    text: "text-amber-900 dark:text-amber-200",
-    border: "border-amber-400 dark:border-amber-700",
-  },
-  URGENT: {
-    label: "Urgent",
-    bg: "bg-red-600",
-    text: "text-white",
-    border: "border-red-600",
-  },
+  LOW: { label: "Low", bg: "bg-slate-500", text: "text-white", border: "border-slate-600" },
+  MEDIUM: { label: "Medium", bg: "bg-blue-600", text: "text-white", border: "border-blue-700" },
+  HIGH: { label: "High", bg: "bg-amber-600", text: "text-white", border: "border-amber-700" },
+  URGENT: { label: "Urgent", bg: "bg-red-600", text: "text-white", border: "border-red-700" },
 };
 
 const STATUS_FILTERS: Array<TicketStatus | "ALL"> = [
@@ -384,13 +339,13 @@ export function TicketsPage() {
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-border bg-muted/40 text-[11px] uppercase tracking-wide text-muted-foreground">
-                  <th className="px-4 py-3 text-left font-semibold w-16">#</th>
+                  <th className="px-4 py-3 text-left font-semibold w-14">#</th>
                   <th className="px-4 py-3 text-left font-semibold">Subject</th>
-                  <th className="px-4 py-3 text-left font-semibold w-36">Status</th>
+                  <th className="px-4 py-3 text-left font-semibold w-40">Status</th>
                   <th className="px-4 py-3 text-left font-semibold w-28">Priority</th>
                   <th className="px-4 py-3 text-left font-semibold w-32">Team</th>
-                  <th className="px-4 py-3 text-left font-semibold w-40">Assignee</th>
-                  <th className="px-4 py-3 text-left font-semibold w-32">Updated</th>
+                  <th className="px-4 py-3 text-left font-semibold w-36">Assignee</th>
+                  <th className="px-4 py-3 text-left font-semibold w-36">Updated</th>
                 </tr>
               </thead>
               <tbody>
@@ -400,41 +355,31 @@ export function TicketsPage() {
                     onClick={() => navigate(`/tickets/${ticket.id}`)}
                     className="border-b border-border last:border-0 hover:bg-muted/40 transition-colors cursor-pointer"
                   >
-                    <td className="px-4 py-3.5">
-                      <span className="font-mono text-xs font-semibold text-muted-foreground bg-muted px-1.5 py-0.5 rounded">
-                        #{ticket.number}
-                      </span>
+                    <td className="px-4 py-3 align-middle font-mono text-xs font-semibold text-muted-foreground">
+                      #{ticket.number}
                     </td>
-                    <td className="px-4 py-3.5 max-w-[280px]">
-                      <p className="font-semibold text-foreground truncate">{ticket.subject}</p>
+                    <td className="px-4 py-3 align-middle max-w-[280px]">
+                      <p className="font-semibold text-foreground truncate leading-snug">{ticket.subject}</p>
                       <p className="text-xs text-muted-foreground truncate mt-0.5">
                         {ticket.customer?.name || "No customer"}
                         {ticket.channel ? ` · ${ticket.channel}` : ""}
                       </p>
                     </td>
-                    <td className="px-4 py-3.5" onClick={(e) => e.stopPropagation()}>
+                    <td className="px-4 py-3 align-middle" onClick={(e) => e.stopPropagation()}>
                       <TicketStatusMenu ticket={ticket} />
                     </td>
-                    <td className="px-4 py-3.5">
+                    <td className="px-4 py-3 align-middle">
                       <PriorityBadge priority={ticket.priority} />
                     </td>
-                    <td className="px-4 py-3.5 text-xs">
-                      {ticket.team?.name ? (
-                        <span className="font-medium text-foreground">{ticket.team.name}</span>
-                      ) : (
-                        <span className="text-muted-foreground italic">Open pool</span>
-                      )}
+                    <td className="px-4 py-3 align-middle text-xs text-foreground">
+                      {ticket.team?.name ?? <span className="text-muted-foreground">Open pool</span>}
                     </td>
-                    <td className="px-4 py-3.5 text-xs">
-                      {ticket.assignee?.username ? (
-                        <span className="font-medium text-foreground truncate block max-w-[140px]">
-                          {ticket.assignee.username.split("@")[0]}
-                        </span>
-                      ) : (
+                    <td className="px-4 py-3 align-middle text-xs text-foreground">
+                      {ticket.assignee?.username?.split("@")[0] ?? (
                         <span className="text-muted-foreground">Unassigned</span>
                       )}
                     </td>
-                    <td className="px-4 py-3.5 text-xs text-muted-foreground whitespace-nowrap">
+                    <td className="px-4 py-3 align-middle text-xs text-muted-foreground whitespace-nowrap">
                       {formatDistanceToNow(new Date(ticket.updatedAt), { addSuffix: true })}
                     </td>
                   </tr>
