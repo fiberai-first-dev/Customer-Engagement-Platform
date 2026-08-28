@@ -3,10 +3,10 @@ name: cep-admin
 services:
   admin-api:
     build:
-      context: ./platform-admin-api
-      dockerfile: Dockerfile
+      context: ../
+      dockerfile: admin/platform-admin-api/Dockerfile
     env_file:
-      - .env
+      - ./platform-admin-api/.env
     ports:
       - "4200:4200"
     networks:
@@ -19,7 +19,7 @@ services:
       args:
         VITE_API_BASE_URL: http://admin-api:4200/api/v1
     env_file:
-      - .env
+      - ./platform-admin/.env
     ports:
       - "4201:80"
     networks:
