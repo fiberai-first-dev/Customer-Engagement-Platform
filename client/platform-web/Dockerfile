@@ -9,6 +9,9 @@ FROM deps AS build
 ARG VITE_API_BASE_URL=http://localhost:4100
 ENV VITE_API_BASE_URL=$VITE_API_BASE_URL
 COPY . .
+# Vite only loads mode-specific files when the matching mode is selected.
+# Use the deployment-specific public settings for this production build.
+RUN if [ -f .env.svasthyaa ]; then cp .env.svasthyaa .env.production.local; fi
 RUN npm run build
 
 FROM base AS runtime
