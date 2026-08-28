@@ -290,8 +290,34 @@ app.patch<{ Params: { id: string; key: string }; Body: { enabled: boolean } }>("
   }
 });
 
+import { execSync } from "child_process";
+import path from "path";
+import { fileURLToPath } from "url";
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
 const start = async () => {
   try {
+    // 1. Run migrations for all tenant databases
+    const orgs = await adminPrisma.organization.findMany();
+    for (const org of orgs) {
+      if (org.dbUrl) {
+        console.log(`[Admin API] Migrating tenant database: ${org.name}`);
+        try {
+          execSync("npx tsx src/scripts/migrate.ts", {
+            cwd: path.resolve(__dirname, "../../../client/platform-api"),
+            env: { ...process.env, PLATFORM_DATABASE_URL: org.dbUrl, DATABASE_URL: org.dbUrl },
+            stdio: "inherit"
+          });
+          console.log(`[Admin API] Successfully migrated ${org.name}`);
+        } catch (err) {
+          console.error(`[Admin API] Failed to migrate ${org.name}:`, err);
+        }
+      }
+    }
+
+    // 2. Start the admin API
     await app.listen({ port: PORT, host: "0.0.0.0" });
     console.log(`Admin API running on port ${PORT}`);
   } catch (err) {
