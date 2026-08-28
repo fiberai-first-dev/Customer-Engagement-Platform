@@ -150,14 +150,15 @@ export function oauthRedirectHints() {
 
 export async function startGmailOAuth(
   inboxId: string,
-  creds: { clientId?: string; clientSecret?: string; pubsubTopic?: string },
 ): Promise<{ url: string; redirectUri: string }> {
   await loadInbox(inboxId, "email");
-  const clientId = nonEmpty(creds.clientId);
-  const clientSecret = nonEmpty(creds.clientSecret);
-  const pubsubTopic = nonEmpty(creds.pubsubTopic);
+  const clientId = nonEmpty(env.gmailClientId);
+  const clientSecret = nonEmpty(env.gmailClientSecret);
+  const pubsubTopic = nonEmpty(env.gmailPubsubTopic);
   if (!clientId || !clientSecret || !pubsubTopic) {
-    throw new Error("Enter Client ID, Client Secret, and Pub/Sub Topic, then click Connect.");
+    throw new Error(
+      "Gmail is not configured. Set GMAIL_CLIENT_ID, GMAIL_CLIENT_SECRET, and GMAIL_PUBSUB_TOPIC in the API environment.",
+    );
   }
 
   const nonce = putPending({

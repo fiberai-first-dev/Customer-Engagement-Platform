@@ -464,7 +464,7 @@ export const useOAuthHints = () =>
 export async function startChannelOAuth(
   provider: "gmail" | "instagram",
   inboxId: string,
-  credentials: Record<string, string>,
+  credentials: Record<string, string> = {},
 ): Promise<{ url: string; redirectUri: string }> {
   return request<{ url: string; redirectUri: string }>(`/api/v1/oauth/${provider}/start`, {
     method: "POST",

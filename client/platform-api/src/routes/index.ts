@@ -77,7 +77,7 @@ export async function registerRoutes(app: FastifyInstance) {
       reqPath === "/docs/channel-setup-guide.pdf" ||
       reqPath.startsWith("/webhooks/") ||
       reqPath.startsWith("/oauth/") ||
-      reqPath === "/api/v1/auth/google" || reqPath.startsWith("/api/v1/telemetry")
+      reqPath === "/api/v1/auth/google" || reqPath.includes("/telemetry")
     ) {
       return;
     }

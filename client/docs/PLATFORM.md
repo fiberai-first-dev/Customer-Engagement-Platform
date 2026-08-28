@@ -127,9 +127,9 @@ Agent UI → POST /api/v1/conversations/:id/messages
 Developers historically ran local OAuth CLIs. **Vendors only have the hosted UI**, so OAuth is browser-native:
 
 ```text
-Settings → Channels: Connect WhatsApp | Instagram | Gmail (modal; required fields only)
+Settings → Channels: Connect WhatsApp | Instagram | Gmail
         → Instagram: save App ID/Secret/Verify → OAuth → CEP auto-stores Access Token + Username
-        → Gmail: save Client ID/Secret/Topic → OAuth → CEP auto-stores Refresh + Access Token
+        → Gmail: Connect → Google authorization → CEP auto-stores Refresh + Access Token
         → (Gmail) watch starts after Connect and is renewed while the API is up
         → Shopify: save shop / Client ID / Secret → OAuth (merchant stores) or client credentials (same-org shop)
         → POST /api/v1/oauth/{gmail|instagram|shopify}/start   (JWT)
@@ -140,6 +140,11 @@ Settings → Channels: Connect WhatsApp | Instagram | Gmail (modal; required fie
 Settings → Disconnect clears that channel’s credentials
 Settings → Callback URLs includes Shopify **Login redirect** (`/oauth/shopify/callback`)
 ```
+
+Gmail's OAuth client ID, client secret, and Pub/Sub topic are configured in the
+platform API environment (`GMAIL_CLIENT_ID`, `GMAIL_CLIENT_SECRET`, and
+`GMAIL_PUBSUB_TOPIC`). Settings → Gmail → Connect only opens Google authorization;
+these values are never entered or exposed in the browser.
 
 After a successful Connect, the browser lands on (demo example):
 

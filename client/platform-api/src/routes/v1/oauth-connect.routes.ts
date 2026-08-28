@@ -16,19 +16,12 @@ export async function oauthConnectRoutes(app: FastifyInstance) {
   app.post<{
     Body: {
       inboxId?: string;
-      clientId?: string;
-      clientSecret?: string;
-      pubsubTopic?: string;
     };
   }>("/gmail/start", async (request, reply) => {
     const inboxId = request.body?.inboxId;
     if (!inboxId) return reply.code(400).send({ error: "inboxId required" });
     try {
-      const result = await startGmailOAuth(inboxId, {
-        clientId: request.body?.clientId,
-        clientSecret: request.body?.clientSecret,
-        pubsubTopic: request.body?.pubsubTopic,
-      });
+      const result = await startGmailOAuth(inboxId);
       return reply.send(result);
     } catch (err: any) {
       return reply.code(400).send({ error: err?.message ?? "failed to start Gmail OAuth" });

@@ -30,6 +30,10 @@ function required(name: string, fallback?: string): string {
   return stripQuotes(value);
 }
 
+function optional(name: string): string {
+  return stripQuotes(process.env[name] ?? "").trim();
+}
+
 const rawDatabaseUrl = required(
   "PLATFORM_DATABASE_URL",
   "postgresql://cep:cep@localhost:5434/cep_platform",
@@ -59,6 +63,9 @@ export const env = {
       process.env.WEB_PUBLIC_BASE_URL ??
       "http://localhost:5173",
   ),
+  gmailClientId: optional("GMAIL_CLIENT_ID"),
+  gmailClientSecret: optional("GMAIL_CLIENT_SECRET"),
+  gmailPubsubTopic: optional("GMAIL_PUBSUB_TOPIC"),
 };
 
 process.env.PLATFORM_DATABASE_URL = env.databaseUrl;

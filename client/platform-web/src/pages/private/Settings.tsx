@@ -29,6 +29,7 @@ import {
 } from "lucide-react";
 
 type ChannelKey = "whatsapp" | "instagram" | "email" | "shopify";
+type ModalKey = Exclude<ChannelKey, "email">;
 
 type FieldDef = {
   key: string;
@@ -51,17 +52,6 @@ const IG_FIELDS: FieldDef[] = [
   { key: "instagramAppId", label: "Instagram App ID", required: true },
   { key: "instagramAppSecret", label: "Instagram App Secret", secret: true, required: true },
   { key: "verifyToken", label: "Verify Token", secret: true, required: true },
-];
-
-const EMAIL_FIELDS: FieldDef[] = [
-  { key: "clientId", label: "Client ID", required: true },
-  { key: "clientSecret", label: "Client Secret", secret: true, required: true },
-  {
-    key: "pubsubTopic",
-    label: "Pub/Sub Topic",
-    placeholder: "projects/…/topics/…",
-    required: true,
-  },
 ];
 
 const SHOPIFY_FIELDS: FieldDef[] = [
@@ -375,7 +365,7 @@ export function SettingsPage() {
 
   const [banner, setBanner] = useState<{ tone: "ok" | "err"; text: string } | null>(null);
   const [connecting, setConnecting] = useState<"gmail" | "instagram" | "shopify" | null>(null);
-  const [modal, setModal] = useState<ChannelKey | null>(null);
+  const [modal, setModal] = useState<ModalKey | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [disconnectTarget, setDisconnectTarget] = useState<ChannelKey | null>(null);
 
@@ -435,7 +425,7 @@ export function SettingsPage() {
   const startOAuth = async (
     provider: "gmail" | "instagram",
     inboxId: string,
-    credentials: Record<string, string>,
+    credentials: Record<string, string> = {},
   ) => {
     setConnecting(provider);
     setBanner({
@@ -476,15 +466,6 @@ export function SettingsPage() {
         fields: IG_FIELDS,
         initialValues: {} as Record<string, string>,
         submitLabel: connecting === "instagram" ? "Connecting…" : "Connect",
-      };
-    }
-    if (modal === "email") {
-      return {
-        title: "Connect Gmail",
-        description: "Enter your Google client details, then sign in with Google.",
-        fields: EMAIL_FIELDS,
-        initialValues: {} as Record<string, string>,
-        submitLabel: connecting === "gmail" ? "Connecting…" : "Connect",
       };
     }
     return {
@@ -536,6 +517,14 @@ export function SettingsPage() {
     }
   };
 
+  const handleConnectGmail = () => {
+    if (!emailInbox) {
+      setBanner({ tone: "err", text: "Gmail inbox is not available. Please try again later." });
+      return;
+    }
+    void startOAuth("gmail", emailInbox.id).catch(() => undefined);
+  };
+
   const handleConnectSubmit = async (values: Record<string, string>) => {
     if (!modal) return;
     setSubmitting(true);
@@ -567,18 +556,9 @@ export function SettingsPage() {
         }
       }
 
-      const inbox =
-        modal === "whatsapp" ? waInbox : modal === "instagram" ? igInbox : emailInbox;
+      const inbox = modal === "whatsapp" ? waInbox : igInbox;
       if (!inbox) throw new Error("Channel is not available. Please try again later.");
 
-      if (modal === "email") {
-        await startOAuth("gmail", inbox.id, {
-          clientId: values.clientId,
-          clientSecret: values.clientSecret,
-          pubsubTopic: values.pubsubTopic,
-        });
-        return;
-      }
       if (modal === "instagram") {
         await startOAuth("instagram", inbox.id, {
           instagramAppId: values.instagramAppId,
@@ -704,10 +684,9 @@ export function SettingsPage() {
               linked={isLinkedStatus(emailStatus.tone)}
               busy={
                 connecting === "gmail" ||
-                (submitting && modal === "email") ||
                 (disconnectingInbox && disconnectTarget === "email")
               }
-              onConnect={() => setModal("email")}
+              onConnect={handleConnectGmail}
               onDisconnect={() => setDisconnectTarget("email")}
             />
           </div>
@@ -755,7 +734,13 @@ export function SettingsPage() {
       <ConfirmDialog
         open={Boolean(disconnectTarget)}
         title={`Disconnect ${disconnectLabel}?`}
-        description="Are you sure you want to disconnect? You can connect again anytime from Settings."
+        description={
+          <>
+            This removes the saved credentials and disables {disconnectLabel}. Type{" "}
+            <strong className="text-foreground">Disconnect</strong> below to continue.
+          </>
+        }
+        requiredConfirmationText="Disconnect"
         confirmLabel="Disconnect"
         cancelLabel="Cancel"
         destructive

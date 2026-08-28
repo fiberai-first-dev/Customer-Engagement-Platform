@@ -1,5 +1,6 @@
 import type { Prisma } from "../generated/client/index.js";
 import { prisma } from "../config/db.js";
+import { env } from "../config/env.js";
 import {
   emailAdapter,
   getEmailClient,
@@ -41,7 +42,14 @@ function asEmailConfig(raw: Prisma.JsonValue): EmailChannelConfig | null {
   const obj = raw as Record<string, unknown>;
   // Accept legacy provider:gmail rows and new email-only configs
   if (obj.provider === "gmail" || obj.refreshToken || obj.clientId) {
-    return resolveChannelConfig("email", obj) as EmailChannelConfig;
+    const config = resolveChannelConfig("email", obj) as EmailChannelConfig;
+    return {
+      ...config,
+      // Static Gmail application settings come from the API environment.
+      clientId: env.gmailClientId || config.clientId,
+      clientSecret: env.gmailClientSecret || config.clientSecret,
+      pubsubTopic: env.gmailPubsubTopic || config.pubsubTopic,
+    };
   }
   return null;
 }

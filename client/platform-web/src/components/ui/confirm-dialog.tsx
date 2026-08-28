@@ -1,6 +1,7 @@
-import { useEffect, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { Loader2 } from "lucide-react";
 import { Button } from "./button";
+import { Input } from "./input";
 import { cn } from "../../utils/utils";
 
 type Props = {
@@ -11,6 +12,7 @@ type Props = {
   cancelLabel?: string;
   confirming?: boolean;
   destructive?: boolean;
+  requiredConfirmationText?: string;
   onConfirm: () => void;
   onCancel: () => void;
 };
@@ -23,9 +25,16 @@ export function ConfirmDialog({
   cancelLabel = "Cancel",
   confirming = false,
   destructive = false,
+  requiredConfirmationText,
   onConfirm,
   onCancel,
 }: Props) {
+  const [confirmation, setConfirmation] = useState("");
+
+  useEffect(() => {
+    if (open) setConfirmation("");
+  }, [open]);
+
   useEffect(() => {
     if (!open) return;
     const onKey = (e: KeyboardEvent) => {
@@ -36,6 +45,9 @@ export function ConfirmDialog({
   }, [open, confirming, onCancel]);
 
   if (!open) return null;
+
+  const confirmationMatches =
+    !requiredConfirmationText || confirmation.trim() === requiredConfirmationText;
 
   return (
     <div
@@ -66,6 +78,22 @@ export function ConfirmDialog({
         <div id="confirm-dialog-desc" className="mt-2 text-sm leading-relaxed text-muted-foreground">
           {description}
         </div>
+        {requiredConfirmationText ? (
+          <div className="mt-4 space-y-1.5">
+            <label htmlFor="confirm-dialog-input" className="text-sm font-medium text-foreground">
+              Confirmation
+            </label>
+            <Input
+              id="confirm-dialog-input"
+              value={confirmation}
+              onChange={(e) => setConfirmation(e.target.value)}
+              placeholder={requiredConfirmationText}
+              autoComplete="off"
+              autoFocus
+              disabled={confirming}
+            />
+          </div>
+        ) : null}
         <div className="mt-5 flex justify-end gap-2">
           <Button
             type="button"
@@ -78,7 +106,7 @@ export function ConfirmDialog({
           <Button
             type="button"
             variant={destructive ? "destructive" : "default"}
-            disabled={confirming}
+            disabled={confirming || !confirmationMatches}
             onClick={onConfirm}
           >
             {confirming ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
