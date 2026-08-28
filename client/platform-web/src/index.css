@@ -120,4 +120,47 @@
     -ms-overflow-style: none;  /* IE and Edge */
     scrollbar-width: none;  /* Firefox */
   }
+
+  /* Restore basic HTML formatting for email bodies rendered inside Tailwind */
+  .email-html-body p, 
+  .email-html-body blockquote, 
+  .email-html-body ul, 
+  .email-html-body ol, 
+  .email-html-body dl, 
+  .email-html-body h1, 
+  .email-html-body h2, 
+  .email-html-body h3, 
+  .email-html-body h4, 
+  .email-html-body h5, 
+  .email-html-body h6,
+  .email-html-body div {
+    margin-bottom: 0.75em;
+  }
+  .email-html-body p:last-child,
+  .email-html-body div:last-child {
+    margin-bottom: 0;
+  }
+  .email-html-body ul {
+    list-style-type: disc;
+    padding-left: 1.5em;
+  }
+  .email-html-body ol {
+    list-style-type: decimal;
+    padding-left: 1.5em;
+  }
+  .email-html-body blockquote {
+    border-left: 3px solid hsl(var(--border));
+    padding-left: 1em;
+    margin-left: 0;
+    color: hsl(var(--muted-foreground));
+    margin-bottom: 0.75em;
+  }
+  .email-html-body a {
+    color: hsl(var(--primary));
+    text-decoration: underline;
+  }
+  .email-html-body hr {
+    margin: 1.5em 0;
+    border-top: 1px solid hsl(var(--border));
+  }
 }

@@ -113,7 +113,7 @@ function MessageBody({
           )}
           {message.contentType === "html" ? (
             <div
-              className="break-words leading-relaxed [overflow-wrap:anywhere]"
+              className="email-html-body break-words leading-relaxed [overflow-wrap:anywhere]"
               dangerouslySetInnerHTML={{ __html: visible }}
             />
           ) : (
