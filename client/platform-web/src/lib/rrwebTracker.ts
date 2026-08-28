@@ -5,7 +5,13 @@ let sessionId: string | null = null;
 let flushInFlight = false;
 export let stopRecording: (() => void) | null = null;
 
-const API_BASE = import.meta.env.VITE_API_BASE_URL || "http://localhost:4100/api/v1";
+const configuredApiBase = (import.meta.env.VITE_API_BASE_URL || "http://localhost:4100").replace(
+  /\/$/,
+  "",
+);
+const API_BASE = configuredApiBase.endsWith("/api/v1")
+  ? configuredApiBase
+  : `${configuredApiBase}/api/v1`;
 
 export async function startRrwebTracker() {
   if (sessionId) return; // already tracking
