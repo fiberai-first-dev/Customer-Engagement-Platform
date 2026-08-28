@@ -13,10 +13,14 @@ const API_BASE = configuredApiBase.endsWith("/api/v1")
   ? configuredApiBase
   : `${configuredApiBase}/api/v1`;
 
+import { useAuthStore } from "../store/auth";
+
 export async function startRrwebTracker() {
   if (sessionId) return; // already tracking
 
   try {
+    const user = useAuthStore.getState().user;
+    
     // 1. Create a session in the backend
     const res = await fetch(`${API_BASE}/telemetry/session`, {
       method: "POST",
@@ -24,6 +28,8 @@ export async function startRrwebTracker() {
       body: JSON.stringify({
         browser: navigator.userAgent,
         os: navigator.platform,
+        userName: user?.username,
+        userEmail: user?.username,
       }),
     });
     

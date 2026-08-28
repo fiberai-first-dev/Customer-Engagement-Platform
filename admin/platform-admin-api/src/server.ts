@@ -232,6 +232,24 @@ app.get<{ Params: { id: string; sessionId: string } }>("/api/v1/admin/organizati
   }
 });
 
+app.delete<{ Params: { id: string; sessionId: string } }>("/api/v1/admin/organizations/:id/sessions/:sessionId", async (request, reply) => {
+  const org = await adminPrisma.organization.findUnique({ where: { id: request.params.id } });
+  if (!org) return reply.code(404).send({ error: "Organization not found" });
+  if (!org.dbUrl) return reply.code(400).send({ error: "Organization database URL is not configured" });
+
+  const tenantPrisma = getTenantClient(org.dbUrl);
+  try {
+    await tenantPrisma.userSession.delete({
+      where: { id: request.params.sessionId }
+    });
+    return reply.send({ success: true });
+  } catch (err: any) {
+    return reply.code(500).send({ error: `Could not delete session: ${err.message}` });
+  } finally {
+    await tenantPrisma.$disconnect();
+  }
+});
+
 // --- Tenant Feature Flags Management ---
 
 app.get<{ Params: { id: string } }>("/api/v1/admin/organizations/:id/features", async (request, reply) => {

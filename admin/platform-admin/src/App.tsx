@@ -23,6 +23,8 @@ type Session = {
   id: string;
   browser: string;
   os: string;
+  userName?: string;
+  userEmail?: string;
   createdAt: string;
   _count: { events: number };
 };
@@ -202,6 +204,20 @@ export function App() {
       setError(err.message);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const deleteSession = async (sessionId: string) => {
+    if (!selectedOrgId || !window.confirm("Are you sure you want to delete this session?")) return;
+    try {
+      const res = await fetch(`${API_BASE}/admin/organizations/${selectedOrgId}/sessions/${sessionId}`, {
+        method: "DELETE",
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      if (!res.ok) throw new Error("Failed to delete session");
+      setSessions(prev => prev.filter(s => s.id !== sessionId));
+    } catch (err: any) {
+      alert(err.message);
     }
   };
 
@@ -647,6 +663,11 @@ export function App() {
                           <div>
                             <h3 className="font-semibold text-slate-900 text-sm">
                               Session {session.id.substring(session.id.length - 8)}
+                              {(session.userName || session.userEmail) && (
+                                <span className="ml-2 text-slate-500 font-normal">
+                                  — {session.userName || 'Unknown'} {session.userEmail ? `<${session.userEmail}>` : ''}
+                                </span>
+                              )}
                             </h3>
                             <div className="text-xs text-slate-500 mt-1 flex items-center gap-3 font-medium">
                               <span>{new Date(session.createdAt).toLocaleString()}</span>
@@ -658,13 +679,22 @@ export function App() {
                           </div>
                         </div>
                         
-                        <button
-                          onClick={() => watchSession(session.id)}
-                          disabled={session._count.events < 2}
-                          className="px-4 py-2 bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 rounded-lg text-sm font-medium transition-colors flex items-center gap-2 shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
-                        >
-                          <PlayCircle className="w-4 h-4 text-blue-600" /> Watch Replay
-                        </button>
+                        <div className="flex items-center gap-2">
+                          <button
+                            onClick={() => watchSession(session.id)}
+                            disabled={session._count.events < 2}
+                            className="px-4 py-2 bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 rounded-lg text-sm font-medium transition-colors flex items-center gap-2 shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
+                          >
+                            <PlayCircle className="w-4 h-4 text-blue-600" /> Watch Replay
+                          </button>
+                          <button
+                            onClick={() => deleteSession(session.id)}
+                            title="Delete Session"
+                            className="p-2 bg-white border border-slate-200 hover:bg-red-50 hover:text-red-600 hover:border-red-200 text-slate-400 rounded-lg transition-colors shadow-sm"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </div>
                       </div>
                     ))}
                   </div>

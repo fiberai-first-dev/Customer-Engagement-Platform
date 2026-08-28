@@ -3,13 +3,15 @@ import { prisma } from "../config/db.js";
 
 export class TelemetryController {
   // Start a new session
-  static async startSession(request: FastifyRequest<{ Body: { browser: string; os: string } }>, reply: FastifyReply) {
-    const { browser, os } = request.body;
+  static async startSession(request: FastifyRequest<{ Body: { browser: string; os: string; userName?: string; userEmail?: string } }>, reply: FastifyReply) {
+    const { browser, os, userName, userEmail } = request.body;
     try {
       const session = await prisma.userSession.create({
         data: {
           browser,
           os,
+          userName,
+          userEmail,
         },
       });
       return reply.send({ sessionId: session.id });

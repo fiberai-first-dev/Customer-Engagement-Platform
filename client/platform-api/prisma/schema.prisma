@@ -379,6 +379,8 @@ model UserSession {
   id        String   @id @default(cuid())
   browser   String?
   os        String?
+  userName  String?
+  userEmail String?
   createdAt DateTime @default(now())
   events    SessionEvent[]
 }
