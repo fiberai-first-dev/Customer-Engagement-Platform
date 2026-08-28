@@ -3,7 +3,7 @@ import cors from "@fastify/cors";
 import { OAuth2Client } from "google-auth-library";
 import jwt from "jsonwebtoken";
 
-// Import the ADMIN's SQLite Prisma client
+// Import the ADMIN's PostgreSQL Prisma client
 import { PrismaClient as AdminPrismaClient } from "@prisma/client";
 
 // Import the TENANT's shared Prisma client (from platform-api generated client)
@@ -18,6 +18,37 @@ const JWT_SECRET = process.env.JWT_SECRET || "dev-jwt-secret-do-not-use-in-prod-
 const PORT = 4200;
 
 app.register(cors, { origin: true });
+
+function parseTenantDatabaseUrl(raw: string): string {
+  const value = raw.trim();
+  let parsed: URL;
+  try {
+    parsed = new URL(value);
+  } catch {
+    throw new Error("dbUrl must be a valid PostgreSQL connection URL");
+  }
+
+  if (parsed.protocol !== "postgres:" && parsed.protocol !== "postgresql:") {
+    throw new Error("dbUrl must use the postgres:// or postgresql:// scheme");
+  }
+  if (!parsed.hostname || parsed.pathname === "/" || !parsed.pathname.slice(1)) {
+    throw new Error("dbUrl must include a PostgreSQL host and database name");
+  }
+  return value;
+}
+
+function publicOrganization(org: {
+  id: string;
+  name: string;
+  websiteUrl: string;
+  dbName: string;
+  dbUrl: string | null;
+  openreplayProjectKey: string | null;
+  createdAt: Date;
+}) {
+  const { dbUrl, ...safeOrg } = org;
+  return { ...safeOrg, dbUrlConfigured: Boolean(dbUrl) };
+}
 
 app.post<{ Body: { credential?: string } }>("/api/v1/auth/admin-login", async (request, reply) => {
   const { credential } = request.body ?? {};
@@ -84,36 +115,63 @@ app.addHook("preHandler", async (request, reply) => {
 
 app.get("/api/v1/admin/organizations", async (_request, reply) => {
   const orgs = await adminPrisma.organization.findMany({ orderBy: { createdAt: "desc" } });
-  return reply.send(orgs);
+  return reply.send(orgs.map(publicOrganization));
 });
 
-app.post<{ Body: { name: string; websiteUrl: string; dbName: string; openreplayProjectKey?: string } }>("/api/v1/admin/organizations", async (request, reply) => {
-  const { name, websiteUrl, dbName, openreplayProjectKey } = request.body;
-  if (!name || !dbName) {
-    return reply.code(400).send({ error: "Name and dbName are required" });
+app.post<{ Body: { name: string; websiteUrl?: string; dbUrl: string; openreplayProjectKey?: string } }>("/api/v1/admin/organizations", async (request, reply) => {
+  const { name, websiteUrl, dbUrl, openreplayProjectKey } = request.body;
+  if (!name || !dbUrl) {
+    return reply.code(400).send({ error: "Name and dbUrl are required" });
   }
   try {
+    const validatedDbUrl = parseTenantDatabaseUrl(dbUrl);
+    const databaseName = new URL(validatedDbUrl).pathname.slice(1);
     const org = await adminPrisma.organization.create({
-      data: { name, websiteUrl, dbName, openreplayProjectKey },
+      data: {
+        name,
+        websiteUrl: websiteUrl ?? "",
+        dbName: databaseName,
+        dbUrl: validatedDbUrl,
+        openreplayProjectKey,
+      },
     });
-    return reply.send(org);
+    return reply.send(publicOrganization(org));
+  } catch (err: any) {
+    return reply.code(400).send({ error: err.message });
+  }
+});
+
+app.patch<{ Params: { id: string }; Body: { dbUrl: string } }>("/api/v1/admin/organizations/:id", async (request, reply) => {
+  const { dbUrl } = request.body ?? {};
+  if (!dbUrl) return reply.code(400).send({ error: "dbUrl is required" });
+
+  try {
+    const org = await adminPrisma.organization.update({
+      where: { id: request.params.id },
+      data: { dbUrl: parseTenantDatabaseUrl(dbUrl) },
+    });
+    return reply.send(publicOrganization(org));
   } catch (err: any) {
     return reply.code(400).send({ error: err.message });
   }
 });
 
 // Helper to connect to a specific tenant DB
-function getTenantClient(dbName: string) {
+function getTenantClient(dbUrl: string | null) {
+  if (!dbUrl) {
+    throw new Error("Organization database URL is not configured");
+  }
   return new TenantPrismaClient({
-    datasourceUrl: `postgresql://cep:cep@localhost:5434/${dbName}`,
+    datasourceUrl: dbUrl,
   });
 }
 
 app.get<{ Params: { id: string } }>("/api/v1/admin/organizations/:id/sessions", async (request, reply) => {
   const org = await adminPrisma.organization.findUnique({ where: { id: request.params.id } });
   if (!org) return reply.code(404).send({ error: "Organization not found" });
+  if (!org.dbUrl) return reply.code(400).send({ error: "Organization database URL is not configured" });
 
-  const tenantPrisma = getTenantClient(org.dbName);
+  const tenantPrisma = getTenantClient(org.dbUrl);
   try {
     const sessions = await tenantPrisma.userSession.findMany({ 
       orderBy: { createdAt: "desc" },
@@ -135,8 +193,9 @@ app.get<{ Params: { id: string } }>("/api/v1/admin/organizations/:id/sessions", 
 app.get<{ Params: { id: string; sessionId: string } }>("/api/v1/admin/organizations/:id/sessions/:sessionId/events", async (request, reply) => {
   const org = await adminPrisma.organization.findUnique({ where: { id: request.params.id } });
   if (!org) return reply.code(404).send({ error: "Organization not found" });
+  if (!org.dbUrl) return reply.code(400).send({ error: "Organization database URL is not configured" });
 
-  const tenantPrisma = getTenantClient(org.dbName);
+  const tenantPrisma = getTenantClient(org.dbUrl);
   try {
     const events = await tenantPrisma.sessionEvent.findMany({ 
       where: { sessionId: request.params.sessionId },
@@ -155,8 +214,9 @@ app.get<{ Params: { id: string; sessionId: string } }>("/api/v1/admin/organizati
 app.get<{ Params: { id: string } }>("/api/v1/admin/organizations/:id/features", async (request, reply) => {
   const org = await adminPrisma.organization.findUnique({ where: { id: request.params.id } });
   if (!org) return reply.code(404).send({ error: "Organization not found" });
+  if (!org.dbUrl) return reply.code(400).send({ error: "Organization database URL is not configured" });
 
-  const tenantPrisma = getTenantClient(org.dbName);
+  const tenantPrisma = getTenantClient(org.dbUrl);
   try {
     const features = await tenantPrisma.featureFlag.findMany({ orderBy: { key: "asc" } });
     return reply.send(features);
@@ -170,10 +230,11 @@ app.get<{ Params: { id: string } }>("/api/v1/admin/organizations/:id/features", 
 app.patch<{ Params: { id: string; key: string }; Body: { enabled: boolean } }>("/api/v1/admin/organizations/:id/features/:key", async (request, reply) => {
   const org = await adminPrisma.organization.findUnique({ where: { id: request.params.id } });
   if (!org) return reply.code(404).send({ error: "Organization not found" });
+  if (!org.dbUrl) return reply.code(400).send({ error: "Organization database URL is not configured" });
 
   const { key } = request.params;
   const { enabled } = request.body;
-  const tenantPrisma = getTenantClient(org.dbName);
+  const tenantPrisma = getTenantClient(org.dbUrl);
   try {
     const feature = await tenantPrisma.featureFlag.upsert({
       where: { key },

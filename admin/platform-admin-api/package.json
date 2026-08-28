@@ -4,7 +4,8 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "tsx watch src/server.ts"
+    "dev": "tsx watch src/server.ts",
+    "db:deploy": "prisma migrate deploy"
   },
   "dependencies": {
     "@fastify/cors": "^9.0.1",

@@ -16,6 +16,7 @@ type Organization = {
   name: string;
   websiteUrl: string;
   dbName: string;
+  dbUrlConfigured: boolean;
 };
 
 type Session = {
@@ -26,7 +27,8 @@ type Session = {
   _count: { events: number };
 };
 
-const API_BASE = "http://localhost:4200/api/v1";
+const API_BASE =
+  import.meta.env.VITE_API_BASE_URL || "http://localhost:4200/api/v1";
 
 export function App() {
   const [token, setToken] = useState<string | null>(localStorage.getItem("admin_token"));
@@ -43,7 +45,8 @@ export function App() {
   const [showNewOrg, setShowNewOrg] = useState(false);
   const [newOrgName, setNewOrgName] = useState("");
   const [newOrgWebsite, setNewOrgWebsite] = useState("");
-  const [newOrgDb, setNewOrgDb] = useState("");
+  const [newOrgDbUrl, setNewOrgDbUrl] = useState("");
+  const [organizationDbUrl, setOrganizationDbUrl] = useState("");
 
   // Player State
   const [playingSession, setPlayingSession] = useState<string | null>(null);
@@ -93,7 +96,7 @@ export function App() {
         body: JSON.stringify({ 
           name: newOrgName, 
           websiteUrl: newOrgWebsite, 
-          dbName: newOrgDb,
+          dbUrl: newOrgDbUrl,
         }),
       });
       if (!res.ok) throw new Error("Failed to create organization");
@@ -103,7 +106,28 @@ export function App() {
       setShowNewOrg(false);
       setNewOrgName("");
       setNewOrgWebsite("");
-      setNewOrgDb("");
+      setNewOrgDbUrl("");
+    } catch (err: any) {
+      alert(err.message);
+    }
+  };
+
+  const updateOrganizationDbUrl = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedOrgId || !organizationDbUrl.trim()) return;
+
+    try {
+      const res = await fetch(`${API_BASE}/admin/organizations/${selectedOrgId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ dbUrl: organizationDbUrl }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Failed to update database URL");
+      setOrganizations((prev) =>
+        prev.map((org) => (org.id === selectedOrgId ? data : org)),
+      );
+      setOrganizationDbUrl("");
     } catch (err: any) {
       alert(err.message);
     }
@@ -304,8 +328,8 @@ export function App() {
                     <input required value={newOrgName} onChange={e => setNewOrgName(e.target.value)} className="w-full px-3 py-2 rounded-lg border border-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="Acme Corp" />
                   </div>
                   <div className="flex-1">
-                    <label className="block text-xs font-medium text-slate-500 mb-1">Database Name</label>
-                    <input required value={newOrgDb} onChange={e => setNewOrgDb(e.target.value)} className="w-full px-3 py-2 rounded-lg border border-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="cep_acme" />
+                    <label className="block text-xs font-medium text-slate-500 mb-1">Client Database URL</label>
+                    <input required type="password" value={newOrgDbUrl} onChange={e => setNewOrgDbUrl(e.target.value)} className="w-full px-3 py-2 rounded-lg border border-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="postgresql://user:password@host:5432/database" />
                   </div>
                   <div className="flex-1">
                     <label className="block text-xs font-medium text-slate-500 mb-1">Website</label>
@@ -328,7 +352,7 @@ export function App() {
                   <div>
                     <h2 className="text-xl font-semibold text-slate-900">{selectedOrg.name}</h2>
                     <p className="text-sm text-slate-500 mt-1">
-                      DB: {selectedOrg.dbName}
+                      DB: {selectedOrg.dbName} · {selectedOrg.dbUrlConfigured ? "connected" : "database URL not configured"}
                     </p>
                   </div>
                   <button
@@ -340,6 +364,28 @@ export function App() {
                     Refresh
                   </button>
                 </div>
+
+                <form onSubmit={updateOrganizationDbUrl} className="mb-6 flex gap-3 items-end">
+                  <div className="flex-1">
+                    <label className="block text-xs font-medium text-slate-500 mb-1">
+                      Client Database URL
+                    </label>
+                    <input
+                      type="password"
+                      value={organizationDbUrl}
+                      onChange={(e) => setOrganizationDbUrl(e.target.value)}
+                      className="w-full px-3 py-2 rounded-lg border border-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      placeholder="postgresql://user:password@host:5432/database"
+                    />
+                  </div>
+                  <button
+                    type="submit"
+                    disabled={!organizationDbUrl.trim()}
+                    className="px-4 py-2 bg-slate-900 text-white rounded-lg text-sm font-medium hover:bg-slate-800 transition-colors disabled:opacity-50"
+                  >
+                    Save DB URL
+                  </button>
+                </form>
 
                 <div className="flex gap-6 border-b border-slate-200">
                   <button 

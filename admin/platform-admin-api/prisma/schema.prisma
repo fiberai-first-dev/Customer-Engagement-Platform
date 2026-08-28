@@ -3,8 +3,8 @@ generator client {
 }
 
 datasource db {
-  provider = "sqlite"
-  url      = "file:./admin.db"
+  provider = "postgresql"
+  url      = env("ADMIN_DATABASE_URL")
 }
 
 model Organization {
@@ -12,6 +12,7 @@ model Organization {
   name                 String
   websiteUrl           String
   dbName               String   @unique
+  dbUrl                String?  @map("db_url")
   openreplayProjectKey String?
   createdAt            DateTime @default(now())
 }

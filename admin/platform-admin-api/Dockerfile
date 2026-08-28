@@ -14,7 +14,9 @@ COPY client/platform-api/ ./
 WORKDIR /app/admin/platform-admin-api
 COPY admin/platform-admin-api/package*.json ./
 RUN npm install
+COPY admin/platform-admin-api/prisma ./prisma
+RUN npx prisma generate
 COPY admin/platform-admin-api/ ./
 
 EXPOSE 4200
-CMD ["npx", "tsx", "src/server.ts"]
+CMD ["sh", "-c", "npm run db:deploy && npx tsx src/server.ts"]

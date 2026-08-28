@@ -2,6 +2,7 @@ import * as rrweb from "rrweb";
 
 let events: any[] = [];
 let sessionId: string | null = null;
+let flushInFlight = false;
 export let stopRecording: (() => void) | null = null;
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL || "http://localhost:4100/api/v1";
@@ -22,7 +23,8 @@ export async function startRrwebTracker() {
     
     if (!res.ok) throw new Error("Could not start telemetry session");
     
-    const data = await res.json();
+    const data = (await res.json()) as { sessionId?: string };
+    if (!data.sessionId) throw new Error("Telemetry session did not return an id");
     sessionId = data.sessionId;
 
     // 2. Start recording DOM
@@ -33,23 +35,25 @@ export async function startRrwebTracker() {
     }) || null;
 
     // 3. Flush events every 10 seconds
-    setInterval(flushEvents, 10000);
+    window.setInterval(flushEvents, 10000);
     
-    // Also try to flush when user leaves page
-    window.addEventListener("beforeunload", flushEvents);
+    // Fetch requests may be cancelled during navigation; sendBeacon is designed for this case.
+    window.addEventListener("pagehide", flushEventsOnExit);
+    document.addEventListener("visibilitychange", handleVisibilityChange);
   } catch (err) {
     console.error("rrweb tracker failed to start:", err);
   }
 }
 
 async function flushEvents() {
-  if (!sessionId || events.length === 0) return;
+  if (!sessionId || events.length === 0 || flushInFlight) return;
 
   const eventsToSend = [...events];
   events = []; // clear the buffer
+  flushInFlight = true;
 
   try {
-    await fetch(`${API_BASE}/telemetry/events`, {
+    const res = await fetch(`${API_BASE}/telemetry/events`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -57,8 +61,29 @@ async function flushEvents() {
         events: eventsToSend,
       }),
     });
+    if (!res.ok) throw new Error(`Telemetry event upload failed (${res.status})`);
   } catch (err) {
     console.error("rrweb flush failed:", err);
-    // Optionally put them back in the buffer if it failed, but we'll drop them for now to prevent memory leaks
+    // Keep failed batches so a later interval can retry them.
+    events = [...eventsToSend, ...events];
+  } finally {
+    flushInFlight = false;
+  }
+}
+
+function flushEventsOnExit() {
+  if (!sessionId || events.length === 0 || !navigator.sendBeacon) return;
+
+  const payload = JSON.stringify({ sessionId, events });
+  const accepted = navigator.sendBeacon(
+    `${API_BASE}/telemetry/events`,
+    new Blob([payload], { type: "application/json" }),
+  );
+  if (accepted) events = [];
+}
+
+function handleVisibilityChange() {
+  if (document.visibilityState === "hidden") {
+    flushEventsOnExit();
   }
 }
