@@ -97,6 +97,7 @@ app.post<{ Body: { credential?: string } }>("/api/v1/auth/admin-login", async (r
 
 // Middleware for admin routes
 app.addHook("preHandler", async (request, reply) => {
+  if (request.method === "OPTIONS") return;
   if (request.url.includes("/api/v1/auth/admin-login")) return;
 
   const authHeader = request.headers.authorization;
@@ -162,6 +163,17 @@ app.patch<{ Params: { id: string }; Body: { name?: string; websiteUrl?: string; 
       data: dataToUpdate,
     });
     return reply.send(publicOrganization(org));
+  } catch (err: any) {
+    return reply.code(400).send({ error: err.message });
+  }
+});
+
+app.delete<{ Params: { id: string } }>("/api/v1/admin/organizations/:id", async (request, reply) => {
+  try {
+    await adminPrisma.organization.delete({
+      where: { id: request.params.id },
+    });
+    return reply.send({ success: true });
   } catch (err: any) {
     return reply.code(400).send({ error: err.message });
   }

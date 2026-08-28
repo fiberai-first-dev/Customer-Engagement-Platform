@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import { GoogleLogin } from "@react-oauth/google";
-import { Shield, Key, LogOut, Plus, Building, PlayCircle, MonitorPlay, X, Search, Edit2, Save, RefreshCw, Settings } from "lucide-react";
+import { Shield, Key, LogOut, Plus, Building, PlayCircle, MonitorPlay, X, Search, Edit2, Save, RefreshCw, Settings, MoreVertical, Trash2, ArrowLeft } from "lucide-react";
 import rrwebPlayer from "rrweb-player";
 import "rrweb-player/dist/style.css";
 
@@ -27,8 +27,7 @@ type Session = {
   _count: { events: number };
 };
 
-const API_BASE =
-  import.meta.env.VITE_API_BASE_URL || "http://localhost:4200/api/v1";
+const API_BASE = import.meta.env.VITE_API_BASE_URL || "http://localhost:4200/api/v1";
 
 export function App() {
   const [token, setToken] = useState<string | null>(localStorage.getItem("admin_token"));
@@ -53,6 +52,9 @@ export function App() {
   const [editOrgWebsite, setEditOrgWebsite] = useState("");
   const [editOrgDbUrl, setEditOrgDbUrl] = useState("");
   const [isEditing, setIsEditing] = useState(false);
+  
+  // Menu State for list view
+  const [menuOpenOrgId, setMenuOpenOrgId] = useState<string | null>(null);
 
   // Player State
   const [playingSession, setPlayingSession] = useState<string | null>(null);
@@ -73,7 +75,7 @@ export function App() {
       if (org) {
         setEditOrgName(org.name);
         setEditOrgWebsite(org.websiteUrl || "");
-        setEditOrgDbUrl(""); // don't expose it, but user can input new one
+        setEditOrgDbUrl("");
         setIsEditing(false);
       }
     } else {
@@ -81,6 +83,13 @@ export function App() {
       setSessions([]);
     }
   }, [token, selectedOrgId, activeTab, organizations]);
+  
+  // Close menu when clicking outside (simple hack)
+  useEffect(() => {
+    const handleClick = () => setMenuOpenOrgId(null);
+    window.addEventListener("click", handleClick);
+    return () => window.removeEventListener("click", handleClick);
+  }, []);
 
   const fetchOrganizations = async () => {
     try {
@@ -93,9 +102,6 @@ export function App() {
       }
       const data = await res.json();
       setOrganizations(data);
-      if (data.length > 0 && !selectedOrgId) {
-        setSelectedOrgId(data[0].id);
-      }
     } catch (err: any) {
       setError(err.message);
     }
@@ -116,7 +122,6 @@ export function App() {
       if (!res.ok) throw new Error("Failed to create organization");
       const org = await res.json();
       setOrganizations([org, ...organizations]);
-      setSelectedOrgId(org.id);
       setShowNewOrg(false);
       setNewOrgName("");
       setNewOrgWebsite("");
@@ -147,6 +152,21 @@ export function App() {
       );
       setEditOrgDbUrl("");
       setIsEditing(false);
+    } catch (err: any) {
+      alert(err.message);
+    }
+  };
+
+  const deleteOrganization = async (orgId: string) => {
+    if (!window.confirm("Are you sure you want to delete this organization?")) return;
+    try {
+      const res = await fetch(`${API_BASE}/admin/organizations/${orgId}`, {
+        method: "DELETE",
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      if (!res.ok) throw new Error("Failed to delete organization");
+      setOrganizations(organizations.filter(o => o.id !== orgId));
+      if (selectedOrgId === orgId) setSelectedOrgId(null);
     } catch (err: any) {
       alert(err.message);
     }
@@ -265,6 +285,7 @@ export function App() {
     setFeatures([]);
     setSessions([]);
     setOrganizations([]);
+    setSelectedOrgId(null);
   };
 
   if (!token) {
@@ -286,52 +307,27 @@ export function App() {
   }
 
   const selectedOrg = organizations.find(o => o.id === selectedOrgId);
+  const filteredOrgs = organizations.filter(o => o.name.toLowerCase().includes(searchQuery.toLowerCase()));
 
   return (
     <div className="min-h-screen bg-slate-50 flex relative">
       {/* Sidebar */}
-      <aside className="w-64 bg-slate-900 text-slate-300 flex flex-col z-10">
+      <aside className="w-64 bg-slate-900 text-slate-300 flex flex-col z-10 shrink-0">
         <div className="p-6 flex items-center gap-3 text-white">
           <Shield className="w-6 h-6 text-blue-400" />
           <span className="font-semibold text-lg">Admin Center</span>
         </div>
         
-        <div className="px-4 py-2 mt-4">
-          <div className="flex items-center justify-between mb-2 px-2 text-xs font-semibold uppercase tracking-wider text-slate-500">
+        <div className="px-4 py-2 mt-4 space-y-2">
+          <button
+            onClick={() => setSelectedOrgId(null)}
+            className={`w-full text-left px-3 py-2.5 rounded-lg text-sm font-medium flex items-center gap-3 transition-colors ${
+              !selectedOrgId ? "bg-blue-600 text-white" : "hover:bg-slate-800"
+            }`}
+          >
+            <Building className="w-4 h-4 shrink-0" />
             Organizations
-            <button onClick={() => setShowNewOrg(!showNewOrg)} className="hover:text-white transition-colors">
-              <Plus className="w-4 h-4" />
-            </button>
-          </div>
-          
-          <div className="mb-4 relative px-2">
-            <Search className="w-4 h-4 absolute left-5 top-1/2 -translate-y-1/2 text-slate-500" />
-            <input 
-              type="text" 
-              placeholder="Search..." 
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full bg-slate-800 text-sm text-slate-200 rounded-lg pl-9 pr-3 py-1.5 focus:outline-none focus:ring-1 focus:ring-blue-500 placeholder-slate-500"
-            />
-          </div>
-          
-          <div className="space-y-1">
-            {organizations.filter(o => o.name.toLowerCase().includes(searchQuery.toLowerCase())).map(org => (
-              <button
-                key={org.id}
-                onClick={() => setSelectedOrgId(org.id)}
-                className={`w-full text-left px-3 py-2 rounded-lg text-sm flex items-center gap-3 transition-colors ${
-                  selectedOrgId === org.id ? "bg-blue-600 text-white" : "hover:bg-slate-800"
-                }`}
-              >
-                <Building className="w-4 h-4 shrink-0" />
-                <span className="truncate">{org.name}</span>
-              </button>
-            ))}
-            {organizations.length === 0 && (
-              <div className="text-xs text-slate-500 px-2 py-4">No organizations yet.</div>
-            )}
-          </div>
+          </button>
         </div>
         
         <div className="mt-auto p-4 border-t border-slate-800">
@@ -346,67 +342,194 @@ export function App() {
       </aside>
 
       {/* Main Content */}
-      <main className="flex-1 p-8 overflow-y-auto">
-        <div className="max-w-4xl mx-auto">
-          {showNewOrg && (
-            <div className="mb-8 bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
-              <h2 className="text-lg font-semibold mb-4 text-slate-900">Add New Organization</h2>
-              <form onSubmit={createOrganization} className="flex flex-col gap-4">
-                <div className="flex gap-4 items-end">
-                  <div className="flex-1">
-                    <label className="block text-xs font-medium text-slate-500 mb-1">Company Name</label>
-                    <input required value={newOrgName} onChange={e => setNewOrgName(e.target.value)} className="w-full px-3 py-2 rounded-lg border border-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="Acme Corp" />
-                  </div>
-                  <div className="flex-1">
-                    <label className="block text-xs font-medium text-slate-500 mb-1">Client Database URL</label>
-                    <input required type="password" value={newOrgDbUrl} onChange={e => setNewOrgDbUrl(e.target.value)} className="w-full px-3 py-2 rounded-lg border border-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="postgresql://user:password@host:5432/database" />
-                  </div>
-                  <div className="flex-1">
-                    <label className="block text-xs font-medium text-slate-500 mb-1">Website</label>
-                    <input value={newOrgWebsite} onChange={e => setNewOrgWebsite(e.target.value)} className="w-full px-3 py-2 rounded-lg border border-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="acme.com" />
-                  </div>
-                  <div>
-                    <button type="submit" className="px-4 py-2 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700 transition-colors">
-                      Create Organization
-                    </button>
-                  </div>
-                </div>
-              </form>
+      <main className="flex-1 overflow-y-auto">
+        {!selectedOrgId ? (
+          // ORGANIZATION LIST VIEW
+          <div className="p-8 max-w-6xl mx-auto">
+            <div className="flex items-center justify-between mb-8">
+              <div>
+                <h1 className="text-2xl font-bold text-slate-900">Organizations</h1>
+                <p className="text-slate-500 mt-1">Manage and configure tenant environments</p>
+              </div>
+              <button 
+                onClick={() => setShowNewOrg(!showNewOrg)} 
+                className="px-4 py-2.5 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 transition-colors flex items-center gap-2 shadow-sm"
+              >
+                <Plus className="w-4 h-4" /> New Organization
+              </button>
             </div>
-          )}
 
-          {selectedOrg ? (
-            <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
-              <div className="p-6 border-b border-slate-100 bg-slate-50/50">
-                <div className="flex justify-between items-center mb-6">
-                  <div>
-                    <div className="flex items-center gap-3">
-                      <h2 className="text-xl font-semibold text-slate-900">{selectedOrg.name}</h2>
-                      <button 
-                        onClick={() => setIsEditing(!isEditing)} 
-                        className="p-1.5 hover:bg-slate-200 rounded-md text-slate-400 hover:text-slate-700 transition-colors"
-                        title="Edit Organization"
-                      >
-                        <Edit2 className="w-4 h-4" />
+            {showNewOrg && (
+              <div className="mb-8 bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
+                <h2 className="text-lg font-semibold mb-4 text-slate-900">Add New Organization</h2>
+                <form onSubmit={createOrganization} className="flex flex-col gap-4">
+                  <div className="flex gap-4 items-end">
+                    <div className="flex-1">
+                      <label className="block text-xs font-medium text-slate-500 mb-1">Company Name</label>
+                      <input required value={newOrgName} onChange={e => setNewOrgName(e.target.value)} className="w-full px-3 py-2 rounded-lg border border-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="Acme Corp" />
+                    </div>
+                    <div className="flex-1">
+                      <label className="block text-xs font-medium text-slate-500 mb-1">Client Database URL</label>
+                      <input required type="password" value={newOrgDbUrl} onChange={e => setNewOrgDbUrl(e.target.value)} className="w-full px-3 py-2 rounded-lg border border-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="postgresql://user:password@host:5432/database" />
+                    </div>
+                    <div className="flex-1">
+                      <label className="block text-xs font-medium text-slate-500 mb-1">Website</label>
+                      <input value={newOrgWebsite} onChange={e => setNewOrgWebsite(e.target.value)} className="w-full px-3 py-2 rounded-lg border border-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="acme.com" />
+                    </div>
+                    <div>
+                      <button type="submit" className="px-4 py-2 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700 transition-colors">
+                        Create
                       </button>
                     </div>
-                    <p className="text-sm text-slate-500 mt-1">
-                      {selectedOrg.websiteUrl && <span className="mr-3">{selectedOrg.websiteUrl}</span>}
-                      DB: {selectedOrg.dbName} · {selectedOrg.dbUrlConfigured ? "connected" : "not configured"}
-                    </p>
+                  </div>
+                </form>
+              </div>
+            )}
+
+            <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-visible relative">
+              <div className="p-4 border-b border-slate-100 flex items-center justify-between bg-slate-50/50">
+                <div className="relative w-72">
+                  <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                  <input 
+                    type="text" 
+                    placeholder="Search organizations..." 
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    className="w-full pl-9 pr-4 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                </div>
+                <div className="text-sm text-slate-500 font-medium">
+                  {filteredOrgs.length} {filteredOrgs.length === 1 ? 'result' : 'results'}
+                </div>
+              </div>
+
+              {filteredOrgs.length > 0 ? (
+                <div className="divide-y divide-slate-100">
+                  {filteredOrgs.map(org => (
+                    <div key={org.id} className="p-4 flex items-center justify-between hover:bg-slate-50 transition-colors group">
+                      <div className="flex items-center gap-4 cursor-pointer flex-1" onClick={() => setSelectedOrgId(org.id)}>
+                        <div className="w-10 h-10 bg-blue-50 text-blue-600 rounded-lg flex items-center justify-center shrink-0 border border-blue-100">
+                          <Building className="w-5 h-5" />
+                        </div>
+                        <div>
+                          <h3 className="font-semibold text-slate-900 group-hover:text-blue-600 transition-colors">{org.name}</h3>
+                          <div className="text-xs text-slate-500 mt-0.5 flex items-center gap-3">
+                            {org.websiteUrl && <span>{org.websiteUrl}</span>}
+                            {org.websiteUrl && <span>&bull;</span>}
+                            <span>DB: {org.dbName}</span>
+                            <span>&bull;</span>
+                            <span className={org.dbUrlConfigured ? "text-green-600" : "text-amber-500"}>
+                              {org.dbUrlConfigured ? "Connected" : "Not Configured"}
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+                      
+                      <div className="relative" onClick={(e) => e.stopPropagation()}>
+                        <button 
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setMenuOpenOrgId(menuOpenOrgId === org.id ? null : org.id);
+                          }}
+                          className="p-2 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-lg transition-colors"
+                        >
+                          <MoreVertical className="w-5 h-5" />
+                        </button>
+                        
+                        {menuOpenOrgId === org.id && (
+                          <div className="absolute right-0 mt-1 w-48 bg-white rounded-xl shadow-lg border border-slate-200 py-1 z-20">
+                            <button 
+                              onClick={() => {
+                                setSelectedOrgId(org.id);
+                                setIsEditing(true);
+                                setMenuOpenOrgId(null);
+                              }}
+                              className="w-full text-left px-4 py-2 text-sm text-slate-700 hover:bg-slate-50 flex items-center gap-2"
+                            >
+                              <Edit2 className="w-4 h-4 text-slate-400" /> Edit Details
+                            </button>
+                            <button 
+                              onClick={() => {
+                                setSelectedOrgId(org.id);
+                                setMenuOpenOrgId(null);
+                              }}
+                              className="w-full text-left px-4 py-2 text-sm text-slate-700 hover:bg-slate-50 flex items-center gap-2"
+                            >
+                              <MonitorPlay className="w-4 h-4 text-slate-400" /> Open Dashboard
+                            </button>
+                            <div className="h-px bg-slate-100 my-1 mx-2" />
+                            <button 
+                              onClick={() => {
+                                deleteOrganization(org.id);
+                                setMenuOpenOrgId(null);
+                              }}
+                              className="w-full text-left px-4 py-2 text-sm text-red-600 hover:bg-red-50 flex items-center gap-2 font-medium"
+                            >
+                              <Trash2 className="w-4 h-4" /> Delete Organization
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="p-12 text-center text-slate-500">
+                  <Building className="w-12 h-12 mx-auto mb-4 opacity-20" />
+                  <p>No organizations found matching your search.</p>
+                </div>
+              )}
+            </div>
+          </div>
+        ) : selectedOrg ? (
+          // ORGANIZATION DETAIL VIEW
+          <div className="p-8 max-w-5xl mx-auto">
+            <button 
+              onClick={() => {
+                setSelectedOrgId(null);
+                setIsEditing(false);
+              }}
+              className="mb-6 flex items-center gap-2 text-sm font-medium text-slate-500 hover:text-slate-900 transition-colors"
+            >
+              <ArrowLeft className="w-4 h-4" /> Back to Organizations
+            </button>
+
+            <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
+              <div className="p-6 border-b border-slate-100 bg-slate-50/50">
+                <div className="flex justify-between items-start mb-6">
+                  <div className="flex items-start gap-4">
+                    <div className="w-12 h-12 bg-blue-600 text-white rounded-xl flex items-center justify-center shadow-sm shrink-0">
+                      <Building className="w-6 h-6" />
+                    </div>
+                    <div>
+                      <div className="flex items-center gap-3">
+                        <h2 className="text-xl font-bold text-slate-900">{selectedOrg.name}</h2>
+                        <button 
+                          onClick={() => setIsEditing(!isEditing)} 
+                          className="p-1.5 bg-white border border-slate-200 hover:bg-slate-50 rounded-lg text-slate-500 hover:text-slate-700 transition-colors shadow-sm"
+                          title="Edit Organization"
+                        >
+                          <Edit2 className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                      <p className="text-sm text-slate-500 mt-1">
+                        {selectedOrg.websiteUrl && <span className="mr-3">{selectedOrg.websiteUrl}</span>}
+                        Database: <span className="font-medium text-slate-700">{selectedOrg.dbName}</span>
+                      </p>
+                    </div>
                   </div>
                   <button
-                    onClick={() => activeTab === "features" ? fetchFeatures(selectedOrgId!) : fetchSessions(selectedOrgId!)}
+                    onClick={() => activeTab === "features" ? fetchFeatures(selectedOrgId) : fetchSessions(selectedOrgId)}
                     disabled={loading}
-                    className="px-4 py-2 bg-white border border-slate-200 rounded-lg text-sm font-medium hover:bg-slate-50 transition-colors flex items-center gap-2 disabled:opacity-50"
+                    className="px-4 py-2 bg-white border border-slate-200 rounded-lg text-sm font-medium hover:bg-slate-50 transition-colors flex items-center gap-2 shadow-sm disabled:opacity-50"
                   >
                     <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
-                    Refresh
+                    Refresh Data
                   </button>
                 </div>
 
                 {isEditing && (
-                  <form onSubmit={updateOrganization} className="mb-6 bg-white p-5 rounded-xl border border-slate-200 shadow-sm">
+                  <form onSubmit={updateOrganization} className="mb-8 bg-white p-5 rounded-xl border border-slate-200 shadow-sm">
                     <h3 className="text-sm font-semibold mb-4 text-slate-900 flex items-center gap-2">
                       <Settings className="w-4 h-4" /> Organization Settings
                     </h3>
@@ -445,23 +568,23 @@ export function App() {
                   </form>
                 )}
 
-                <div className="flex gap-6 border-b border-slate-200">
+                <div className="flex gap-2">
                   <button 
                     onClick={() => setActiveTab("features")} 
-                    className={`pb-3 text-sm font-medium transition-colors flex items-center gap-2 ${activeTab === "features" ? "border-b-2 border-blue-600 text-blue-600" : "text-slate-500 hover:text-slate-900"}`}
+                    className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors flex items-center gap-2 ${activeTab === "features" ? "bg-white text-blue-600 shadow-sm border border-slate-200" : "text-slate-600 hover:bg-slate-100 border border-transparent"}`}
                   >
                     <Key className="w-4 h-4" /> Feature Toggles
                   </button>
                   <button 
                     onClick={() => setActiveTab("sessions")} 
-                    className={`pb-3 text-sm font-medium transition-colors flex items-center gap-2 ${activeTab === "sessions" ? "border-b-2 border-blue-600 text-blue-600" : "text-slate-500 hover:text-slate-900"}`}
+                    className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors flex items-center gap-2 ${activeTab === "sessions" ? "bg-white text-blue-600 shadow-sm border border-slate-200" : "text-slate-600 hover:bg-slate-100 border border-transparent"}`}
                   >
                     <MonitorPlay className="w-4 h-4" /> Session Replays
                   </button>
                 </div>
               </div>
               
-              <div className="p-0">
+              <div className="p-0 bg-white">
                 {error && (
                   <div className="p-6 text-sm text-red-600 bg-red-50 border-b border-red-100">
                     {error}
@@ -471,17 +594,21 @@ export function App() {
                 {activeTab === "features" && (
                   <div className="divide-y divide-slate-100">
                     {features.length === 0 && !loading && !error && (
-                      <div className="p-12 text-center text-slate-500">
-                        No feature flags defined in this database yet.
+                      <div className="p-16 text-center text-slate-500">
+                        <div className="w-16 h-16 bg-slate-50 rounded-full flex items-center justify-center mx-auto mb-4 border border-slate-100">
+                          <Key className="w-8 h-8 text-slate-400" />
+                        </div>
+                        <p className="font-medium text-slate-900">No feature flags found</p>
+                        <p className="text-sm mt-1">There are no feature flags defined in this database yet.</p>
                       </div>
                     )}
                     
                     {features.map((feature) => (
-                      <div key={feature.key} className="p-6 flex items-center justify-between hover:bg-slate-50/50 transition-colors">
+                      <div key={feature.key} className="p-6 flex items-center justify-between hover:bg-slate-50/80 transition-colors group">
                         <div>
-                          <h3 className="font-medium text-slate-900 flex items-center gap-2">
+                          <h3 className="font-semibold text-slate-900 flex items-center gap-3">
                             {feature.key}
-                            <span className={`text-[10px] uppercase font-bold px-2 py-0.5 rounded-full ${feature.enabled ? "bg-green-100 text-green-700" : "bg-slate-100 text-slate-500"}`}>
+                            <span className={`text-[10px] uppercase font-bold px-2 py-0.5 rounded-full ${feature.enabled ? "bg-green-50 text-green-700 border border-green-200" : "bg-slate-100 text-slate-500 border border-slate-200"}`}>
                               {feature.enabled ? "Active" : "Disabled"}
                             </span>
                           </h3>
@@ -490,9 +617,9 @@ export function App() {
                         
                         <button
                           onClick={() => toggleFeature(feature.key, !feature.enabled)}
-                          className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 ${feature.enabled ? "bg-blue-600" : "bg-slate-200"}`}
+                          className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-blue-600 focus:ring-offset-2 ${feature.enabled ? "bg-blue-600" : "bg-slate-200"}`}
                         >
-                          <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${feature.enabled ? "translate-x-6" : "translate-x-1"}`} />
+                          <span className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${feature.enabled ? "translate-x-5" : "translate-x-0"}`} />
                         </button>
                       </div>
                     ))}
@@ -502,32 +629,41 @@ export function App() {
                 {activeTab === "sessions" && (
                   <div className="divide-y divide-slate-100">
                     {sessions.length === 0 && !loading && !error && (
-                      <div className="p-12 text-center text-slate-500">
-                        No recent sessions found for this organization.
+                      <div className="p-16 text-center text-slate-500">
+                        <div className="w-16 h-16 bg-slate-50 rounded-full flex items-center justify-center mx-auto mb-4 border border-slate-100">
+                          <MonitorPlay className="w-8 h-8 text-slate-400" />
+                        </div>
+                        <p className="font-medium text-slate-900">No session replays found</p>
+                        <p className="text-sm mt-1">There are no recent sessions recorded for this organization.</p>
                       </div>
                     )}
 
                     {sessions.map((session) => (
-                      <div key={session.id} className="p-4 px-6 flex items-center justify-between hover:bg-slate-50/50 transition-colors">
-                        <div>
-                          <h3 className="font-medium text-slate-900 flex items-center gap-2 text-sm">
-                            Session {session.id.substring(session.id.length - 8)}
-                          </h3>
-                          <div className="text-xs text-slate-500 mt-1 flex items-center gap-3">
-                            <span>{new Date(session.createdAt).toLocaleString()}</span>
-                            <span>&bull;</span>
-                            <span>{session.browser || "Unknown"} on {session.os || "Unknown"}</span>
-                            <span>&bull;</span>
-                            <span>{session._count.events} events</span>
+                      <div key={session.id} className="p-5 flex items-center justify-between hover:bg-slate-50/80 transition-colors">
+                        <div className="flex items-center gap-4">
+                          <div className="w-10 h-10 rounded-full bg-slate-100 flex items-center justify-center border border-slate-200 text-slate-500">
+                            <MonitorPlay className="w-5 h-5" />
+                          </div>
+                          <div>
+                            <h3 className="font-semibold text-slate-900 text-sm">
+                              Session {session.id.substring(session.id.length - 8)}
+                            </h3>
+                            <div className="text-xs text-slate-500 mt-1 flex items-center gap-3 font-medium">
+                              <span>{new Date(session.createdAt).toLocaleString()}</span>
+                              <span className="w-1 h-1 rounded-full bg-slate-300"></span>
+                              <span>{session.browser || "Unknown Browser"} on {session.os || "Unknown OS"}</span>
+                              <span className="w-1 h-1 rounded-full bg-slate-300"></span>
+                              <span className="text-blue-600 bg-blue-50 px-2 py-0.5 rounded-full">{session._count.events} events</span>
+                            </div>
                           </div>
                         </div>
                         
                         <button
                           onClick={() => watchSession(session.id)}
                           disabled={session._count.events < 2}
-                          className="px-3 py-1.5 bg-blue-50 hover:bg-blue-100 text-blue-700 rounded-lg text-xs font-medium transition-colors flex items-center gap-1.5 disabled:opacity-50 disabled:cursor-not-allowed"
+                          className="px-4 py-2 bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 rounded-lg text-sm font-medium transition-colors flex items-center gap-2 shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
                         >
-                          <PlayCircle className="w-4 h-4" /> Watch
+                          <PlayCircle className="w-4 h-4 text-blue-600" /> Watch Replay
                         </button>
                       </div>
                     ))}
@@ -535,39 +671,34 @@ export function App() {
                 )}
               </div>
             </div>
-          ) : (
-            <div className="text-center text-slate-500 mt-20">
-              <Building className="w-12 h-12 mx-auto mb-4 opacity-20" />
-              <p>Select an organization from the sidebar to manage.</p>
-            </div>
-          )}
-        </div>
+          </div>
+        ) : null}
       </main>
 
       {/* rrweb Player Modal */}
       {playingSession && (
-        <div className="fixed inset-0 z-50 bg-slate-900/80 backdrop-blur-sm flex items-center justify-center p-8">
-          <div className="bg-white rounded-xl shadow-2xl overflow-hidden w-full max-w-5xl flex flex-col">
-            <div className="p-4 border-b border-slate-100 flex items-center justify-between bg-slate-50">
+        <div className="fixed inset-0 z-50 bg-slate-900/90 backdrop-blur-md flex items-center justify-center p-8">
+          <div className="bg-slate-50 rounded-2xl shadow-2xl overflow-hidden w-full max-w-6xl flex flex-col border border-slate-700">
+            <div className="p-4 border-b border-slate-200 flex items-center justify-between bg-white">
               <h3 className="font-semibold text-slate-900 flex items-center gap-2">
                 <MonitorPlay className="w-5 h-5 text-blue-600" />
-                Session Replay
+                Session Replay Viewer
               </h3>
               <button 
                 onClick={closePlayer}
-                className="p-1 hover:bg-slate-200 rounded-full transition-colors"
+                className="p-1.5 hover:bg-slate-100 rounded-lg transition-colors border border-transparent hover:border-slate-200"
               >
                 <X className="w-5 h-5 text-slate-500" />
               </button>
             </div>
-            <div className="p-6 flex-1 flex flex-col items-center justify-center min-h-[600px] bg-slate-100">
+            <div className="p-8 flex-1 flex flex-col items-center justify-center min-h-[600px] bg-slate-100/50">
               {playingError ? (
-                <div className="text-red-500 text-center">
-                  <p className="font-semibold">Could not play session</p>
-                  <p className="text-sm mt-1">{playingError}</p>
+                <div className="text-red-600 bg-red-50 p-6 rounded-xl border border-red-100 text-center max-w-md">
+                  <p className="font-bold text-lg mb-2">Could not play session</p>
+                  <p className="text-sm">{playingError}</p>
                 </div>
               ) : (
-                <div ref={playerRef} className="w-full h-full max-w-[1024px] max-h-[768px] bg-white rounded-lg shadow-sm border border-slate-200 overflow-hidden" />
+                <div ref={playerRef} className="w-full h-full max-w-[1024px] max-h-[768px] bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden" />
               )}
             </div>
           </div>

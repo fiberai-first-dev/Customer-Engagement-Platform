@@ -69,6 +69,8 @@ export async function registerRoutes(app: FastifyInstance) {
   app.register(publicOAuthRoutes, { prefix: "/oauth" });
 
   app.addHook("preHandler", async (request, reply) => {
+    if (request.method === "OPTIONS") return;
+    
     const reqPath = request.url.split("?")[0] ?? request.url;
     if (
       reqPath === "/" ||
