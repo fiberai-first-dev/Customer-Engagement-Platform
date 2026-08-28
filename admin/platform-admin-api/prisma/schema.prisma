@@ -1,0 +1,18 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = "file:./admin.db"
+}
+
+model Organization {
+  id                   String   @id @default(cuid())
+  name                 String
+  websiteUrl           String
+  dbName               String   @unique
+  openreplayProjectKey String?
+  createdAt            DateTime @default(now())
+}
+

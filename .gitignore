@@ -6,7 +6,7 @@ build
 !.env.example
 .env.local
 seed.creds.json
-apps/platform-api/seed.creds.json
+client/platform-api/seed.creds.json
 **/seed.creds.json
 *.log
 .DS_Store
@@ -14,7 +14,10 @@ coverage
 .turbo
 .vite
 *.tsbuildinfo
-apps/platform-api/dist
-apps/platform-api/src/generated
-apps/platform-web/dist
+client/platform-api/dist
+client/platform-api/src/generated
+client/platform-web/dist
 packages/channels/dist
+
+# Local admin tools
+
