@@ -242,8 +242,9 @@ function parseSimpleEmailPayload(payload: unknown): NormalizedInboundMessage[] {
   if (!fromRaw) return [];
 
   const senderEmail = extractEmailAddress(fromRaw);
-  const content =
-    stringField(root, "text", "body", "content", "plain", "html") || "[email]";
+  const htmlContent = stringField(root, "html");
+  const textContent = stringField(root, "text", "body", "content", "plain");
+  const content = htmlContent || textContent || "[email]";
   const subject = stringField(root, "subject") || undefined;
   const externalId =
     stringField(root, "id", "messageId", "message_id", "Message-Id") || `email_${ulid()}`;
@@ -261,7 +262,7 @@ function parseSimpleEmailPayload(payload: unknown): NormalizedInboundMessage[] {
       senderName: fromName || undefined,
       senderEmail,
       content,
-      contentType: "text",
+      contentType: htmlContent ? "html" : "text",
       subject,
       occurredAt: new Date(),
       raw: payload,

@@ -12,6 +12,7 @@
     "seed:config": "tsx src/scripts/seed-config.ts",
     "seed:user": "tsx src/scripts/seed-user.ts",
     "email:catch-up": "tsx src/scripts/catch-up-email.ts",
+    "email:backfill": "node dist/scripts/backfill-email-bodies.js",
     "test": "vitest run --passWithNoTests",
     "docs:pdf": "tsx src/scripts/build-channel-setup-pdf.ts"
   },

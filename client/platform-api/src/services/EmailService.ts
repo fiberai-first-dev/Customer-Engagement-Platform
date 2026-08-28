@@ -361,21 +361,34 @@ export async function setupEmailWatch(inboxId?: string) {
 const WATCH_RENEW_MS = 12 * 60 * 60 * 1000;
 
 export function startGmailWatchScheduler(): void {
-  const tick = () => {
-    void renewEmailWatch()
-      .then((results) => {
-        for (const r of results) {
-          if (r.ok) {
-            console.log(`[email] watch renewed inbox=${r.inboxId} expires=${r.expiresAt ?? "?"}`);
-          } else {
-            console.warn(`[email] watch renew failed inbox=${r.inboxId}: ${r.error}`);
-          }
+  const tick = async () => {
+    try {
+      const results = await renewEmailWatch();
+      for (const r of results) {
+        if (!r.ok) {
+          console.warn(`[email] watch renew failed inbox=${r.inboxId}: ${r.error}`);
+          continue;
         }
-      })
-      .catch((err) => {
-        console.warn("[email] watch scheduler:", err instanceof Error ? err.message : err);
-      });
+
+        console.log(`[email] watch renewed inbox=${r.inboxId} expires=${r.expiresAt ?? "?"}`);
+        try {
+          const catchUp = await catchUpRecentEmailMessages(r.inboxId);
+          console.log(
+            `[email] post-renew catch-up inbox=${r.inboxId} processed=${catchUp.processed} skipped=${catchUp.skipped}`,
+          );
+        } catch (err) {
+          console.warn(
+            `[email] post-renew catch-up failed inbox=${r.inboxId}:`,
+            err instanceof Error ? err.message : err,
+          );
+        }
+      }
+    } catch (err) {
+      console.warn("[email] watch scheduler:", err instanceof Error ? err.message : err);
+    }
   };
+
+  void tick();
   setInterval(tick, WATCH_RENEW_MS);
 }
 

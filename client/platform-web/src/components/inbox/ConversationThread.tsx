@@ -46,6 +46,30 @@ import {
 
 const LONG_MESSAGE_CHARS = 480;
 
+function sanitizeEmailHtml(html: string): string {
+  const document = new DOMParser().parseFromString(html, "text/html");
+  document
+    .querySelectorAll("script, style, iframe, object, embed, form, link, meta")
+    .forEach((element) => element.remove());
+
+  document.body.querySelectorAll("*").forEach((element) => {
+    Array.from(element.attributes).forEach((attribute) => {
+      const name = attribute.name.toLowerCase();
+      const value = attribute.value.trim();
+      if (
+        name.startsWith("on") ||
+        name === "srcdoc" ||
+        ((name === "href" || name === "src" || name === "action") &&
+          /^(?:javascript|vbscript):|^data:text\/html/i.test(value))
+      ) {
+        element.removeAttribute(attribute.name);
+      }
+    });
+  });
+
+  return document.body.innerHTML;
+}
+
 function MessageBody({
   message,
   showBodyLabel,
@@ -69,6 +93,8 @@ function MessageBody({
     !(!message.hasMedia && (isMediaPlaceholder || isMediaType || isGenericMediaLabel));
   const showMissingMedia =
     !message.hasMedia && (isMediaPlaceholder || isMediaType || isGenericMediaLabel);
+  const renderedHtml =
+    message.contentType === "html" ? sanitizeEmailHtml(visible) : "";
 
   return (
     <div className="min-w-0 space-y-1.5">
@@ -114,7 +140,7 @@ function MessageBody({
           {message.contentType === "html" ? (
             <div
               className="email-html-body break-words leading-relaxed [overflow-wrap:anywhere]"
-              dangerouslySetInnerHTML={{ __html: visible }}
+              dangerouslySetInnerHTML={{ __html: renderedHtml }}
             />
           ) : (
             <div className="whitespace-pre-wrap break-words leading-relaxed [overflow-wrap:anywhere]">
