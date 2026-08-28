@@ -141,14 +141,25 @@ app.post<{ Body: { name: string; websiteUrl?: string; dbUrl: string; openreplayP
   }
 });
 
-app.patch<{ Params: { id: string }; Body: { dbUrl: string } }>("/api/v1/admin/organizations/:id", async (request, reply) => {
-  const { dbUrl } = request.body ?? {};
-  if (!dbUrl) return reply.code(400).send({ error: "dbUrl is required" });
+app.patch<{ Params: { id: string }; Body: { name?: string; websiteUrl?: string; dbUrl?: string } }>("/api/v1/admin/organizations/:id", async (request, reply) => {
+  const { name, websiteUrl, dbUrl } = request.body ?? {};
+  if (!name && websiteUrl === undefined && !dbUrl) {
+    return reply.code(400).send({ error: "No fields to update" });
+  }
 
   try {
+    const dataToUpdate: any = {};
+    if (name) dataToUpdate.name = name;
+    if (websiteUrl !== undefined) dataToUpdate.websiteUrl = websiteUrl;
+    if (dbUrl) {
+      const validatedDbUrl = parseTenantDatabaseUrl(dbUrl);
+      dataToUpdate.dbUrl = validatedDbUrl;
+      dataToUpdate.dbName = new URL(validatedDbUrl).pathname.slice(1);
+    }
+
     const org = await adminPrisma.organization.update({
       where: { id: request.params.id },
-      data: { dbUrl: parseTenantDatabaseUrl(dbUrl) },
+      data: dataToUpdate,
     });
     return reply.send(publicOrganization(org));
   } catch (err: any) {

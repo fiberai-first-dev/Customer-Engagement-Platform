@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import { GoogleLogin } from "@react-oauth/google";
-import { Shield, Key, Loader2, LogOut, Plus, Building, PlayCircle, MonitorPlay, X } from "lucide-react";
+import { Shield, Key, LogOut, Plus, Building, PlayCircle, MonitorPlay, X, Search, Edit2, Save, RefreshCw, Settings } from "lucide-react";
 import rrwebPlayer from "rrweb-player";
 import "rrweb-player/dist/style.css";
 
@@ -46,7 +46,13 @@ export function App() {
   const [newOrgName, setNewOrgName] = useState("");
   const [newOrgWebsite, setNewOrgWebsite] = useState("");
   const [newOrgDbUrl, setNewOrgDbUrl] = useState("");
-  const [organizationDbUrl, setOrganizationDbUrl] = useState("");
+
+  // Search & Edit States
+  const [searchQuery, setSearchQuery] = useState("");
+  const [editOrgName, setEditOrgName] = useState("");
+  const [editOrgWebsite, setEditOrgWebsite] = useState("");
+  const [editOrgDbUrl, setEditOrgDbUrl] = useState("");
+  const [isEditing, setIsEditing] = useState(false);
 
   // Player State
   const [playingSession, setPlayingSession] = useState<string | null>(null);
@@ -62,11 +68,19 @@ export function App() {
     if (token && selectedOrgId) {
       if (activeTab === "features") fetchFeatures(selectedOrgId);
       if (activeTab === "sessions") fetchSessions(selectedOrgId);
+      
+      const org = organizations.find((o) => o.id === selectedOrgId);
+      if (org) {
+        setEditOrgName(org.name);
+        setEditOrgWebsite(org.websiteUrl || "");
+        setEditOrgDbUrl(""); // don't expose it, but user can input new one
+        setIsEditing(false);
+      }
     } else {
       setFeatures([]);
       setSessions([]);
     }
-  }, [token, selectedOrgId, activeTab]);
+  }, [token, selectedOrgId, activeTab, organizations]);
 
   const fetchOrganizations = async () => {
     try {
@@ -112,22 +126,27 @@ export function App() {
     }
   };
 
-  const updateOrganizationDbUrl = async (e: React.FormEvent) => {
+  const updateOrganization = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!selectedOrgId || !organizationDbUrl.trim()) return;
+    if (!selectedOrgId) return;
 
     try {
       const res = await fetch(`${API_BASE}/admin/organizations/${selectedOrgId}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ dbUrl: organizationDbUrl }),
+        body: JSON.stringify({ 
+          name: editOrgName,
+          websiteUrl: editOrgWebsite,
+          dbUrl: editOrgDbUrl || undefined
+        }),
       });
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "Failed to update database URL");
+      if (!res.ok) throw new Error(data.error || "Failed to update organization");
       setOrganizations((prev) =>
         prev.map((org) => (org.id === selectedOrgId ? data : org)),
       );
-      setOrganizationDbUrl("");
+      setEditOrgDbUrl("");
+      setIsEditing(false);
     } catch (err: any) {
       alert(err.message);
     }
@@ -285,8 +304,19 @@ export function App() {
             </button>
           </div>
           
+          <div className="mb-4 relative px-2">
+            <Search className="w-4 h-4 absolute left-5 top-1/2 -translate-y-1/2 text-slate-500" />
+            <input 
+              type="text" 
+              placeholder="Search..." 
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="w-full bg-slate-800 text-sm text-slate-200 rounded-lg pl-9 pr-3 py-1.5 focus:outline-none focus:ring-1 focus:ring-blue-500 placeholder-slate-500"
+            />
+          </div>
+          
           <div className="space-y-1">
-            {organizations.map(org => (
+            {organizations.filter(o => o.name.toLowerCase().includes(searchQuery.toLowerCase())).map(org => (
               <button
                 key={org.id}
                 onClick={() => setSelectedOrgId(org.id)}
@@ -294,7 +324,7 @@ export function App() {
                   selectedOrgId === org.id ? "bg-blue-600 text-white" : "hover:bg-slate-800"
                 }`}
               >
-                <Building className="w-4 h-4" />
+                <Building className="w-4 h-4 shrink-0" />
                 <span className="truncate">{org.name}</span>
               </button>
             ))}
@@ -350,9 +380,19 @@ export function App() {
               <div className="p-6 border-b border-slate-100 bg-slate-50/50">
                 <div className="flex justify-between items-center mb-6">
                   <div>
-                    <h2 className="text-xl font-semibold text-slate-900">{selectedOrg.name}</h2>
+                    <div className="flex items-center gap-3">
+                      <h2 className="text-xl font-semibold text-slate-900">{selectedOrg.name}</h2>
+                      <button 
+                        onClick={() => setIsEditing(!isEditing)} 
+                        className="p-1.5 hover:bg-slate-200 rounded-md text-slate-400 hover:text-slate-700 transition-colors"
+                        title="Edit Organization"
+                      >
+                        <Edit2 className="w-4 h-4" />
+                      </button>
+                    </div>
                     <p className="text-sm text-slate-500 mt-1">
-                      DB: {selectedOrg.dbName} · {selectedOrg.dbUrlConfigured ? "connected" : "database URL not configured"}
+                      {selectedOrg.websiteUrl && <span className="mr-3">{selectedOrg.websiteUrl}</span>}
+                      DB: {selectedOrg.dbName} · {selectedOrg.dbUrlConfigured ? "connected" : "not configured"}
                     </p>
                   </div>
                   <button
@@ -360,32 +400,50 @@ export function App() {
                     disabled={loading}
                     className="px-4 py-2 bg-white border border-slate-200 rounded-lg text-sm font-medium hover:bg-slate-50 transition-colors flex items-center gap-2 disabled:opacity-50"
                   >
-                    {loading && <Loader2 className="w-4 h-4 animate-spin" />}
+                    <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
                     Refresh
                   </button>
                 </div>
 
-                <form onSubmit={updateOrganizationDbUrl} className="mb-6 flex gap-3 items-end">
-                  <div className="flex-1">
-                    <label className="block text-xs font-medium text-slate-500 mb-1">
-                      Client Database URL
-                    </label>
-                    <input
-                      type="password"
-                      value={organizationDbUrl}
-                      onChange={(e) => setOrganizationDbUrl(e.target.value)}
-                      className="w-full px-3 py-2 rounded-lg border border-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                      placeholder="postgresql://user:password@host:5432/database"
-                    />
-                  </div>
-                  <button
-                    type="submit"
-                    disabled={!organizationDbUrl.trim()}
-                    className="px-4 py-2 bg-slate-900 text-white rounded-lg text-sm font-medium hover:bg-slate-800 transition-colors disabled:opacity-50"
-                  >
-                    Save DB URL
-                  </button>
-                </form>
+                {isEditing && (
+                  <form onSubmit={updateOrganization} className="mb-6 bg-white p-5 rounded-xl border border-slate-200 shadow-sm">
+                    <h3 className="text-sm font-semibold mb-4 text-slate-900 flex items-center gap-2">
+                      <Settings className="w-4 h-4" /> Organization Settings
+                    </h3>
+                    <div className="flex flex-col gap-4">
+                      <div className="flex gap-4">
+                        <div className="flex-1">
+                          <label className="block text-xs font-medium text-slate-500 mb-1">Organization Name</label>
+                          <input required value={editOrgName} onChange={e => setEditOrgName(e.target.value)} className="w-full px-3 py-2 rounded-lg border border-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm" />
+                        </div>
+                        <div className="flex-1">
+                          <label className="block text-xs font-medium text-slate-500 mb-1">Website URL</label>
+                          <input value={editOrgWebsite} onChange={e => setEditOrgWebsite(e.target.value)} className="w-full px-3 py-2 rounded-lg border border-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm" placeholder="acme.com" />
+                        </div>
+                      </div>
+                      <div>
+                        <label className="block text-xs font-medium text-slate-500 mb-1">
+                          Client Database URL (leave blank to keep current)
+                        </label>
+                        <input
+                          type="password"
+                          value={editOrgDbUrl}
+                          onChange={(e) => setEditOrgDbUrl(e.target.value)}
+                          className="w-full px-3 py-2 rounded-lg border border-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
+                          placeholder="postgresql://user:password@host:5432/database"
+                        />
+                      </div>
+                      <div className="flex justify-end gap-2 mt-2">
+                        <button type="button" onClick={() => setIsEditing(false)} className="px-4 py-2 text-sm font-medium text-slate-600 hover:text-slate-900 transition-colors">
+                          Cancel
+                        </button>
+                        <button type="submit" className="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 transition-colors flex items-center gap-2">
+                          <Save className="w-4 h-4" /> Save Changes
+                        </button>
+                      </div>
+                    </div>
+                  </form>
+                )}
 
                 <div className="flex gap-6 border-b border-slate-200">
                   <button 
