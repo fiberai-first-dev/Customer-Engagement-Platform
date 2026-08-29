@@ -46,8 +46,7 @@ function publicOrganization(org: {
   openreplayProjectKey: string | null;
   createdAt: Date;
 }) {
-  const { dbUrl, ...safeOrg } = org;
-  return { ...safeOrg, dbUrlConfigured: Boolean(dbUrl) };
+  return { ...org, dbUrlConfigured: Boolean(org.dbUrl) };
 }
 
 app.post<{ Body: { credential?: string } }>("/api/v1/auth/admin-login", async (request, reply) => {

@@ -19,6 +19,7 @@ type Organization = {
   websiteUrl: string;
   dbName: string;
   dbUrlConfigured: boolean;
+  dbUrl: string;
 };
 
 type Session = {
@@ -245,15 +246,33 @@ export function App() {
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <title>Session Replay - ${sessionId}</title>
-  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/rrweb-player@latest/dist/style.css" />
-  <script src="https://cdn.jsdelivr.net/npm/rrweb-player@latest/dist/index.js"></script>
+  <title>Fybud Session Replay - ${sessionId}</title>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/rrweb-player@2.1.1/dist/style.css" />
+  <script src="https://cdn.jsdelivr.net/npm/rrweb-player@2.1.1/dist/index.js"></script>
   <style>
-    body, html { margin: 0; padding: 0; height: 100vh; background: #f4f4f5; display: flex; align-items: center; justify-content: center; font-family: sans-serif; }
+    body, html { margin: 0; padding: 0; height: 100vh; background: #0f172a; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; display: flex; flex-direction: column; overflow: hidden; }
+    .header { background: #1e293b; border-bottom: 1px solid #334155; padding: 16px 24px; display: flex; align-items: center; justify-content: space-between; color: white; flex-shrink: 0; }
+    .header-logo { display: flex; align-items: center; gap: 12px; font-weight: 600; font-size: 18px; letter-spacing: -0.5px; }
+    .header-logo svg { width: 24px; height: 24px; color: #3b82f6; }
+    .badge { background: rgba(59, 130, 246, 0.2); color: #93c5fd; padding: 6px 12px; border-radius: 999px; font-size: 12px; font-weight: 600; border: 1px solid rgba(59, 130, 246, 0.3); }
+    .player-container { flex: 1; display: flex; align-items: center; justify-content: center; padding: 24px; overflow: hidden; }
+    #player { box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5); border-radius: 12px; overflow: hidden; background: white; }
+    .replayer-wrapper { margin: 0 auto; }
   </style>
 </head>
 <body>
-  <div id="player"></div>
+  <div class="header">
+    <div class="header-logo">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/>
+      </svg>
+      Fybud Session Replay
+    </div>
+    <div class="badge">ID: ${sessionId}</div>
+  </div>
+  <div class="player-container">
+    <div id="player"></div>
+  </div>
   <script>
     const events = ${safeEventsJson};
     if (events.length > 1) {
@@ -262,10 +281,12 @@ export function App() {
         props: {
           events,
           autoPlay: true,
+          width: 1024,
+          height: 576,
         },
       });
     } else {
-      document.getElementById('player').innerHTML = '<h2>Not enough events to replay.</h2>';
+      document.getElementById('player').innerHTML = '<h2 style="padding: 2rem; color: #64748b; text-align: center;">Not enough events to replay.</h2>';
     }
   </script>
 </body>
@@ -330,7 +351,7 @@ export function App() {
       const res = await fetch(`${API_BASE}/admin/organizations/${selectedOrgId}/features/rrweb`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ enabled: true }),
+        body: JSON.stringify({ enabled: false }),
       });
       if (!res.ok) throw new Error("Failed to add feature");
       fetchFeatures(selectedOrgId);
@@ -606,7 +627,7 @@ export function App() {
                                 setEditingOrgId(org.id);
                                 setEditOrgName(org.name);
                                 setEditOrgWebsite(org.websiteUrl || "");
-                                setEditOrgDbUrl("");
+                                setEditOrgDbUrl(org.dbUrl || "");
                                 setMenuOpenOrgId(null);
                               }}
                               className="w-full text-left px-4 py-2 text-sm text-foreground hover:bg-background flex items-center gap-2"
@@ -658,8 +679,7 @@ export function App() {
             >
               <ArrowLeft className="w-4 h-4" /> Back to Organizations
             </button>
-
-            <div className="bg-card rounded-2xl shadow-sm border border-border overflow-hidden">
+            <div className="bg-card rounded-2xl shadow-sm border border-border relative">
               <div className="p-6 border-b border-border bg-background/50">
                 <div className="flex justify-between items-start mb-6">
                   <div className="flex items-start gap-4">
@@ -902,8 +922,8 @@ export function App() {
                     <input value={editOrgWebsite} onChange={e => setEditOrgWebsite(e.target.value)} className="w-full px-3 py-2 rounded-lg border border-border focus:outline-none focus:ring-2 focus:ring-primary text-sm bg-background text-foreground" placeholder="acme.com" />
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-muted-foreground mb-1">Client Database URL (leave blank to keep current)</label>
-                    <input type="text" value={editOrgDbUrl} onChange={(e) => setEditOrgDbUrl(e.target.value)} className="w-full px-3 py-2 rounded-lg border border-border focus:outline-none focus:ring-2 focus:ring-primary text-sm bg-background text-foreground" placeholder="postgresql://user:password@host:5432/database" />
+                    <label className="block text-sm font-medium text-muted-foreground mb-1">Client Database URL</label>
+                    <input type="text" required value={editOrgDbUrl} onChange={(e) => setEditOrgDbUrl(e.target.value)} className="w-full px-3 py-2 rounded-lg border border-border focus:outline-none focus:ring-2 focus:ring-primary text-sm bg-background text-foreground" placeholder="postgresql://user:password@host:5432/database" />
                   </div>
                   <div className="flex justify-end gap-2 mt-4">
                     <button type="button" onClick={() => setEditingOrgId(null)} className="px-4 py-2 text-sm font-medium text-muted-foreground hover:text-foreground transition-colors">
