@@ -66,6 +66,7 @@ export function App() {
   // Menu State for list view
   const [menuOpenOrgId, setMenuOpenOrgId] = useState<string | null>(null);
   const [sessionMenuOpenId, setSessionMenuOpenId] = useState<string | null>(null);
+  const [sessionToDelete, setSessionToDelete] = useState<string | null>(null);
   const [featureSearchQuery, setFeatureSearchQuery] = useState("");
 
   // Player State
@@ -149,14 +150,21 @@ export function App() {
     if (!targetId) return;
 
     try {
+      const targetOrg = organizations.find(o => o.id === targetId);
+      const payload: any = {
+        name: editOrgName,
+        websiteUrl: editOrgWebsite,
+      };
+      
+      // Only send dbUrl if it was actually modified
+      if (targetOrg && editOrgDbUrl !== targetOrg.dbUrl) {
+        payload.dbUrl = editOrgDbUrl || undefined;
+      }
+
       const res = await fetch(`${API_BASE}/admin/organizations/${targetId}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ 
-          name: editOrgName,
-          websiteUrl: editOrgWebsite,
-          dbUrl: editOrgDbUrl || undefined
-        }),
+        body: JSON.stringify(payload),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Failed to update organization");
@@ -218,15 +226,16 @@ export function App() {
     }
   };
 
-  const deleteSession = async (sessionId: string) => {
-    if (!selectedOrgId || !window.confirm("Are you sure you want to delete this session?")) return;
+  const confirmDeleteSession = async () => {
+    if (!selectedOrgId || !sessionToDelete) return;
     try {
-      const res = await fetch(`${API_BASE}/admin/organizations/${selectedOrgId}/sessions/${sessionId}`, {
+      const res = await fetch(`${API_BASE}/admin/organizations/${selectedOrgId}/sessions/${sessionToDelete}`, {
         method: "DELETE",
         headers: { Authorization: `Bearer ${token}` }
       });
       if (!res.ok) throw new Error("Failed to delete session");
-      setSessions(prev => prev.filter(s => s.id !== sessionId));
+      setSessions(prev => prev.filter(s => s.id !== sessionToDelete));
+      setSessionToDelete(null);
     } catch (err: any) {
       alert(err.message);
     }
@@ -353,7 +362,8 @@ export function App() {
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
         body: JSON.stringify({ enabled: false }),
       });
-      if (!res.ok) throw new Error("Failed to add feature");
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || "Failed to add feature");
       fetchFeatures(selectedOrgId);
     } catch (err: any) {
       alert(err.message);
@@ -368,7 +378,8 @@ export function App() {
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
         body: JSON.stringify({ enabled }),
       });
-      if (!res.ok) throw new Error("Failed to update feature");
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || "Failed to update feature");
       
       setFeatures((prev) =>
         prev.map((f) => (f.key === featureKey ? { ...f, enabled } : f)),
@@ -742,12 +753,12 @@ export function App() {
                         className="w-full pl-9 pr-4 py-2 bg-background border border-border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary/20"
                       />
                     </div>
-                    {!features.some(f => f.key === 'rrweb') && (
+                    {!loading && !features.some(f => f.key === 'rrweb') && (
                       <button 
                         onClick={addRrwebFeature} 
                         className="px-3 py-1.5 text-sm font-medium bg-primary text-primary-foreground rounded-lg hover:bg-primary/90"
                       >
-                        Enable RRWeb Toggle
+                        Add RRWeb Toggle
                       </button>
                     )}
                   </div>
@@ -847,7 +858,7 @@ export function App() {
                                       <Download className="w-4 h-4" /> Download
                                     </button>
                                     <button
-                                      onClick={() => { deleteSession(session.id); setSessionMenuOpenId(null); }}
+                                      onClick={() => { setSessionToDelete(session.id); setSessionMenuOpenId(null); }}
                                       className="w-full text-left px-4 py-2 text-sm text-red-600 hover:bg-red-50 dark:hover:bg-red-950/50 flex items-center gap-2"
                                     >
                                       <Trash2 className="w-4 h-4" /> Delete
@@ -938,6 +949,32 @@ export function App() {
             </div>
           ) : null;
         })()
+      )}
+
+      {/* Delete Session Modal */}
+      {sessionToDelete && (
+        <div className="fixed inset-0 bg-background/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-card w-full max-w-sm rounded-2xl shadow-lg border border-border overflow-hidden">
+            <div className="p-6">
+              <h3 className="text-lg font-semibold text-foreground mb-2">Delete Session</h3>
+              <p className="text-sm text-muted-foreground">Are you sure you want to delete this session? This action cannot be undone.</p>
+            </div>
+            <div className="p-4 border-t border-border bg-muted/30 flex justify-end gap-3">
+              <button 
+                onClick={() => setSessionToDelete(null)} 
+                className="px-4 py-2 text-sm font-medium text-foreground bg-card border border-border rounded-lg hover:bg-muted transition-colors"
+              >
+                Cancel
+              </button>
+              <button 
+                onClick={confirmDeleteSession} 
+                className="px-4 py-2 text-sm font-medium text-white bg-red-600 rounded-lg hover:bg-red-700 transition-colors shadow-sm"
+              >
+                Delete
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );
