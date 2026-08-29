@@ -19,6 +19,13 @@ export async function startRrwebTracker() {
   if (sessionId) return; // already tracking
 
   try {
+    // 0. Check feature flag
+    const featureRes = await fetch(`${API_BASE}/features?key=rrweb`);
+    if (featureRes.ok) {
+      const data = await featureRes.json();
+      if (data.enabled === false) return; // Feature is disabled
+    }
+
     const user = useAuthStore.getState().user;
     
     // 1. Create a session in the backend

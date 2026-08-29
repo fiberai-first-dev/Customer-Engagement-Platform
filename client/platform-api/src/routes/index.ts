@@ -79,7 +79,9 @@ export async function registerRoutes(app: FastifyInstance) {
       reqPath === "/docs/channel-setup-guide.pdf" ||
       reqPath.startsWith("/webhooks/") ||
       reqPath.startsWith("/oauth/") ||
-      reqPath === "/api/v1/auth/google" || reqPath.includes("/telemetry")
+      reqPath === "/api/v1/auth/google" || 
+      reqPath.includes("/telemetry") ||
+      reqPath === "/api/v1/features"
     ) {
       return;
     }
@@ -101,6 +103,14 @@ export async function registerRoutes(app: FastifyInstance) {
   app.register(mediaRoutes, { prefix: "/api/v1/media" });
   app.register(teamRoutes, { prefix: "/api/v1/teams" });
   app.register(userRoutes, { prefix: "/api/v1/users" });
+  
+  app.get<{ Querystring: { key: string } }>("/api/v1/features", async (request, reply) => {
+    const key = request.query.key;
+    if (!key) return reply.code(400).send({ error: "Missing feature key" });
+    const { isFeatureEnabled } = await import("../services/FeatureService.js");
+    const enabled = await isFeatureEnabled(key);
+    return reply.send({ enabled });
+  });
   // Back-compat alias
   app.register(emailRoutes, { prefix: "/api/v1/gmail" });
   app.register(oauthConnectRoutes, { prefix: "/api/v1/oauth" });
