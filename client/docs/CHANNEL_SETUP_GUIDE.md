@@ -165,7 +165,7 @@ Both must show **Enabled**. If either is off, Connect or mail delivery will fail
 1. Open https://console.cloud.google.com/apis/credentials/consent
 2. Configure the app. External is typical. Add an app name and a support email.
 3. Add these scopes:
-   - `https://www.googleapis.com/auth/gmail.modify`
+   - `https://www.googleapis.com/auth/gmail.readonly`
    - `https://www.googleapis.com/auth/gmail.send`
 4. Publish the app. If you leave it in Testing, add the support mailbox under **Test users**. Otherwise Google shows `access_denied` at login.
 

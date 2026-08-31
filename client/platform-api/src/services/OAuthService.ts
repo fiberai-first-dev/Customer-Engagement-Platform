@@ -8,7 +8,7 @@ import { setupEmailWatch } from "./EmailService.js";
 import type { Prisma } from "../generated/client/index.js";
 
 const GMAIL_SCOPES = [
-  "https://www.googleapis.com/auth/gmail.modify",
+  "https://www.googleapis.com/auth/gmail.readonly",
   "https://www.googleapis.com/auth/gmail.send",
 ];
 
