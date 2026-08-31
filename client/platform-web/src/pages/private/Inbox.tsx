@@ -224,10 +224,9 @@ export function InboxPage() {
   }, [conversations]);
 
   const channelFilterOptions = useMemo(() => {
-    const enabled =
-      channelsReady && enabledChannels.length
-        ? CHANNELS.filter((c) => enabledChannels.includes(c.id))
-        : CHANNELS;
+    const enabled = channelsReady
+      ? CHANNELS.filter((c) => enabledChannels.includes(c.id))
+      : CHANNELS;
     return [{ id: "all" as const, label: "All" }, ...enabled];
   }, [channelsReady, enabledChannels]);
 

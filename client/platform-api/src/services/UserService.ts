@@ -8,14 +8,18 @@ export async function findOrCreateGoogleUser(email: string, googleId: string) {
   const role = email === adminEmail ? "SUPER_ADMIN" : "AGENT";
 
   if (!user) {
-    user = await prisma.user.create({
-      data: {
-        id: ulid(),
-        username: email,
-        googleId,
-        role: role as any
-      },
-    });
+    if (email === adminEmail) {
+      user = await prisma.user.create({
+        data: {
+          id: ulid(),
+          username: email,
+          googleId,
+          role: "SUPER_ADMIN" as any
+        },
+      });
+    } else {
+      throw new Error("User not found or not invited to this workspace.");
+    }
   } else if (!user.googleId) {
     // Link google ID if email existed
     user = await prisma.user.update({

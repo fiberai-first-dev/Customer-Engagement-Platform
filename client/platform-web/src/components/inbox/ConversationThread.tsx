@@ -602,7 +602,7 @@ export function ConversationThread({
       )}
 
       <div className="flex h-11 shrink-0 items-stretch gap-0 border-b border-border bg-card px-2">
-        {(enabledChannels?.length
+        {(enabledChannels
           ? CHANNELS.filter((c) => enabledChannels.includes(c.id))
           : CHANNELS
         ).map((channel) => {
@@ -719,14 +719,18 @@ export function ConversationThread({
           </div>
           <div>
             <p className="text-sm font-medium text-foreground">
-              {activeTab === "instagram"
+              {enabledChannels && enabledChannels.length === 0
+                ? "No channels connected"
+                : activeTab === "instagram"
                 ? "Waiting for the customer on Instagram"
                 : channelIds.length
                   ? `${channelLabel(activeTab)} linked · waiting for first message`
                   : `No ${channelLabel(activeTab)} on this contact`}
             </p>
             <p className="mt-1 max-w-sm text-xs text-muted-foreground">
-              {activeTab === "instagram"
+              {enabledChannels && enabledChannels.length === 0
+                ? "Connect a channel in Settings to start messaging."
+                : activeTab === "instagram"
                 ? "The customer needs to message first on Instagram. Switch tabs for WhatsApp or Email."
                 : channelIds.length
                   ? canInitiateChannel

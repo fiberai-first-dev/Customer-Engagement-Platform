@@ -74,7 +74,7 @@ export class AuthController {
         username: user.username,
       });
     } catch (err: any) {
-      return reply.code(401).send({ error: "Google authentication failed", details: err.message });
+      return reply.code(401).send({ error: err.message || "Google authentication failed" });
     }
   }
 

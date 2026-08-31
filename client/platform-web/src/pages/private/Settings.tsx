@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { useSearchParams, Navigate } from "react-router-dom";
+import { toast } from "sonner";
 import { useAuthStore } from "../../store/auth";
 import { useQueryClient } from "@tanstack/react-query";
 import { Button } from "../../components/ui/button";
@@ -332,15 +333,15 @@ function ChannelRow({
             size="sm"
             disabled={busy}
             onClick={onDisconnect}
-            className="h-9 min-w-[6.75rem] border-destructive/40 text-destructive hover:bg-destructive/10 hover:text-destructive"
+            className="h-9 min-w-[8.5rem] border-destructive/40 text-destructive hover:bg-destructive/10 hover:text-destructive"
           >
             {busy ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
-            Disconnect
+            {busy ? "Disconnecting" : "Disconnect"}
           </Button>
         ) : (
-          <Button type="button" size="sm" onClick={onConnect} disabled={busy} className="h-9 min-w-[6.75rem]">
+          <Button type="button" size="sm" onClick={onConnect} disabled={busy} className="h-9 min-w-[8.5rem]">
             {busy ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
-            Connect
+            {busy ? "Connecting" : "Connect"}
           </Button>
         )}
       </div>
@@ -363,7 +364,6 @@ export function SettingsPage() {
   const { data: shopify, isLoading: shopifyLoading } = useShopifyConfig();
   const { mutateAsync: updateShopifyAsync, isPending: shopifyBusy } = useUpdateShopifyConfig();
 
-  const [banner, setBanner] = useState<{ tone: "ok" | "err"; text: string } | null>(null);
   const [connecting, setConnecting] = useState<"gmail" | "instagram" | "shopify" | null>(null);
   const [modal, setModal] = useState<ModalKey | null>(null);
   const [submitting, setSubmitting] = useState(false);
@@ -397,15 +397,9 @@ export function SettingsPage() {
             : null;
       const label =
         oauth === "gmail" ? "Gmail" : oauth === "instagram" ? "Instagram" : "Shopify";
-      setBanner({
-        tone: "ok",
-        text: who ? `${label} connected · ${who}` : `${label} connected`,
-      });
+      toast.success(who ? `${label} connected · ${who}` : `${label} connected`);
     } else {
-      setBanner({
-        tone: "err",
-        text: searchParams.get("message") || "Connection failed",
-      });
+      toast.error(searchParams.get("message") || "Connection failed");
     }
 
     const next = new URLSearchParams(searchParams);
@@ -428,21 +422,11 @@ export function SettingsPage() {
     credentials: Record<string, string> = {},
   ) => {
     setConnecting(provider);
-    setBanner({
-      tone: "ok",
-      text:
-        provider === "gmail"
-          ? "Opening Google to finish Gmail connection…"
-          : "Opening Instagram to finish connection…",
-    });
     try {
       const { url } = await startChannelOAuth(provider, inboxId, credentials);
       window.location.assign(url);
     } catch (err: unknown) {
-      setBanner({
-        tone: "err",
-        text: err instanceof Error ? err.message : "Could not start connection",
-      });
+      toast.error(err instanceof Error ? err.message : "Could not start connection");
       setConnecting(null);
       throw err;
     }
@@ -503,23 +487,17 @@ export function SettingsPage() {
         if (!inbox) throw new Error("Channel is not available.");
         await disconnectInboxAsync(inbox.id);
       }
-      setBanner({
-        tone: "ok",
-        text: `${disconnectLabel} disconnected`,
-      });
+      toast.success(`${disconnectLabel} disconnected`);
       setDisconnectTarget(null);
     } catch (err: unknown) {
-      setBanner({
-        tone: "err",
-        text: err instanceof Error ? err.message : "Disconnect failed",
-      });
+      toast.error(err instanceof Error ? err.message : "Disconnect failed");
       setDisconnectTarget(null);
     }
   };
 
   const handleConnectGmail = () => {
     if (!emailInbox) {
-      setBanner({ tone: "err", text: "Gmail inbox is not available. Please try again later." });
+      toast.error("Gmail inbox is not available. Please try again later.");
       return;
     }
     void startOAuth("gmail", emailInbox.id).catch(() => undefined);
@@ -538,20 +516,16 @@ export function SettingsPage() {
             clientSecret: values.clientSecret,
           });
           if (result.url) {
-            setBanner({ tone: "ok", text: "Opening Shopify to finish connection…" });
             window.location.assign(result.url);
             return;
           }
-          setBanner({ tone: "ok", text: "Shopify connected" });
+          toast.success("Shopify connected");
           setModal(null);
           setConnecting(null);
           return;
         } catch (err: unknown) {
           setConnecting(null);
-          setBanner({
-            tone: "err",
-            text: err instanceof Error ? err.message : "Could not start Shopify connection",
-          });
+          toast.error(err instanceof Error ? err.message : "Could not start Shopify connection");
           return;
         }
       }
@@ -573,7 +547,7 @@ export function SettingsPage() {
         body: { channelConfig: values, enabled: true },
       });
 
-      setBanner({ tone: "ok", text: "WhatsApp connected" });
+      toast.success("WhatsApp connected");
       setModal(null);
     } finally {
       setSubmitting(false);
@@ -634,18 +608,6 @@ export function SettingsPage() {
             </a>
           </Button>
         </div>
-
-        {banner && (
-          <div
-            className={`rounded-lg border px-4 py-3 text-sm ${
-              banner.tone === "ok"
-                ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-900 dark:text-emerald-200"
-                : "border-rose-500/30 bg-rose-500/10 text-rose-900 dark:text-rose-200"
-            }`}
-          >
-            {banner.text}
-          </div>
-        )}
 
         <CallbackUrlsCard channels={callbackChannels} />
 
