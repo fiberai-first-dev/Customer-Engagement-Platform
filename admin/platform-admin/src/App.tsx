@@ -354,22 +354,6 @@ export function App() {
     }
   };
 
-  const addFeature = async (featureKey: string) => {
-    if (!selectedOrgId) return;
-    try {
-      const res = await fetch(`${API_BASE}/admin/organizations/${selectedOrgId}/features/${featureKey}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ enabled: false }),
-      });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(data.error || "Failed to add feature");
-      fetchFeatures(selectedOrgId);
-    } catch (err: any) {
-      alert(err.message);
-    }
-  };
-
   const toggleFeature = async (featureKey: string, enabled: boolean) => {
     if (!selectedOrgId) return;
     try {
@@ -767,7 +751,12 @@ export function App() {
                       const allFeatures = [...features];
                       standardKeys.forEach(sk => {
                         if (!allFeatures.some(f => f.key === sk.key)) {
-                          allFeatures.push({ key: sk.key, enabled: false, description: sk.description, organizationId: selectedOrgId! });
+                          allFeatures.push({
+                            key: sk.key,
+                            enabled: false,
+                            description: sk.description,
+                            updatedAt: "",
+                          });
                         }
                       });
                       
