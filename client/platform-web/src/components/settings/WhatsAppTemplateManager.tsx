@@ -1,10 +1,12 @@
-import { useState, useMemo, useEffect } from "react";
+import { useState, useMemo, useEffect, useRef } from "react";
 import {
   useWhatsAppTemplates,
   useSyncTemplates,
+  useDeleteTemplate,
   type WhatsAppTemplate,
 } from "../../api";
 import { Button } from "../ui/button";
+import { ConfirmDialog } from "../ui/confirm-dialog";
 import {
   Loader2,
   Plus,
@@ -16,14 +18,14 @@ import {
   PauseCircle,
   MinusCircle,
   AlertTriangle,
+  MoreVertical,
   Eye,
+  Trash2,
 } from "lucide-react";
 import { toast } from "sonner";
 import { WhatsAppTemplateCreateModal } from "./WhatsAppTemplateCreateModal";
 import { WhatsAppTemplateDetailDrawer } from "./WhatsAppTemplateDetailDrawer";
 import { motion, AnimatePresence } from "framer-motion";
-
-// ─── Status helpers ───────────────────────────────────────────────────────────
 
 const STATUS_CFG = {
   APPROVED: {
@@ -63,7 +65,7 @@ function StatusBadge({ status }: { status: WhatsAppTemplate["status"] }) {
   const Icon = cfg.Icon;
   return (
     <span
-      className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-semibold border ${cfg.cls}`}
+      className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-xs font-semibold ${cfg.cls}`}
     >
       <Icon className="h-3 w-3" />
       {cfg.label}
@@ -89,37 +91,98 @@ function formatRelativeTime(dateStr: string | null | undefined): string {
   return d.toLocaleDateString();
 }
 
-/** Return body text with Meta example values substituted for {{n}} placeholders */
-function getBodyPreviewWithExamples(components: any[]): string {
-  const bodyComp = components?.find(
-    (c: any) => c.type === "BODY" || c.type === "body"
-  );
-  if (!bodyComp?.text) return "";
-  const text: string = bodyComp.text;
-  const exRows: string[][] = bodyComp.example?.body_text ?? [];
-  const examples: string[] = exRows[0] ?? [];
-  if (!examples.length) return text;
-  return text.replace(/\{\{(\d+)\}\}/g, (_, n) => {
-    const ex = examples[parseInt(n) - 1];
-    return ex ? ex : `{{${n}}}`;
-  });
+function getBodyPreview(components: any[]): string {
+  return components?.find((c) => c.type === "BODY" || c.type === "body")?.text ?? "";
 }
 
-// ─── Table row skeleton ───────────────────────────────────────────────────────
+function TemplateRowMenu({
+  onView,
+  onDelete,
+}: {
+  onView: () => void;
+  onDelete: () => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [openUp, setOpenUp] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+  const btnRef = useRef<HTMLButtonElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const onDoc = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener("mousedown", onDoc);
+    return () => document.removeEventListener("mousedown", onDoc);
+  }, [open]);
+
+  const toggle = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (!open && btnRef.current) {
+      const rect = btnRef.current.getBoundingClientRect();
+      setOpenUp(window.innerHeight - rect.bottom < 100);
+    }
+    setOpen((v) => !v);
+  };
+
+  return (
+    <div className="relative flex justify-end" ref={ref}>
+      <button
+        ref={btnRef}
+        type="button"
+        onClick={toggle}
+        className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-border text-muted-foreground hover:bg-muted hover:text-foreground"
+        aria-label="Template actions"
+      >
+        <MoreVertical className="h-4 w-4" />
+      </button>
+      {open && (
+        <div
+          className={`absolute right-0 z-50 w-36 overflow-hidden rounded-md border border-border bg-card shadow-lg ${
+            openUp ? "bottom-full mb-1" : "top-full mt-1"
+          }`}
+        >
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              setOpen(false);
+              onView();
+            }}
+            className="flex w-full items-center gap-2 px-3 py-2.5 text-sm text-foreground hover:bg-muted"
+          >
+            <Eye className="h-3.5 w-3.5" />
+            View
+          </button>
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              setOpen(false);
+              onDelete();
+            }}
+            className="flex w-full items-center gap-2 px-3 py-2.5 text-sm text-red-600 hover:bg-red-50 dark:hover:bg-red-500/10"
+          >
+            <Trash2 className="h-3.5 w-3.5" />
+            Delete
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
 
 function SkeletonRow() {
   return (
     <tr className="border-b border-border">
       {[1, 2, 3, 4, 5, 6].map((i) => (
         <td key={i} className="px-6 py-4">
-          <div className="h-4 bg-muted animate-pulse rounded" style={{ width: `${40 + i * 10}%` }} />
+          <div className="h-4 animate-pulse rounded bg-muted" style={{ width: `${40 + i * 10}%` }} />
         </td>
       ))}
     </tr>
   );
 }
-
-// ─── Empty state ─────────────────────────────────────────────────────────────
 
 function EmptyState({
   filtered,
@@ -133,18 +196,18 @@ function EmptyState({
   isSyncing: boolean;
 }) {
   return (
-    <div className="flex flex-col items-center justify-center py-20 px-6 text-center space-y-4">
-      <div className="h-16 w-16 rounded-2xl bg-muted flex items-center justify-center">
+    <div className="flex flex-col items-center justify-center space-y-4 px-6 py-20 text-center">
+      <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-muted">
         <RefreshCw className="h-8 w-8 text-muted-foreground" />
       </div>
       <div>
         <p className="text-base font-semibold">
           {filtered ? "No templates match your filters" : "No templates yet"}
         </p>
-        <p className="text-sm text-muted-foreground mt-1 max-w-xs">
+        <p className="mt-1 max-w-xs text-sm text-muted-foreground">
           {filtered
             ? "Try changing your search or filters."
-            : "Sync from Meta to import existing templates, or create a new one in CEP."}
+            : "Sync from Meta to import existing templates, or create a new one."}
         </p>
       </div>
       {!filtered && (
@@ -163,22 +226,26 @@ function EmptyState({
   );
 }
 
-// ─── Main Component ───────────────────────────────────────────────────────────
+const TABLE_HEADERS = ["Name", "Category", "Language", "Status", "Last synced", ""];
+
+const LANGUAGE_LABELS: Record<string, string> = {
+  en: "English",
+  hi: "Hindi",
+};
 
 export function WhatsAppTemplateManager() {
   const { data: templates = [], isLoading } = useWhatsAppTemplates();
   const { mutate: syncTemplates, isPending: isSyncing } = useSyncTemplates();
+  const { mutateAsync: deleteTemplate, isPending: isDeleting } = useDeleteTemplate();
 
   const [createOpen, setCreateOpen] = useState(false);
   const [selectedTemplate, setSelectedTemplate] = useState<WhatsAppTemplate | null>(null);
-  const [prefillTemplate, setPrefillTemplate] = useState<WhatsAppTemplate | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<WhatsAppTemplate | null>(null);
 
-  // Filters
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("ALL");
   const [categoryFilter, setCategoryFilter] = useState<string>("ALL");
 
-  // Auto-sync on mount
   useEffect(() => {
     syncTemplates(undefined, {
       onError: (err: any) => {
@@ -200,40 +267,23 @@ export function WhatsAppTemplateManager() {
     });
   };
 
-  const handleDuplicate = (template: WhatsAppTemplate) => {
-    const body = template.components?.find(
-      (c: any) => c.type === "BODY" || c.type === "body"
-    )?.text ?? "";
-    const footer = template.components?.find(
-      (c: any) => c.type === "FOOTER" || c.type === "footer"
-    )?.text ?? "";
-    const header = template.components?.find(
-      (c: any) => c.type === "HEADER" || c.type === "header"
-    );
-    const buttons = template.components?.find(
-      (c: any) => c.type === "BUTTONS" || c.type === "buttons"
-    )?.buttons ?? [];
-
-    setPrefillTemplate({
-      ...template,
-      name: template.name + "_v2",
-      body,
-      footer,
-      headerType: header?.format ?? "NONE",
-      headerContent: header?.text ?? "",
-      buttons,
-    } as any);
-    setSelectedTemplate(null);
-    setCreateOpen(true);
+  const handleDelete = async () => {
+    if (!deleteTarget) return;
+    try {
+      await deleteTemplate(deleteTarget.id);
+      toast.success(`"${deleteTarget.name}" deleted`);
+      if (selectedTemplate?.id === deleteTarget.id) setSelectedTemplate(null);
+      setDeleteTarget(null);
+    } catch (err: any) {
+      toast.error(err.message ?? "Failed to delete template");
+    }
   };
 
-  // Derived filter options
   const allCategories = useMemo(
     () => [...new Set(templates.map((t: WhatsAppTemplate) => t.internalCategory))],
     [templates]
   );
 
-  // Filtered templates
   const filtered = useMemo(() => {
     return templates.filter((t: WhatsAppTemplate) => {
       const matchSearch =
@@ -260,59 +310,60 @@ export function WhatsAppTemplateManager() {
 
   return (
     <div className="space-y-6">
-      {/* Status summary chips */}
       {!isLoading && templates.length > 0 && (
-        <div className="flex flex-wrap gap-2">
+        <div className="flex w-max rounded-xl bg-muted/40 p-1">
+          <button
+            onClick={() => setStatusFilter("ALL")}
+            className={`rounded-lg px-4 py-1.5 text-sm font-medium transition-all ${
+              statusFilter === "ALL"
+                ? "bg-background text-foreground shadow-sm"
+                : "text-muted-foreground hover:bg-muted/60 hover:text-foreground"
+            }`}
+          >
+            All <span className="ml-1 text-xs opacity-60">{templates.length}</span>
+          </button>
+
           {Object.entries(statusCounts).map(([status, count]) => {
+            if (count === 0) return null;
             const cfg = STATUS_CFG[status as keyof typeof STATUS_CFG] ?? STATUS_CFG.UNKNOWN;
-            const Icon = cfg.Icon;
+            const active = statusFilter === status;
+
             return (
               <button
                 key={status}
-                onClick={() => setStatusFilter(statusFilter === status ? "ALL" : status)}
-                className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold border transition-all ${
-                  statusFilter === status
-                    ? cfg.cls + " ring-2 ring-offset-1 ring-current"
-                    : cfg.cls + " opacity-60 hover:opacity-100"
+                onClick={() => setStatusFilter(status)}
+                className={`flex items-center gap-1.5 rounded-lg px-4 py-1.5 text-sm font-medium transition-all ${
+                  active
+                    ? "bg-background text-foreground shadow-sm"
+                    : "text-muted-foreground hover:bg-muted/60 hover:text-foreground"
                 }`}
               >
-                <Icon className="h-3 w-3" />
+                <cfg.Icon className={`h-3.5 w-3.5 ${active ? "" : "opacity-70"}`} />
                 {cfg.label}
-                <span className="ml-0.5 opacity-80">{count}</span>
+                <span className="text-xs opacity-60">{count}</span>
               </button>
             );
           })}
-          {statusFilter !== "ALL" && (
-            <button
-              onClick={() => setStatusFilter("ALL")}
-              className="text-xs text-muted-foreground hover:text-foreground underline"
-            >
-              Clear filter
-            </button>
-          )}
         </div>
       )}
 
-      {/* Top bar: search + filters + actions */}
-      <div className="flex flex-col sm:flex-row gap-3 items-start sm:items-center">
-        {/* Search */}
-        <div className="relative flex-1 min-w-0">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+      <div className="flex flex-col items-start gap-3 sm:flex-row sm:items-center">
+        <div className="relative min-w-0 flex-1">
+          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
           <input
             type="text"
             placeholder="Search templates…"
-            className="w-full pl-9 pr-4 py-2.5 text-sm bg-muted/50 border border-border rounded-xl focus:outline-none focus:ring-2 focus:ring-primary/50 transition-all"
+            className="w-full rounded-xl border border-border bg-muted/50 py-2.5 pl-9 pr-4 text-sm transition-all focus:outline-none focus:ring-2 focus:ring-primary/50"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
           />
         </div>
 
-        {/* Category filter */}
         {allCategories.length > 1 && (
           <select
             value={categoryFilter}
             onChange={(e) => setCategoryFilter(e.target.value)}
-            className="text-sm bg-muted/50 border border-border rounded-xl px-3 py-2.5 focus:outline-none focus:ring-2 focus:ring-primary/50 cursor-pointer shrink-0"
+            className="shrink-0 cursor-pointer rounded-xl border border-border bg-muted/50 px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary/50"
           >
             <option value="ALL">All categories</option>
             {allCategories.map((c) => (
@@ -323,54 +374,39 @@ export function WhatsAppTemplateManager() {
           </select>
         )}
 
-        {/* Actions */}
-        <div className="flex items-center gap-2 shrink-0">
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={handleSync}
-            disabled={isSyncing}
-            className="gap-2"
-          >
+        <div className="flex shrink-0 items-center gap-2">
+          <Button variant="outline" size="sm" onClick={handleSync} disabled={isSyncing} className="gap-2">
             {isSyncing ? (
               <Loader2 className="h-3.5 w-3.5 animate-spin" />
             ) : (
               <RefreshCw className="h-3.5 w-3.5" />
             )}
-            {isSyncing ? "Syncing…" : "Sync from Meta"}
+            {isSyncing ? "Syncing…" : "Sync"}
           </Button>
-          <Button
-            size="sm"
-            onClick={() => {
-              setPrefillTemplate(null);
-              setCreateOpen(true);
-            }}
-            className="gap-2"
-          >
+          <Button size="sm" onClick={() => setCreateOpen(true)} className="gap-2">
             <Plus className="h-3.5 w-3.5" />
             New Template
           </Button>
         </div>
       </div>
 
-      {/* Table */}
       <div className="overflow-hidden rounded-2xl border border-border bg-card shadow-sm">
         {isLoading ? (
           <div className="overflow-x-auto">
             <table className="w-full text-left text-sm">
               <thead className="border-b border-border bg-muted/50">
                 <tr>
-                  {["Name", "Internal Category", "Meta Category", "Language", "Status", "Last Synced", "Actions"].map(
-                    (h) => (
-                      <th key={h} className="px-6 py-3.5 font-medium text-muted-foreground whitespace-nowrap">
-                        {h}
-                      </th>
-                    )
-                  )}
+                  {TABLE_HEADERS.map((h) => (
+                    <th key={h} className="whitespace-nowrap px-6 py-3.5 font-medium text-muted-foreground">
+                      {h}
+                    </th>
+                  ))}
                 </tr>
               </thead>
               <tbody className="divide-y divide-border">
-                {[...Array(4)].map((_, i) => <SkeletonRow key={i} />)}
+                {[...Array(4)].map((_, i) => (
+                  <SkeletonRow key={i} />
+                ))}
               </tbody>
             </table>
           </div>
@@ -386,16 +422,16 @@ export function WhatsAppTemplateManager() {
             <table className="w-full text-left text-sm">
               <thead className="border-b border-border bg-muted/40">
                 <tr>
-                  {["Name", "Internal Category", "Meta Category", "Language", "Status", "Last Synced", "Actions"].map(
-                    (h) => (
-                      <th
-                        key={h}
-                        className="px-6 py-3.5 font-semibold text-muted-foreground text-xs uppercase tracking-wider whitespace-nowrap"
-                      >
-                        {h}
-                      </th>
-                    )
-                  )}
+                  {TABLE_HEADERS.map((h) => (
+                    <th
+                      key={h}
+                      className={`whitespace-nowrap px-6 py-3.5 text-xs font-semibold uppercase tracking-wider text-muted-foreground ${
+                        h === "" ? "w-12 text-right" : ""
+                      }`}
+                    >
+                      {h}
+                    </th>
+                  ))}
                 </tr>
               </thead>
               <tbody className="divide-y divide-border">
@@ -406,71 +442,37 @@ export function WhatsAppTemplateManager() {
                       initial={{ opacity: 0, y: -8 }}
                       animate={{ opacity: 1, y: 0 }}
                       exit={{ opacity: 0, y: 8 }}
-                      className="hover:bg-muted/30 transition-colors group"
+                      onClick={() => setSelectedTemplate(template)}
+                      className="transition-colors hover:bg-muted/30 group cursor-pointer"
                     >
-                      {/* Name */}
                       <td className="px-6 py-4">
                         <div>
-                          <button
-                            onClick={() => setSelectedTemplate(template)}
-                            className="font-semibold font-mono text-sm hover:text-primary transition-colors text-left"
+                          <span className="text-sm font-semibold text-foreground">{template.name}</span>
+                          <p
+                            className="mt-0.5 max-w-[280px] truncate text-xs text-muted-foreground"
+                            title={getBodyPreview(template.components)}
                           >
-                            {template.name}
-                          </button>
-                          <p className="text-xs text-muted-foreground line-clamp-1 mt-0.5 max-w-[200px]" title={getBodyPreviewWithExamples(template.components)}>
-                            {getBodyPreviewWithExamples(template.components)}
+                            {getBodyPreview(template.components)}
                           </p>
                         </div>
                       </td>
-
-                      {/* Internal Category */}
-                      <td className="px-6 py-4 text-sm text-muted-foreground whitespace-nowrap">
+                      <td className="whitespace-nowrap px-6 py-4 text-sm text-muted-foreground">
                         {CATEGORY_LABELS[template.internalCategory] ?? template.internalCategory}
                       </td>
-
-                      {/* Meta Category */}
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <span className="text-xs bg-muted text-muted-foreground px-2 py-1 rounded-md font-medium">
-                          {template.metaCategory}
-                        </span>
+                      <td className="whitespace-nowrap px-6 py-4 text-sm text-muted-foreground">
+                        {LANGUAGE_LABELS[template.language] ?? template.language}
                       </td>
-
-                      {/* Language */}
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <span className="text-xs bg-secondary text-secondary-foreground px-2 py-1 rounded-md font-medium ring-1 ring-inset ring-secondary-foreground/10">
-                          {template.language}
-                        </span>
-                      </td>
-
-                      {/* Status */}
-                      <td className="px-6 py-4 whitespace-nowrap">
+                      <td className="whitespace-nowrap px-6 py-4">
                         <StatusBadge status={template.status} />
-                        {template.status === "REJECTED" && template.rejectionReason && (
-                          <p
-                            className="text-xs text-red-500 mt-1 max-w-[150px] truncate"
-                            title={template.rejectionReason}
-                          >
-                            {template.rejectionReason}
-                          </p>
-                        )}
                       </td>
-
-                      {/* Last Synced */}
-                      <td className="px-6 py-4 text-xs text-muted-foreground whitespace-nowrap">
+                      <td className="whitespace-nowrap px-6 py-4 text-xs text-muted-foreground">
                         {formatRelativeTime(template.lastSyncedAt)}
                       </td>
-
-                      {/* Actions */}
-                      <td className="px-6 py-4 text-right">
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          className="gap-1.5 text-muted-foreground hover:text-foreground opacity-0 group-hover:opacity-100 transition-all"
-                          onClick={() => setSelectedTemplate(template)}
-                        >
-                          <Eye className="h-3.5 w-3.5" />
-                          View
-                        </Button>
+                      <td className="px-4 py-4">
+                        <TemplateRowMenu
+                          onView={() => setSelectedTemplate(template)}
+                          onDelete={() => setDeleteTarget(template)}
+                        />
                       </td>
                     </motion.tr>
                   ))}
@@ -481,36 +483,26 @@ export function WhatsAppTemplateManager() {
         )}
       </div>
 
-      {/* Create Modal */}
-      <WhatsAppTemplateCreateModal
-        open={createOpen}
-        onClose={() => {
-          setCreateOpen(false);
-          setPrefillTemplate(null);
-        }}
-        prefill={
-          prefillTemplate
-            ? {
-                name: (prefillTemplate as any).name,
-                language: prefillTemplate.language,
-                internalCategory: prefillTemplate.internalCategory,
-                metaCategory: prefillTemplate.metaCategory,
-                body: (prefillTemplate as any).body,
-                footer: (prefillTemplate as any).footer,
-                headerType: (prefillTemplate as any).headerType,
-                headerContent: (prefillTemplate as any).headerContent,
-                buttons: (prefillTemplate as any).buttons,
-              }
-            : undefined
-        }
-      />
+      <WhatsAppTemplateCreateModal open={createOpen} onClose={() => setCreateOpen(false)} />
 
-      {/* Detail Drawer */}
       <WhatsAppTemplateDetailDrawer
         template={selectedTemplate}
         onClose={() => setSelectedTemplate(null)}
-        onDuplicate={handleDuplicate}
-        onDeleted={() => setSelectedTemplate(null)}
+      />
+
+      <ConfirmDialog
+        open={Boolean(deleteTarget)}
+        title="Delete template"
+        description={
+          <>
+            Delete <strong>{deleteTarget?.name}</strong>? This removes it from Meta and cannot be undone.
+          </>
+        }
+        confirmLabel="Delete"
+        destructive
+        confirming={isDeleting}
+        onConfirm={handleDelete}
+        onCancel={() => setDeleteTarget(null)}
       />
     </div>
   );

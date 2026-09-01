@@ -98,13 +98,6 @@ function extractVariables(text: string): number[] {
   return nums.sort((a, b) => a - b);
 }
 
-function applyExamples(text: string, examples: Record<number, VariableExample>): string {
-  return text.replace(/\{\{(\d+)\}\}/g, (_, n) => {
-    const ex = examples[parseInt(n)]?.example;
-    return ex || `{{${n}}}`;
-  });
-}
-
 function buildComponents(
   headerType: string,
   headerContent: string,
@@ -186,7 +179,7 @@ interface Props {
 }
 
 const labelCls =
-  "block text-[11px] font-bold text-muted-foreground uppercase tracking-widest mb-1.5";
+  "block text-sm font-medium text-foreground mb-1.5";
 const inputCls =
   "w-full rounded-lg border border-input bg-background px-3 py-2 text-sm shadow-sm transition-all focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary placeholder:text-muted-foreground/50";
 const selectCls = inputCls + " cursor-pointer appearance-none";
@@ -268,12 +261,9 @@ export function WhatsAppTemplateCreateModal({ open, onClose, prefill }: Props) {
   const isValid =
     !nameError && !bodyError && !buttonErrors;
 
-  // ─── Live Preview ────────────────────────────────────────────────────────
-  const previewHeader =
-    headerType === "TEXT"
-      ? applyExamples(headerContent, headerExamples)
-      : null;
-  const previewBody = applyExamples(body, bodyExamples);
+  // Preview shows raw placeholders ({{1}}, etc.) — not example values
+  const previewHeader = headerType === "TEXT" ? headerContent : null;
+  const previewBody = body;
 
   // ─── Submit ──────────────────────────────────────────────────────────────
   const handleSubmit = async () => {
@@ -322,19 +312,19 @@ export function WhatsAppTemplateCreateModal({ open, onClose, prefill }: Props) {
           animate={{ scale: 1, opacity: 1 }}
           className="bg-card border border-border rounded-2xl shadow-2xl p-10 flex flex-col items-center text-center max-w-md w-full"
         >
-          <div className="h-16 w-16 rounded-full bg-emerald-500/10 flex items-center justify-center mb-4">
-            <MessageSquare className="h-8 w-8 text-emerald-500" />
+          <div className="flex flex-col items-center text-center">
+            <div className="mb-4 rounded-full bg-emerald-100/80 p-3 dark:bg-emerald-500/20">
+              <MessageSquare className="h-6 w-6 text-emerald-600 dark:text-emerald-400" />
+            </div>
+            <h2 className="text-lg font-semibold text-foreground mb-1">Template submitted</h2>
+            <p className="text-sm text-muted-foreground mb-6 leading-relaxed">
+              <span className="font-medium text-foreground">{name}</span> is now under review by Meta.
+              Approval usually takes up to 24 hours. The status will remain{" "}
+              <span className="font-medium text-yellow-600 dark:text-yellow-400">PENDING</span>{" "}
+              until approved.
+            </p>
           </div>
-          <h2 className="text-xl font-bold mb-2">Submitted for review</h2>
-          <p className="text-sm text-muted-foreground mb-6">
-            <strong className="text-foreground">{name}</strong> has been submitted to
-            Meta. Approval usually takes up to 24 hours. The template will appear as{" "}
-            <span className="font-semibold text-yellow-600 dark:text-yellow-400">
-              PENDING
-            </span>{" "}
-            until Meta approves it.
-          </p>
-          <Button onClick={handleClose} className="w-full">
+          <Button variant="outline" onClick={handleClose} className="w-full font-medium">
             Done
           </Button>
         </motion.div>
@@ -354,9 +344,9 @@ export function WhatsAppTemplateCreateModal({ open, onClose, prefill }: Props) {
         {/* Header */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-border bg-muted/30 shrink-0">
           <div>
-            <h2 className="text-lg font-bold tracking-tight">Create WhatsApp Template</h2>
-            <p className="text-xs text-muted-foreground mt-0.5">
-              {prefill ? "Pre-filled from existing template — submit as a new name" : "Submitted to Meta for review · Approval usually takes up to 24h"}
+            <h2 className="text-lg font-bold tracking-tight">Create template</h2>
+            <p className="mt-0.5 text-xs text-muted-foreground">
+              Submitted to Meta for review · usually approved within 24 hours
             </p>
           </div>
           <button
@@ -373,12 +363,7 @@ export function WhatsAppTemplateCreateModal({ open, onClose, prefill }: Props) {
           <div className="flex-1 overflow-y-auto p-6 space-y-6">
             {!prefill && (
               <section className="space-y-3">
-                <h3 className="text-xs font-bold text-muted-foreground uppercase tracking-widest">
-                  Quick start
-                </h3>
-                <p className="text-xs text-muted-foreground">
-                  Re-open the 24-hour window when customers tap a quick reply button.
-                </p>
+                <h3 className="text-sm font-semibold text-foreground">Quick start</h3>
                 <div className="flex flex-wrap gap-2">
                   {TEMPLATE_PRESETS.map((preset) => (
                     <button
@@ -393,9 +378,10 @@ export function WhatsAppTemplateCreateModal({ open, onClose, prefill }: Props) {
                         setHeaderType("NONE");
                         setHeaderContent("");
                         setButtons(preset.buttons);
-                        setBodyExamples(preset.examples as Record<number, VariableExample>);
+                        setBodyExamples(preset.examples);
+                        setHeaderExamples({});
                       }}
-                      className="rounded-full border border-border bg-muted/40 px-3 py-1.5 text-xs font-medium hover:bg-muted hover:border-primary/30 transition-colors"
+                      className="rounded-full border border-border bg-muted/40 px-3 py-1.5 text-xs font-medium text-foreground transition-colors hover:bg-muted"
                     >
                       {preset.label}
                     </button>
@@ -403,10 +389,10 @@ export function WhatsAppTemplateCreateModal({ open, onClose, prefill }: Props) {
                 </div>
               </section>
             )}
-            {/* Basic info */}
+
             <section className="space-y-4">
-              <h3 className="text-xs font-bold text-muted-foreground uppercase tracking-widest border-b border-border pb-2">
-                Basic Info
+              <h3 className="text-sm font-semibold text-foreground border-b border-border pb-2">
+                Basic info
               </h3>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
@@ -474,7 +460,7 @@ export function WhatsAppTemplateCreateModal({ open, onClose, prefill }: Props) {
 
             {/* Content */}
             <section className="space-y-4">
-              <h3 className="text-xs font-bold text-muted-foreground uppercase tracking-widest border-b border-border pb-2">
+              <h3 className="text-sm font-semibold text-foreground border-b border-border pb-2">
                 Content
               </h3>
 
@@ -549,8 +535,8 @@ export function WhatsAppTemplateCreateModal({ open, onClose, prefill }: Props) {
             {/* Variable Examples */}
             {(bodyVarNums.length > 0 || headerVarNums.length > 0) && (
               <section className="space-y-4">
-                <h3 className="text-xs font-bold text-muted-foreground uppercase tracking-widest border-b border-border pb-2">
-                  Variable Examples{" "}
+                <h3 className="text-sm font-semibold text-foreground border-b border-border pb-2">
+                  Variable examples{" "}
                   <span className="text-red-500">*</span>
                   <span className="normal-case font-normal ml-1">(required by Meta for review)</span>
                 </h3>
@@ -624,7 +610,7 @@ export function WhatsAppTemplateCreateModal({ open, onClose, prefill }: Props) {
             {/* Buttons */}
             <section className="space-y-3">
               <div className="flex items-center justify-between border-b border-border pb-2">
-                <h3 className="text-xs font-bold text-muted-foreground uppercase tracking-widest">
+                <h3 className="text-sm font-semibold text-foreground">
                   Buttons (optional)
                 </h3>
                 <button

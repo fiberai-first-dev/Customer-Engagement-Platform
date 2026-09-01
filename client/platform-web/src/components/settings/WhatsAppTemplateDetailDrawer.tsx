@@ -1,9 +1,5 @@
 import {
   X,
-  RefreshCw,
-  Trash2,
-  Copy,
-  Loader2,
   Clock,
   AlertTriangle,
   CheckCircle2,
@@ -15,20 +11,54 @@ import {
   Eye as EyeIcon,
   MessageSquare,
 } from "lucide-react";
-import { Button } from "../ui/button";
 import {
   type WhatsAppTemplate,
-  useSyncSingleTemplate,
-  useDeleteTemplate,
   useTemplateAnalytics,
   usePatchTemplate,
 } from "../../api";
 import { toast } from "sonner";
-import { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { ConfirmDialog } from "../ui/confirm-dialog";
 
+const INTERNAL_CATEGORIES = [
+  { value: "CUSTOMER_REENGAGEMENT", label: "Customer Re-engagement" },
+  { value: "MARKETING", label: "Marketing" },
+  { value: "UTILITY", label: "Utility" },
+  { value: "AUTHENTICATION", label: "Authentication" },
+  { value: "OTHER", label: "Other" },
+];
 
+const STATUS_CONFIG = {
+  APPROVED: {
+    label: "Approved",
+    icon: CheckCircle2,
+    cls: "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20",
+  },
+  PENDING: {
+    label: "Pending",
+    icon: Clock,
+    cls: "bg-yellow-500/10 text-yellow-600 dark:text-yellow-400 border-yellow-500/20",
+  },
+  REJECTED: {
+    label: "Rejected",
+    icon: XCircle,
+    cls: "bg-red-500/10 text-red-600 dark:text-red-400 border-red-500/20",
+  },
+  PAUSED: {
+    label: "Paused",
+    icon: PauseCircle,
+    cls: "bg-orange-500/10 text-orange-600 dark:text-orange-400 border-orange-500/20",
+  },
+  DISABLED: {
+    label: "Disabled",
+    icon: MinusCircle,
+    cls: "bg-muted text-muted-foreground border-border",
+  },
+  UNKNOWN: {
+    label: "Unknown",
+    icon: AlertTriangle,
+    cls: "bg-muted text-muted-foreground border-border",
+  },
+} as const;
 
 function formatRelativeTime(dateStr: string | null | undefined): string {
   if (!dateStr) return "Never";
@@ -40,599 +70,244 @@ function formatRelativeTime(dateStr: string | null | undefined): string {
   return d.toLocaleDateString();
 }
 
-function fmtDate(iso: string | undefined): string {
-  if (!iso) return "";
-  return new Date(iso).toLocaleDateString("en-US", { month: "short", day: "numeric" });
-}
-
 function getBodyText(components: any[]): string {
-  return (
-    components?.find((c: any) => c.type === "BODY" || c.type === "body")?.text ?? ""
-  );
+  return components?.find((c) => c.type === "BODY" || c.type === "body")?.text ?? "";
 }
 
 function getHeader(components: any[]): { format: string; text?: string } | null {
-  const h = components?.find((c: any) => c.type === "HEADER" || c.type === "header");
+  const h = components?.find((c) => c.type === "HEADER" || c.type === "header");
   if (!h) return null;
   return { format: h.format, text: h.text };
 }
 
 function getFooter(components: any[]): string | null {
-  return (
-    components?.find((c: any) => c.type === "FOOTER" || c.type === "footer")?.text ?? null
-  );
+  return components?.find((c) => c.type === "FOOTER" || c.type === "footer")?.text ?? null;
 }
 
 function getButtons(components: any[]): any[] {
-  return (
-    components?.find((c: any) => c.type === "BUTTONS" || c.type === "buttons")
-      ?.buttons ?? []
-  );
+  return components?.find((c) => c.type === "BUTTONS" || c.type === "buttons")?.buttons ?? [];
 }
-
-function applyPlaceholders(text: string): string {
-  return text.replace(/\{\{(\d+)\}\}/g, (_, n) => `[param ${n}]`);
-}
-
-/** Extract example values from Meta's component.example structure */
-function applyComponentExamples(comp: any): string {
-  if (!comp?.text) return comp?.text ?? "";
-  const exHeader: string[] = comp.example?.header_text ?? [];
-  const exBody: string[][] = comp.example?.body_text ?? [];
-  const examples: string[] = exHeader.length ? exHeader : (exBody[0] ?? []);
-  let text: string = comp.text;
-  examples.forEach((ex, i) => {
-    text = text.replace(new RegExp(`\\{\\{${i + 1}\\}\\}`, "g"), ex);
-  });
-  return text;
-}
-
-// ─── Status Badge ─────────────────────────────────────────────────────────────
-
-const STATUS_CONFIG = {
-  APPROVED: {
-    label: "Approved",
-    icon: CheckCircle2,
-    cls: "bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-500/10 dark:text-emerald-400 dark:border-emerald-500/20",
-  },
-  PENDING: {
-    label: "Pending",
-    icon: Clock,
-    cls: "bg-yellow-50 text-yellow-700 border-yellow-200 dark:bg-yellow-500/10 dark:text-yellow-400 dark:border-yellow-500/20",
-  },
-  REJECTED: {
-    label: "Rejected",
-    icon: XCircle,
-    cls: "bg-red-50 text-red-700 border-red-200 dark:bg-red-500/10 dark:text-red-400 dark:border-red-500/20",
-  },
-  PAUSED: {
-    label: "Paused",
-    icon: PauseCircle,
-    cls: "bg-orange-50 text-orange-700 border-orange-200 dark:bg-orange-500/10 dark:text-orange-400 dark:border-orange-500/20",
-  },
-  DISABLED: {
-    label: "Disabled",
-    icon: MinusCircle,
-    cls: "bg-gray-50 text-gray-600 border-gray-200 dark:bg-gray-500/10 dark:text-gray-400 dark:border-gray-500/20",
-  },
-  UNKNOWN: {
-    label: "Unknown",
-    icon: AlertTriangle,
-    cls: "bg-gray-50 text-gray-600 border-gray-200 dark:bg-gray-500/10 dark:text-gray-400 dark:border-gray-500/20",
-  },
-};
 
 function StatusBadge({ status }: { status: WhatsAppTemplate["status"] }) {
   const cfg = STATUS_CONFIG[status] ?? STATUS_CONFIG.UNKNOWN;
   const Icon = cfg.icon;
   return (
-    <span
-      className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-semibold border ${cfg.cls}`}
-    >
+    <span className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-medium ${cfg.cls}`}>
       <Icon className="h-3.5 w-3.5" />
       {cfg.label}
     </span>
   );
 }
 
-// ─── Analytics Section ────────────────────────────────────────────────────────
-
-function AnalyticsStat({
-  label,
-  value,
-  icon: Icon,
-  color,
-  loading,
-}: {
-  label: string;
-  value: number;
-  icon: React.ElementType;
-  color: string;
-  loading: boolean;
-}) {
-  return (
-    <div className="flex flex-col gap-1 rounded-xl border border-border bg-muted/20 px-4 py-3">
-      <div className={`flex items-center gap-1.5 text-xs font-medium ${color}`}>
-        <Icon className="h-3.5 w-3.5" />
-        {label}
-      </div>
-      {loading ? (
-        <div className="h-6 w-12 bg-muted animate-pulse rounded mt-1" />
-      ) : (
-        <p className="text-xl font-bold tabular-nums">{value.toLocaleString()}</p>
-      )}
-    </div>
-  );
-}
-
-function AnalyticsSection({
-  templateId,
-}: {
-  templateId: string;
-}) {
+function AnalyticsSection({ templateId }: { templateId: string }) {
   const { data: analytics, isLoading } = useTemplateAnalytics(templateId);
 
-  const deliveryRate =
-    analytics && analytics.sent > 0
-      ? Math.round((analytics.delivered / analytics.sent) * 100)
-      : null;
-  const readRate =
-    analytics && analytics.delivered > 0
-      ? Math.round((analytics.read / analytics.delivered) * 100)
-      : null;
+  if (isLoading || !analytics?.available) return null;
+
+  const hasStats = analytics.sent > 0 || analytics.delivered > 0 || analytics.read > 0;
+  const hasUsage = (analytics.usageCount ?? 0) > 0;
+  if (!hasStats && !hasUsage) return null;
 
   return (
-    <div className="px-6 py-4 border-b border-border/60">
-      <div className="flex items-center justify-between mb-3">
-        <p className="text-xs font-bold text-muted-foreground uppercase tracking-widest">
-          Analytics · Last 30 days
+    <section className="px-6 py-4 border-b border-border">
+      <h3 className="text-sm font-semibold text-foreground mb-3">Usage · last 30 days</h3>
+      {hasUsage && (
+        <p className="text-sm text-muted-foreground mb-3 flex items-center gap-2">
+          <MessageSquare className="h-4 w-4" />
+          Sent from inbox: <span className="font-medium text-foreground">{analytics.usageCount}</span>
         </p>
-        {analytics?.period?.start && (
-          <span className="text-[10px] text-muted-foreground">
-            {fmtDate(analytics.period.start)} – {fmtDate(analytics.period.end)}
-          </span>
-        )}
-      </div>
-
-      {/* CEP usage count — always available */}
-      <div className="mb-3 flex items-center gap-2 text-xs text-muted-foreground">
-        <MessageSquare className="h-3.5 w-3.5" />
-        <span>
-          Sent from inbox:{" "}
-          <span className="font-semibold text-foreground">
-            {isLoading ? "…" : (analytics?.usageCount ?? 0).toLocaleString()}
-          </span>{" "}
-          time{(analytics?.usageCount ?? 0) !== 1 ? "s" : ""}
-        </span>
-      </div>
-
-      {/* Meta analytics stats */}
-      {analytics?.available === false && analytics?.message ? (
-        <div className="rounded-xl border border-border bg-muted/10 px-4 py-3 text-xs text-muted-foreground flex items-start gap-2">
-          <AlertTriangle className="h-4 w-4 shrink-0 mt-0.5 text-yellow-500" />
-          <span>{analytics.message}</span>
-        </div>
-      ) : (
-        <div className="grid grid-cols-3 gap-2">
-          <AnalyticsStat
-            label="Sent"
-            value={analytics?.sent ?? 0}
-            icon={Send}
-            color="text-blue-500"
-            loading={isLoading}
-          />
-          <AnalyticsStat
-            label="Delivered"
-            value={analytics?.delivered ?? 0}
-            icon={CheckCheck}
-            color="text-emerald-500"
-            loading={isLoading}
-          />
-          <AnalyticsStat
-            label="Read"
-            value={analytics?.read ?? 0}
-            icon={EyeIcon}
-            color="text-purple-500"
-            loading={isLoading}
-          />
+      )}
+      {hasStats && (
+        <div className="grid grid-cols-3 gap-3">
+          <div className="rounded-lg border border-border bg-muted/30 px-3 py-2">
+            <p className="text-xs text-muted-foreground flex items-center gap-1"><Send className="h-3 w-3" /> Sent</p>
+            <p className="text-lg font-semibold tabular-nums">{analytics.sent}</p>
+          </div>
+          <div className="rounded-lg border border-border bg-muted/30 px-3 py-2">
+            <p className="text-xs text-muted-foreground flex items-center gap-1"><CheckCheck className="h-3 w-3" /> Delivered</p>
+            <p className="text-lg font-semibold tabular-nums">{analytics.delivered}</p>
+          </div>
+          <div className="rounded-lg border border-border bg-muted/30 px-3 py-2">
+            <p className="text-xs text-muted-foreground flex items-center gap-1"><EyeIcon className="h-3 w-3" /> Read</p>
+            <p className="text-lg font-semibold tabular-nums">{analytics.read}</p>
+          </div>
         </div>
       )}
-
-      {/* Delivery / read rates */}
-      {!isLoading && analytics?.available && analytics.sent > 0 && (
-        <div className="mt-3 flex gap-4 text-xs text-muted-foreground">
-          {deliveryRate !== null && (
-            <span>
-              Delivery rate:{" "}
-              <span className="font-semibold text-emerald-600 dark:text-emerald-400">
-                {deliveryRate}%
-              </span>
-            </span>
-          )}
-          {readRate !== null && (
-            <span>
-              Read rate:{" "}
-              <span className="font-semibold text-purple-600 dark:text-purple-400">
-                {readRate}%
-              </span>
-            </span>
-          )}
-        </div>
-      )}
-
-      {!isLoading && analytics?.available && analytics.message && (
-        <p className="mt-2 text-xs text-muted-foreground italic">{analytics.message}</p>
-      )}
-    </div>
+    </section>
   );
 }
 
-// ─── Component ────────────────────────────────────────────────────────────────
+function WhatsAppPreview({
+  header,
+  body,
+  footer,
+  buttons,
+}: {
+  header: { format: string; text?: string } | null;
+  body: string;
+  footer: string | null;
+  buttons: any[];
+}) {
+  return (
+    <div className="rounded-xl bg-[#efeae2] dark:bg-[#0b141a] p-4">
+      <div className="max-w-[280px]">
+        <div className="rounded-lg rounded-tl-none bg-white dark:bg-[#202c33] shadow-sm overflow-hidden">
+          {header && (
+            <div className="px-3 pt-2 pb-1">
+              {header.format === "TEXT" ? (
+                <p className="text-sm font-semibold text-[#111b21] dark:text-[#e9edef]">{header.text}</p>
+              ) : (
+                <div className="h-24 rounded-md bg-black/5 dark:bg-white/5 flex items-center justify-center text-xs text-muted-foreground">
+                  {header.format}
+                </div>
+              )}
+            </div>
+          )}
+          {body && (
+            <p className="px-3 py-2 text-sm text-[#111b21] dark:text-[#e9edef] whitespace-pre-wrap leading-relaxed">
+              {body}
+            </p>
+          )}
+          <div className="px-3 pb-2 flex items-end justify-between gap-2">
+            {footer ? (
+              <span className="text-xs text-[#667781] dark:text-[#8696a0]">{footer}</span>
+            ) : (
+              <span />
+            )}
+            <span className="text-[10px] text-[#667781] dark:text-[#8696a0]">12:00</span>
+          </div>
+        </div>
+        {buttons.length > 0 && (
+          <div className="mt-1 space-y-1">
+            {buttons.map((btn, i) => (
+              <div
+                key={i}
+                className="rounded-lg bg-white dark:bg-[#202c33] px-3 py-2 text-center text-sm font-medium text-[#00a884]"
+              >
+                {btn.text}
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
 
 interface Props {
   template: WhatsAppTemplate | null;
   onClose: () => void;
-  onDuplicate: (template: WhatsAppTemplate) => void;
-  onDeleted: () => void;
 }
 
-export function WhatsAppTemplateDetailDrawer({
-  template,
-  onClose,
-  onDuplicate,
-  onDeleted,
-}: Props) {
-  const { mutateAsync: syncTemplate, isPending: isSyncing } = useSyncSingleTemplate();
-  const { mutateAsync: deleteTemplate, isPending: isDeleting } = useDeleteTemplate();
+export function WhatsAppTemplateDetailDrawer({ template, onClose }: Props) {
   const { mutateAsync: patchTemplate, isPending: isPatching } = usePatchTemplate();
-  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
-
-  const INTERNAL_CATEGORIES = [
-    { value: "CUSTOMER_REENGAGEMENT", label: "Customer Re-engagement" },
-    { value: "MARKETING", label: "Marketing" },
-    { value: "UTILITY", label: "Utility" },
-    { value: "AUTHENTICATION", label: "Authentication" },
-    { value: "OTHER", label: "Other" },
-  ];
-
-  const handleSync = async () => {
-    if (!template) return;
-    try {
-      await syncTemplate(template.id);
-      toast.success("Template status refreshed");
-    } catch (err: any) {
-      toast.error(err.message || "Failed to sync template");
-    }
-  };
-
-  const handleDelete = async () => {
-    if (!template) return;
-    try {
-      await deleteTemplate(template.id);
-      toast.success(`Template "${template.name}" deleted`);
-      setShowDeleteConfirm(false);
-      onDeleted();
-      onClose();
-    } catch (err: any) {
-      toast.error(err.message || "Failed to delete template");
-      setShowDeleteConfirm(false);
-    }
-  };
 
   const header = template ? getHeader(template.components) : null;
   const body = template ? getBodyText(template.components) : "";
   const footer = template ? getFooter(template.components) : null;
   const buttons = template ? getButtons(template.components) : [];
 
-  // Body with example values filled in
-  const bodyWithExamples = template
-    ? applyComponentExamples(
-        template.components?.find(
-          (c: any) => c.type === "BODY" || c.type === "body"
-        )
-      )
-    : "";
-
   return (
-    <>
-      <AnimatePresence>
-        {template && (
-          <>
-            {/* Backdrop */}
-            <motion.div
-              key="backdrop"
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              onClick={onClose}
-              className="fixed inset-0 z-40 bg-background/60 backdrop-blur-sm"
-            />
-
-            {/* Drawer */}
-            <motion.div
-              key="drawer"
-              initial={{ x: "100%" }}
-              animate={{ x: 0 }}
-              exit={{ x: "100%" }}
-              transition={{ type: "spring", stiffness: 350, damping: 30 }}
-              className="fixed right-0 top-0 h-full z-50 w-full max-w-md bg-card border-l border-border shadow-2xl flex flex-col overflow-hidden"
-            >
-              {/* Header */}
-              <div className="flex items-start justify-between px-6 py-4 border-b border-border bg-muted/30 shrink-0">
-                <div className="min-w-0 flex-1 pr-4">
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <h2 className="text-base font-bold tracking-tight font-mono text-foreground truncate">
-                      {template.name}
-                    </h2>
-                    <StatusBadge status={template.status} />
-                  </div>
-                  <div className="flex flex-wrap gap-2 mt-1.5">
-                    <span className="text-xs text-muted-foreground bg-muted px-2 py-0.5 rounded-full">
-                      {template.metaCategory}
-                    </span>
-                    <span className="text-xs text-muted-foreground bg-muted px-2 py-0.5 rounded-full">
-                      {template.language}
-                    </span>
-                    {template.qualityScore && (
-                      <span className="text-xs text-muted-foreground bg-muted px-2 py-0.5 rounded-full">
-                        Quality: {template.qualityScore}
-                      </span>
-                    )}
-                  </div>
+    <AnimatePresence>
+      {template && (
+        <>
+          <motion.div
+            key="backdrop"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            onClick={onClose}
+            className="fixed inset-0 z-40 bg-background/60 backdrop-blur-sm"
+          />
+          <motion.aside
+            key="drawer"
+            initial={{ x: "100%" }}
+            animate={{ x: 0 }}
+            exit={{ x: "100%" }}
+            transition={{ type: "spring", stiffness: 380, damping: 32 }}
+            className="fixed right-0 top-0 z-50 flex h-full w-full max-w-md flex-col border-l border-border bg-card shadow-2xl"
+          >
+            <div className="flex items-start justify-between gap-3 border-b border-border px-6 py-4">
+              <div className="min-w-0">
+                <h2 className="truncate font-mono text-base font-semibold">{template.name}</h2>
+                <div className="mt-2 flex flex-wrap items-center gap-2">
+                  <StatusBadge status={template.status} />
+                  <span className="rounded-full bg-muted px-2 py-0.5 text-xs text-muted-foreground">
+                    {template.language}
+                  </span>
+                  <span className="rounded-full bg-muted px-2 py-0.5 text-xs text-muted-foreground">
+                    {template.metaCategory}
+                  </span>
                 </div>
-                <button
-                  onClick={onClose}
-                  className="p-2 hover:bg-muted rounded-full transition-colors text-muted-foreground shrink-0"
-                >
-                  <X className="h-5 w-5" />
-                </button>
               </div>
+              <button
+                type="button"
+                onClick={onClose}
+                className="rounded-full p-2 text-muted-foreground hover:bg-muted"
+                aria-label="Close"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
 
-              {/* Scrollable content */}
-              <div className="flex-1 overflow-y-auto">
-                {/* Meta info */}
-                <div className="px-6 py-3 text-xs text-muted-foreground border-b border-border/60 space-y-1 bg-muted/10">
-                  <div className="flex items-center gap-4 flex-wrap">
-                    {template.metaTemplateId && (
-                      <span>
-                        Meta ID:{" "}
-                        <code className="font-mono text-foreground/80">
-                          {template.metaTemplateId}
-                        </code>
-                      </span>
-                    )}
-                    {template.wabaId && (
-                      <span>
-                        WABA:{" "}
-                        <code className="font-mono text-foreground/80">
-                          {template.wabaId}
-                        </code>
-                      </span>
-                    )}
-                  </div>
-                  <div className="flex items-center gap-1">
-                    <Clock className="h-3 w-3" />
-                    Last synced: {formatRelativeTime(template.lastSyncedAt)}
-                  </div>
-                  <div>
-                    <label className="text-[10px] uppercase tracking-wider text-muted-foreground block mb-1">
-                      Internal category (CEP)
-                    </label>
-                    <select
-                      className="w-full text-sm rounded-lg border border-border bg-background px-2 py-1.5 focus:outline-none focus:ring-2 focus:ring-primary/30"
-                      value={template.internalCategory}
-                      disabled={isPatching}
-                      onChange={async (e) => {
-                        try {
-                          await patchTemplate({
-                            id: template.id,
-                            internalCategory: e.target.value,
-                          });
-                          toast.success("Category updated");
-                        } catch (err: any) {
-                          toast.error(err.message || "Failed to update category");
-                        }
-                      }}
-                    >
-                      {INTERNAL_CATEGORIES.map((c) => (
-                        <option key={c.value} value={c.value}>
-                          {c.label}
-                        </option>
-                      ))}
-                    </select>
-                    <p className="text-[10px] text-muted-foreground mt-1">
-                      Re-engagement templates are shown first when the 24h window is closed.
-                    </p>
-                  </div>
-                </div>
-
-                {/* Rejection reason */}
-                {template.status === "REJECTED" && template.rejectionReason && (
-                  <div className="mx-6 my-4 p-4 rounded-xl border border-red-200 bg-red-50 dark:bg-red-500/10 dark:border-red-500/20">
-                    <div className="flex items-center gap-2 mb-1">
-                      <XCircle className="h-4 w-4 text-red-500 shrink-0" />
-                      <p className="text-sm font-semibold text-red-700 dark:text-red-400">
-                        Rejection reason
-                      </p>
-                    </div>
-                    <p className="text-sm text-red-700 dark:text-red-300 leading-relaxed">
-                      {template.rejectionReason}
-                    </p>
-                  </div>
-                )}
-
-                {/* Approved-cannot-edit notice */}
-                {template.status === "APPROVED" && (
-                  <div className="mx-6 my-4 p-3 rounded-xl border border-blue-200 bg-blue-50/60 dark:bg-blue-500/10 dark:border-blue-500/20 text-xs text-blue-700 dark:text-blue-300 flex items-start gap-2">
-                    <AlertTriangle className="h-4 w-4 shrink-0 mt-0.5" />
-                    Approved templates cannot be edited. Use{" "}
-                    <strong>Duplicate</strong> to create a new version.
-                  </div>
-                )}
-
-                {/* Analytics */}
-                <AnalyticsSection templateId={template.id} />
-
-                {/* Preview */}
-                <div className="px-6 py-4 border-b border-border/60">
-                  <p className="text-xs font-bold text-muted-foreground uppercase tracking-widest mb-3">
-                    Preview
-                  </p>
-                  <div
-                    className="rounded-xl p-4 bg-[#efeae2] dark:bg-[#0b141a] relative overflow-hidden"
+            <div className="flex-1 overflow-y-auto">
+              <section className="space-y-4 border-b border-border px-6 py-4">
+                <div>
+                  <label className="mb-1.5 block text-xs font-medium text-muted-foreground">
+                    Inbox category
+                  </label>
+                  <select
+                    className="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/30"
+                    value={template.internalCategory}
+                    disabled={isPatching}
+                    onChange={async (e) => {
+                      try {
+                        await patchTemplate({ id: template.id, internalCategory: e.target.value });
+                        toast.success("Category updated");
+                      } catch (err: any) {
+                        toast.error(err.message || "Failed to update category");
+                      }
+                    }}
                   >
-                    <div className="absolute inset-0 opacity-[0.4] mix-blend-overlay dark:opacity-[0.15]" style={{ backgroundImage: "url('https://i.pinimg.com/736x/8c/98/99/8c98994518b575bfd8c949e91d20548b.jpg')", backgroundSize: 'cover', pointerEvents: 'none' }} />
-                    <div className="max-w-[280px] space-y-0.5 relative z-10">
-                      {/* Tail */}
-                      <svg viewBox="0 0 8 13" width="8" height="13" className="absolute -left-2 top-0 text-[#fff] dark:text-[#202c33] drop-shadow-sm">
-                        <path opacity="1" fill="currentColor" d="M1.533 3.118L8 12.118V0H2.8C1.5 0 1.253 1.84 1.533 3.118z"></path>
-                      </svg>
-
-                      <div className="bg-[#fff] dark:bg-[#202c33] rounded-lg rounded-tl-none shadow-sm flex flex-col overflow-hidden">
-                        {header && (
-                          <div className="px-2 pt-2 pb-1">
-                            {header.format === "TEXT" ? (
-                              <p className="text-[15px] font-bold text-[#111b21] dark:text-[#e9edef] px-1">
-                                {applyPlaceholders(header.text ?? "")}
-                              </p>
-                            ) : (
-                              <div className="h-32 bg-black/5 dark:bg-white/5 rounded-md flex items-center justify-center text-xs text-muted-foreground">
-                                {header.format} media
-                              </div>
-                            )}
-                          </div>
-                        )}
-                        {body && (
-                          <div className="px-3 pt-1 pb-2 text-[14.5px] text-[#111b21] dark:text-[#e9edef] whitespace-pre-wrap leading-[20px]">
-                            {bodyWithExamples || applyPlaceholders(body)}
-                          </div>
-                        )}
-                        <div className="px-3 pb-1.5 flex items-end justify-between gap-4 mt-auto">
-                          {footer ? (
-                            <span className="text-[12px] text-[#667781] dark:text-[#8696a0] leading-tight truncate flex-1">
-                              {footer}
-                            </span>
-                          ) : (
-                            <span className="flex-1" />
-                          )}
-                          <span className="text-[10px] text-[#667781] dark:text-[#8696a0] shrink-0 mt-1 self-end translate-y-0.5">
-                            12:00
-                          </span>
-                        </div>
-                      </div>
-
-                      {/* Buttons */}
-                      {buttons.length > 0 && (
-                        <div className="space-y-0.5 mt-0.5">
-                          {buttons.map((btn: any, i: number) => (
-                            <div
-                              key={i}
-                              className="bg-[#fff] dark:bg-[#202c33] shadow-sm rounded-lg px-3 py-2.5 text-center text-[14px] text-[#00a884] dark:text-[#00a884] border border-transparent"
-                            >
-                              <span className="font-medium flex items-center justify-center gap-2">
-                                {btn.type === "URL" && (
-                                  <svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" strokeWidth="2" fill="none" strokeLinecap="round" strokeLinejoin="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path><polyline points="15 3 21 3 21 9"></polyline><line x1="10" y1="14" x2="21" y2="3"></line></svg>
-                                )}
-                                {btn.type === "PHONE_NUMBER" && (
-                                  <svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" strokeWidth="2" fill="none" strokeLinecap="round" strokeLinejoin="round"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"></path></svg>
-                                )}
-                                {btn.text}
-                              </span>
-                            </div>
-                          ))}
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                </div>
-
-                {/* Components breakdown */}
-                <div className="px-6 py-4 border-b border-border/60">
-                  <p className="text-xs font-bold text-muted-foreground uppercase tracking-widest mb-3">
-                    Components
-                  </p>
-                  <div className="space-y-2">
-                    {template.components.map((comp: any, i: number) => (
-                      <div key={i} className="flex gap-3 text-sm">
-                        <span className="text-xs font-bold text-muted-foreground uppercase tracking-wide w-16 shrink-0 pt-0.5">
-                          {comp.type}
-                        </span>
-                        <div className="text-foreground/80 leading-relaxed min-w-0">
-                          {comp.type === "BUTTONS"
-                            ? comp.buttons
-                                ?.map(
-                                  (b: any) =>
-                                    `${b.type} — "${b.text}"${b.url ? ` → ${b.url}` : ""}`
-                                )
-                                .join(" · ")
-                            : comp.format
-                            ? `${comp.format}${comp.text ? ` — "${comp.text}"` : ""}`
-                            : comp.text || JSON.stringify(comp)}
-                        </div>
-                      </div>
+                    {INTERNAL_CATEGORIES.map((c) => (
+                      <option key={c.value} value={c.value}>
+                        {c.label}
+                      </option>
                     ))}
-                  </div>
+                  </select>
+                  <p className="mt-1.5 text-xs text-muted-foreground">
+                    Re-engagement templates appear first when the 24-hour window is closed.
+                  </p>
                 </div>
-              </div>
+                <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                  <Clock className="h-3.5 w-3.5" />
+                  Last synced {formatRelativeTime(template.lastSyncedAt)}
+                </p>
+              </section>
 
-              {/* Footer actions */}
-              <div className="border-t border-border px-6 py-4 bg-muted/20 flex items-center gap-2 flex-wrap shrink-0">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={handleSync}
-                  disabled={isSyncing}
-                  className="gap-1.5"
-                >
-                  {isSyncing ? (
-                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                  ) : (
-                    <RefreshCw className="h-3.5 w-3.5" />
-                  )}
-                  Refresh status
-                </Button>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => onDuplicate(template)}
-                  className="gap-1.5"
-                >
-                  <Copy className="h-3.5 w-3.5" />
-                  Duplicate
-                </Button>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => setShowDeleteConfirm(true)}
-                  disabled={isDeleting}
-                  className="gap-1.5 text-destructive hover:text-destructive hover:bg-destructive/10 ml-auto"
-                >
-                  <Trash2 className="h-3.5 w-3.5" />
-                  Delete
-                </Button>
-              </div>
-            </motion.div>
-          </>
-        )}
-      </AnimatePresence>
+              {template.status === "REJECTED" && template.rejectionReason && (
+                <section className="mx-6 my-4 rounded-lg border border-red-500/20 bg-red-500/5 px-4 py-3">
+                  <p className="text-sm font-medium text-red-600 dark:text-red-400">Rejected by Meta</p>
+                  <p className="mt-1 text-sm text-red-700/90 dark:text-red-300">{template.rejectionReason}</p>
+                </section>
+              )}
 
-      <ConfirmDialog
-        open={showDeleteConfirm}
-        title="Delete Template?"
-        description={
-          <>
-            Are you sure you want to delete{" "}
-            <strong>{template?.name}</strong>? This will remove it from Meta
-            and from CEP. This action cannot be undone.
-          </>
-        }
-        confirmLabel="Delete"
-        cancelLabel="Cancel"
-        destructive
-        confirming={isDeleting}
-        onConfirm={() => void handleDelete()}
-        onCancel={() => setShowDeleteConfirm(false)}
-      />
-    </>
+              {template.status === "PENDING" && (
+                <section className="mx-6 my-4 rounded-lg border border-yellow-500/20 bg-yellow-500/5 px-4 py-3 text-sm text-muted-foreground">
+                  Waiting for Meta approval. This usually takes a few hours.
+                </section>
+              )}
+
+              <AnalyticsSection templateId={template.id} />
+
+              <section className="px-6 py-4">
+                <h3 className="mb-3 text-sm font-semibold text-foreground">Preview</h3>
+                <WhatsAppPreview header={header} body={body} footer={footer} buttons={buttons} />
+              </section>
+            </div>
+          </motion.aside>
+        </>
+      )}
+    </AnimatePresence>
   );
 }
