@@ -95,23 +95,17 @@ export function InstagramExternalInboxPanel({ contact, state }: InstagramExterna
   return (
     <div className="overflow-hidden rounded-xl border border-border bg-card shadow-sm mx-4 mb-4">
       <div className="border-b border-border bg-muted/30 px-5 py-4">
-        <p className="text-sm font-semibold text-foreground">
-          {isExpired ? "Messaging window closed" : "24-hour window closed"}
-        </p>
+        <p className="text-sm font-semibold text-foreground">Instagram window closed</p>
         <p className="mt-1 text-sm text-muted-foreground leading-relaxed">
           {isExpired
-            ? "This customer has been inactive for 7 days. Replies are disabled until they message you again."
-            : "Direct replies are restricted after 24 hours. Please continue the conversation natively."}
+            ? "The 7-day messaging window has expired. Please use the Instagram app to reply."
+            : "The 24-hour messaging window has expired. Please use the Instagram app to reply."}
         </p>
       </div>
 
       <div className="flex flex-col items-center gap-3 px-5 py-6 bg-background">
         {link.hasDirectThread && link.handleLabel ? (
           <>
-            <p className="text-center text-sm text-muted-foreground">
-              Open a direct message with{" "}
-              <span className="font-semibold text-foreground">{link.handleLabel}</span>
-            </p>
             <Button asChild className="gap-2 px-8 shadow-sm">
               <a href={link.url} target="_blank" rel="noopener noreferrer">
                 <Send className="h-4 w-4" />

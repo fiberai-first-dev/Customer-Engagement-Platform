@@ -7,7 +7,7 @@ export function TemplatesPage() {
         <div className="min-w-0">
           <h1 className="text-3xl font-bold tracking-tight">WhatsApp Templates</h1>
           <p className="mt-1 text-sm text-muted-foreground">
-            Manage message templates for conversations outside the 24-hour window.
+            Synced from Meta. To remove a template, delete it in Meta Business Manager, then sync here.
           </p>
         </div>
         <WhatsAppTemplateManager />

@@ -1,4 +1,5 @@
 import { useState, useMemo, useEffect } from "react";
+import { createPortal } from "react-dom";
 import { X, Plus, Trash2, Loader2, MessageSquare, ChevronDown } from "lucide-react";
 import { Button } from "../ui/button";
 import { useCreateTemplate } from "../../api";
@@ -26,41 +27,6 @@ const META_CATEGORIES = [
   { value: "AUTHENTICATION", label: "Authentication" },
 ];
 
-const TEMPLATE_PRESETS = [
-  {
-    id: "support_followup",
-    label: "Support follow-up",
-    name: "support_followup_01",
-    internalCategory: "CUSTOMER_REENGAGEMENT",
-    metaCategory: "UTILITY",
-    body: "Hi {{1}}, we are following up on your recent message but our chat window has expired. Do you still need assistance with this?",
-    buttons: [
-      { type: "QUICK_REPLY" as const, text: "Yes, I need help" },
-      { type: "QUICK_REPLY" as const, text: "No, it's resolved" },
-    ],
-    examples: { 1: { label: "Customer name", example: "John" } },
-  },
-  {
-    id: "resume_chat",
-    label: "Resume chat",
-    name: "resume_chat_request",
-    internalCategory: "CUSTOMER_REENGAGEMENT",
-    metaCategory: "UTILITY",
-    body: "Hi {{1}}, an agent is ready to help you now! Since it's been a while, WhatsApp requires you to click below to reopen our chat.",
-    buttons: [{ type: "QUICK_REPLY" as const, text: "Resume Chat" }],
-    examples: { 1: { label: "Customer name", example: "Sarah" } },
-  },
-  {
-    id: "action_required",
-    label: "Action required",
-    name: "action_required_update",
-    internalCategory: "CUSTOMER_REENGAGEMENT",
-    metaCategory: "UTILITY",
-    body: "Hi {{1}}, we have an important update regarding your account. Please tap below to speak securely with our team.",
-    buttons: [{ type: "QUICK_REPLY" as const, text: "Speak to Team" }],
-    examples: { 1: { label: "Customer name", example: "Alex" } },
-  },
-];
 
 const HEADER_TYPES = [
   { value: "NONE", label: "None" },
@@ -305,7 +271,7 @@ export function WhatsAppTemplateCreateModal({ open, onClose, prefill }: Props) {
 
   // ─── Success state ───────────────────────────────────────────────────────
   if (submitted) {
-    return (
+    return createPortal(
       <div className="fixed inset-0 z-50 bg-background/80 backdrop-blur-sm flex items-center justify-center p-4">
         <motion.div
           initial={{ scale: 0.9, opacity: 0 }}
@@ -328,11 +294,12 @@ export function WhatsAppTemplateCreateModal({ open, onClose, prefill }: Props) {
             Done
           </Button>
         </motion.div>
-      </div>
+      </div>,
+      document.body
     );
   }
 
-  return (
+  return createPortal(
     <div className="fixed inset-0 z-50 bg-background/80 backdrop-blur-sm flex items-end sm:items-center justify-center p-0 sm:p-4">
       <motion.div
         initial={{ opacity: 0, y: 40 }}
@@ -361,35 +328,6 @@ export function WhatsAppTemplateCreateModal({ open, onClose, prefill }: Props) {
         <div className="flex-1 overflow-hidden flex flex-col lg:flex-row min-h-0">
           {/* Form */}
           <div className="flex-1 overflow-y-auto p-6 space-y-6">
-            {!prefill && (
-              <section className="space-y-3">
-                <h3 className="text-sm font-semibold text-foreground">Quick start</h3>
-                <div className="flex flex-wrap gap-2">
-                  {TEMPLATE_PRESETS.map((preset) => (
-                    <button
-                      key={preset.id}
-                      type="button"
-                      onClick={() => {
-                        setName(preset.name);
-                        setInternalCategory(preset.internalCategory);
-                        setMetaCategory(preset.metaCategory);
-                        setBody(preset.body);
-                        setFooter("");
-                        setHeaderType("NONE");
-                        setHeaderContent("");
-                        setButtons(preset.buttons);
-                        setBodyExamples(preset.examples);
-                        setHeaderExamples({});
-                      }}
-                      className="rounded-full border border-border bg-muted/40 px-3 py-1.5 text-xs font-medium text-foreground transition-colors hover:bg-muted"
-                    >
-                      {preset.label}
-                    </button>
-                  ))}
-                </div>
-              </section>
-            )}
-
             <section className="space-y-4">
               <h3 className="text-sm font-semibold text-foreground border-b border-border pb-2">
                 Basic info
@@ -837,6 +775,7 @@ export function WhatsAppTemplateCreateModal({ open, onClose, prefill }: Props) {
           </div>
         </div>
       </motion.div>
-    </div>
+    </div>,
+    document.body
   );
 }

@@ -931,6 +931,7 @@ export function ConversationThread({
                       <WhatsAppTemplateSelector
                         variant="compact"
                         preferInternalCategory="CUSTOMER_REENGAGEMENT"
+                        contactName={contactName}
                         onSelect={async (template, variables) => {
                           if (onSendTemplate) {
                             const ok = await onSendTemplate(template.id, variables);

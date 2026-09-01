@@ -18,6 +18,7 @@ import {
 } from "../../api";
 import { toast } from "sonner";
 import { motion, AnimatePresence } from "framer-motion";
+import { createPortal } from "react-dom";
 
 const INTERNAL_CATEGORIES = [
   { value: "CUSTOMER_REENGAGEMENT", label: "Customer Re-engagement" },
@@ -59,16 +60,6 @@ const STATUS_CONFIG = {
     cls: "bg-muted text-muted-foreground border-border",
   },
 } as const;
-
-function formatRelativeTime(dateStr: string | null | undefined): string {
-  if (!dateStr) return "Never";
-  const d = new Date(dateStr);
-  const diff = Math.floor((Date.now() - d.getTime()) / 1000);
-  if (diff < 60) return "Just now";
-  if (diff < 3600) return `${Math.floor(diff / 60)}m ago`;
-  if (diff < 86400) return `${Math.floor(diff / 3600)}h ago`;
-  return d.toLocaleDateString();
-}
 
 function getBodyText(components: any[]): string {
   return components?.find((c) => c.type === "BODY" || c.type === "body")?.text ?? "";
@@ -207,7 +198,7 @@ export function WhatsAppTemplateDetailDrawer({ template, onClose }: Props) {
   const footer = template ? getFooter(template.components) : null;
   const buttons = template ? getButtons(template.components) : [];
 
-  return (
+  const content = (
     <AnimatePresence>
       {template && (
         <>
@@ -227,7 +218,7 @@ export function WhatsAppTemplateDetailDrawer({ template, onClose }: Props) {
             transition={{ type: "spring", stiffness: 380, damping: 32 }}
             className="fixed right-0 top-0 z-50 flex h-full w-full max-w-md flex-col border-l border-border bg-card shadow-2xl"
           >
-            <div className="flex items-start justify-between gap-3 border-b border-border px-6 py-4">
+            <div className="flex items-start justify-between gap-3 border-b border-border px-6 pt-3 pb-4">
               <div className="min-w-0">
                 <h2 className="truncate font-mono text-base font-semibold">{template.name}</h2>
                 <div className="mt-2 flex flex-wrap items-center gap-2">
@@ -275,14 +266,7 @@ export function WhatsAppTemplateDetailDrawer({ template, onClose }: Props) {
                       </option>
                     ))}
                   </select>
-                  <p className="mt-1.5 text-xs text-muted-foreground">
-                    Re-engagement templates appear first when the 24-hour window is closed.
-                  </p>
                 </div>
-                <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                  <Clock className="h-3.5 w-3.5" />
-                  Last synced {formatRelativeTime(template.lastSyncedAt)}
-                </p>
               </section>
 
               {template.status === "REJECTED" && template.rejectionReason && (
@@ -310,4 +294,6 @@ export function WhatsAppTemplateDetailDrawer({ template, onClose }: Props) {
       )}
     </AnimatePresence>
   );
+
+  return createPortal(content, document.body);
 }
