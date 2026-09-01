@@ -175,6 +175,7 @@ export function WhatsAppTemplateCreateModal({ open, onClose, prefill }: Props) {
   const [headerExamples, setHeaderExamples] = useState<Record<number, VariableExample>>({});
 
   const [submitted, setSubmitted] = useState(false);
+  const [createdMetaId, setCreatedMetaId] = useState<string | null>(null);
 
   // Auto-populate examples state when body changes
   const bodyVarNums = useMemo(() => extractVariables(body), [body]);
@@ -244,7 +245,14 @@ export function WhatsAppTemplateCreateModal({ open, onClose, prefill }: Props) {
       headerExamples
     );
     try {
-      await createTemplate({ name, language, internalCategory, metaCategory, components });
+      const result = await createTemplate({
+        name,
+        language,
+        internalCategory,
+        metaCategory,
+        components,
+      });
+      setCreatedMetaId(result.template.metaTemplateId ?? null);
       setSubmitted(true);
     } catch (err: any) {
       toast.error(err.message || "Failed to create template");
@@ -264,6 +272,7 @@ export function WhatsAppTemplateCreateModal({ open, onClose, prefill }: Props) {
     setBodyExamples({});
     setHeaderExamples({});
     setSubmitted(false);
+    setCreatedMetaId(null);
     onClose();
   };
 
@@ -284,10 +293,14 @@ export function WhatsAppTemplateCreateModal({ open, onClose, prefill }: Props) {
             </div>
             <h2 className="text-lg font-semibold text-foreground mb-1">Template submitted</h2>
             <p className="text-sm text-muted-foreground mb-6 leading-relaxed">
-              <span className="font-medium text-foreground">{name}</span> is now under review by Meta.
-              Approval usually takes up to 24 hours. The status will remain{" "}
-              <span className="font-medium text-yellow-600 dark:text-yellow-400">PENDING</span>{" "}
-              until approved.
+              <span className="font-medium text-foreground">{name}</span> was submitted to Meta
+              {createdMetaId ? (
+                <>
+                  {" "}
+                  (ID: <span className="font-mono">{createdMetaId}</span>)
+                </>
+              ) : null}
+              . Approval usually takes up to 24 hours.
             </p>
           </div>
           <Button variant="outline" onClick={handleClose} className="w-full font-medium">

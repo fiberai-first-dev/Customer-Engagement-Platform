@@ -1121,7 +1121,11 @@ export const useWhatsAppTemplates = () =>
 export const useSyncTemplates = () => {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: () => request("/api/v1/whatsapp-templates/sync", { method: "POST" }),
+    mutationFn: () =>
+      request<{ templates: WhatsAppTemplate[]; removedOrphans: string[] }>(
+        "/api/v1/whatsapp-templates/sync",
+        { method: "POST" },
+      ),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["whatsapp-templates"] }),
   });
 };

@@ -14,7 +14,7 @@ import {
   UserRound,
   LayoutTemplate,
 } from "lucide-react";
-import { useFeatureFlag } from "../../api";
+import { useFeatureFlag, useEnabledChannelTypes } from "../../api";
 import { cn } from "../../utils/utils";
 
 function roleShort(role?: string) {
@@ -55,11 +55,13 @@ export function DashboardLayout() {
   ];
 
   const { data: featureFlag } = useFeatureFlag("whatsapp_templates_enabled");
+  const { enabledChannels } = useEnabledChannelTypes();
+  const hasWhatsapp = enabledChannels.includes("whatsapp");
 
   const orgLinks = [
     ...(canManageUsers ? [{ to: "/admin/users", icon: ShieldCheck, label: "Users" }] : []),
     ...(canViewTeams ? [{ to: "/admin/teams", icon: Building2, label: "Teams" }] : []),
-    ...(featureFlag?.enabled ? [{ to: "/admin/templates", icon: LayoutTemplate, label: "Templates" }] : []),
+    ...(featureFlag?.enabled && hasWhatsapp ? [{ to: "/admin/templates", icon: LayoutTemplate, label: "Templates" }] : []),
   ];
 
   const bottomLinks =

@@ -1,16 +1,17 @@
 import { useState, useMemo } from "react";
-import { MessageSquareText, Search, X, Send, ChevronLeft } from "lucide-react";
+import { createPortal } from "react-dom";
+import { Search, X, Send, ArrowLeft, CheckCircle2 } from "lucide-react";
 import { useWhatsAppTemplates, type WhatsAppTemplate } from "../../api";
 import { Button } from "../ui/button";
 import { motion, AnimatePresence } from "framer-motion";
 
 interface Props {
   onSelect: (template: WhatsAppTemplate, variables: Record<string, string>) => void;
+  onClose?: () => void;
   disabled?: boolean;
   variant?: "default" | "compact";
-  /** When set, only templates with this internal category are shown */
+  forceOpen?: boolean;
   preferInternalCategory?: string;
-  /** Pre-fills {{1}} (and auto-sends when it is the only variable) */
   contactName?: string;
 }
 
@@ -30,72 +31,83 @@ function extractVariableIndices(template: WhatsAppTemplate): number[] {
 
 function getBodyText(template: WhatsAppTemplate): string {
   return (
-    template.components?.find((c) => {
-      const type = String(c.type ?? "").toUpperCase();
-      return type === "BODY";
-    })?.text ?? ""
+    template.components?.find((c) => String(c.type ?? "").toUpperCase() === "BODY")?.text ?? ""
   );
 }
 
 function defaultFirstName(contactName?: string): string {
   if (!contactName?.trim()) return "";
-  const clean = contactName.replace(/^@+/, "").trim();
-  return clean.split(/\s+/)[0] || clean;
+  return contactName.replace(/^@+/, "").trim().split(/\s+/)[0] || "";
 }
 
-function buildDefaultVariables(
-  indices: number[],
-  contactName?: string,
-): Record<string, string> {
+function buildDefaultVariables(indices: number[], contactName?: string): Record<string, string> {
   const vars: Record<string, string> = {};
-  if (indices.includes(1) && contactName) {
-    vars["1"] = defaultFirstName(contactName);
-  }
+  if (indices.includes(1) && contactName) vars["1"] = defaultFirstName(contactName);
   return vars;
+}
+
+// Replaces {{n}} placeholders with filled values for preview
+function buildPreviewText(template: WhatsAppTemplate, variables: Record<string, string>): string {
+  const indices = extractVariableIndices(template);
+  let text = getBodyText(template);
+  for (const i of indices) {
+    const val = variables[`${i}`] || `[variable ${i}]`;
+    text = text.replace(new RegExp(`\\{\\{${i}\\}\\}`, "g"), val);
+  }
+  return text;
 }
 
 export function WhatsAppTemplateSelector({
   onSelect,
+  onClose,
   disabled,
   variant = "default",
+  forceOpen = false,
   preferInternalCategory,
   contactName,
 }: Props) {
   const { data: templates = [], isLoading } = useWhatsAppTemplates();
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useState(forceOpen);
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedTemplate, setSelectedTemplate] = useState<WhatsAppTemplate | null>(null);
   const [variables, setVariables] = useState<Record<string, string>>({});
 
-  const approvedTemplates = useMemo(() => {
-    return templates
-      .filter((t) => t.status === "APPROVED")
-      .filter((t) =>
-        preferInternalCategory ? t.internalCategory === preferInternalCategory : true,
-      )
-      .filter((t) => t.name.toLowerCase().includes(searchQuery.toLowerCase()));
-  }, [templates, searchQuery, preferInternalCategory]);
+  const approvedTemplates = useMemo(
+    () =>
+      templates
+        .filter((t) => t.status === "APPROVED")
+        .filter((t) => (preferInternalCategory ? t.internalCategory === preferInternalCategory : true))
+        .filter((t) => {
+          const q = searchQuery.toLowerCase();
+          return (
+            !q ||
+            t.name.toLowerCase().includes(q) ||
+            getBodyText(t).toLowerCase().includes(q)
+          );
+        }),
+    [templates, searchQuery, preferInternalCategory]
+  );
 
   const handleClose = () => {
     setOpen(false);
     setSelectedTemplate(null);
     setVariables({});
     setSearchQuery("");
+    onClose?.();
   };
 
   const handlePick = (template: WhatsAppTemplate) => {
     const indices = extractVariableIndices(template);
+    const defaults = buildDefaultVariables(indices, contactName);
+
     if (indices.length === 0) {
       onSelect(template, {});
       handleClose();
       return;
     }
 
-    const defaults = buildDefaultVariables(indices, contactName);
-    const canAutoSend =
-      indices.length === 1 && indices[0] === 1 && Boolean(defaults["1"]);
-
-    if (canAutoSend) {
+    // If only variable is {{1}} and we have a contact name, auto-send
+    if (indices.length === 1 && indices[0] === 1 && defaults["1"]) {
       onSelect(template, defaults);
       handleClose();
       return;
@@ -105,229 +117,229 @@ export function WhatsAppTemplateSelector({
     setSelectedTemplate(template);
   };
 
-  const renderPreview = () => {
-    if (!selectedTemplate) return null;
-    let text = getBodyText(selectedTemplate);
-    const indices = extractVariableIndices(selectedTemplate);
-    for (const i of indices) {
-      const val = variables[`${i}`] || `{{${i}}}`;
-      text = text.replace(new RegExp(`\\{\\{${i}\\}\\}`, "g"), val);
-    }
+  const selectedIndices = selectedTemplate ? extractVariableIndices(selectedTemplate) : [];
+  const allFilled = selectedIndices.every((n) => variables[`${n}`]?.trim());
 
-    return (
-      <div className="max-w-[85%] whitespace-pre-wrap rounded-lg rounded-tl-none bg-[#E7FFDB] p-3 text-sm text-foreground shadow-sm dark:bg-[#005C4B]">
-        {text}
-      </div>
-    );
-  };
-
+  // ── Trigger button (shown when not open) ────────────────────────────────
   if (!open) {
-    const compact = variant === "compact";
+    if (variant === "compact") return null; // compact variant is always controlled externally
     return (
       <Button
         type="button"
-        size={compact ? "default" : "lg"}
+        size="lg"
         onClick={() => setOpen(true)}
         disabled={disabled || isLoading}
-        className={
-          compact
-            ? "gap-2 shadow-sm"
-            : "w-full border border-primary/20 bg-primary/10 font-medium text-primary shadow-sm hover:border-primary/30 hover:bg-primary/20"
-        }
+        className="w-full gap-2 border border-primary/20 bg-primary/10 font-medium text-primary hover:border-primary/30 hover:bg-primary/20"
       >
-        <MessageSquareText className="h-4 w-4" />
-        {isLoading ? "Loading templates…" : "Choose re-engagement template"}
+        {isLoading ? "Loading…" : "Send a pre-approved template"}
       </Button>
     );
   }
 
-  const selectedIndices = selectedTemplate ? extractVariableIndices(selectedTemplate) : [];
-
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-background/80 p-4 backdrop-blur-sm sm:p-6">
+  // ── Modal ────────────────────────────────────────────────────────────────
+  const modal = (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4 backdrop-blur-sm">
       <motion.div
-        initial={{ opacity: 0, scale: 0.95, y: 10 }}
+        initial={{ opacity: 0, scale: 0.97, y: 8 }}
         animate={{ opacity: 1, scale: 1, y: 0 }}
-        exit={{ opacity: 0, scale: 0.95, y: 10 }}
-        className="flex max-h-[85vh] w-full max-w-2xl flex-col overflow-hidden rounded-2xl border border-border bg-card shadow-2xl"
+        exit={{ opacity: 0, scale: 0.97, y: 8 }}
+        transition={{ duration: 0.18, ease: "easeOut" }}
+        className="flex w-full max-w-xl flex-col overflow-hidden rounded-2xl border border-border bg-card shadow-2xl"
+        style={{ maxHeight: "80vh" }}
       >
-        <div className="flex items-center justify-between border-b border-border bg-muted/30 px-6 py-4">
-          <div className="flex items-center gap-3">
+        {/* Header */}
+        <div className="flex items-center justify-between border-b border-border px-5 py-4">
+          <div className="flex items-center gap-2.5">
             {selectedTemplate && (
               <button
                 type="button"
-                onClick={() => {
-                  setSelectedTemplate(null);
-                  setVariables({});
-                }}
-                className="rounded-full p-1.5 transition-colors hover:bg-muted"
+                onClick={() => { setSelectedTemplate(null); setVariables({}); }}
+                className="rounded-full p-1 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
               >
-                <ChevronLeft className="h-5 w-5 text-muted-foreground" />
+                <ArrowLeft className="h-4 w-4" />
               </button>
             )}
             <div>
-              <h2 className="text-lg font-semibold tracking-tight">
-                {selectedTemplate ? "Configure template" : "Select re-engagement template"}
+              <h2 className="text-sm font-semibold text-foreground">
+                {selectedTemplate ? selectedTemplate.name : "Send a template"}
               </h2>
-              <p className="text-sm text-muted-foreground">
+              <p className="text-xs text-muted-foreground">
                 {selectedTemplate
-                  ? selectedTemplate.name
-                  : "Approved templates for restarting conversations outside the 24-hour window."}
+                  ? "Fill in the required details below"
+                  : `${approvedTemplates.length} approved template${approvedTemplates.length !== 1 ? "s" : ""}`}
               </p>
             </div>
           </div>
           <button
             type="button"
             onClick={handleClose}
-            className="rounded-full p-2 text-muted-foreground transition-colors hover:bg-muted"
+            className="rounded-full p-1.5 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
           >
-            <X className="h-5 w-5" />
+            <X className="h-4 w-4" />
           </button>
         </div>
 
-        <div className="flex flex-1 flex-col overflow-hidden bg-background">
-          <AnimatePresence mode="wait">
-            {!selectedTemplate ? (
-              <motion.div
-                key="list"
-                initial={{ opacity: 0, x: -20 }}
-                animate={{ opacity: 1, x: 0 }}
-                exit={{ opacity: 0, x: -20 }}
-                transition={{ duration: 0.15 }}
-                className="flex h-full flex-col"
-              >
-                <div className="border-b border-border p-4">
-                  <div className="relative">
-                    <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-                    <input
-                      type="text"
-                      placeholder="Search templates…"
-                      className="w-full rounded-xl border-none bg-muted/50 py-2.5 pl-9 pr-4 text-sm transition-all focus:ring-2 focus:ring-primary/50"
-                      value={searchQuery}
-                      onChange={(e) => setSearchQuery(e.target.value)}
-                    />
+        {/* Body */}
+        <AnimatePresence mode="wait">
+          {!selectedTemplate ? (
+            /* ── Template list ──────────────────────────────────────────── */
+            <motion.div
+              key="list"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.12 }}
+              className="flex flex-col overflow-hidden"
+            >
+              {/* Search */}
+              <div className="px-4 pt-3 pb-2">
+                <div className="relative">
+                  <Search className="absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
+                  <input
+                    type="text"
+                    placeholder="Search templates…"
+                    autoFocus
+                    className="w-full rounded-lg border border-border bg-muted/40 py-2 pl-8 pr-4 text-sm focus:border-primary/40 focus:outline-none focus:ring-1 focus:ring-primary/30"
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                  />
+                </div>
+              </div>
+
+              {/* List */}
+              <div className="flex-1 overflow-y-auto px-4 pb-4">
+                {approvedTemplates.length === 0 ? (
+                  <div className="flex flex-col items-center justify-center py-12 text-center text-muted-foreground">
+                    <p className="text-sm font-medium">No templates found</p>
+                    <p className="mt-1 text-xs">
+                      {searchQuery ? "Try a different search term." : "Create and get templates approved on the Templates page."}
+                    </p>
                   </div>
-                </div>
-                <div className="flex-1 overflow-y-auto p-4">
-                  {approvedTemplates.length === 0 ? (
-                    <div className="flex h-full flex-col items-center justify-center space-y-3 py-12 text-muted-foreground">
-                      <MessageSquareText className="h-10 w-10 opacity-20" />
-                      <p>No approved re-engagement templates.</p>
-                      <p className="max-w-xs text-center text-xs">
-                        Create a Customer Re-engagement template on the Templates page and wait for Meta approval.
-                      </p>
-                    </div>
-                  ) : (
-                    <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
-                      {approvedTemplates.map((t) => (
-                        <TemplateCard
-                          key={t.id}
-                          template={t}
-                          getBodyText={getBodyText}
-                          onPick={handlePick}
-                        />
-                      ))}
-                    </div>
-                  )}
-                </div>
-              </motion.div>
-            ) : (
-              <motion.div
-                key="form"
-                initial={{ opacity: 0, x: 20 }}
-                animate={{ opacity: 1, x: 0 }}
-                exit={{ opacity: 0, x: 20 }}
-                transition={{ duration: 0.15 }}
-                className="flex h-full flex-col overflow-y-auto"
-              >
-                <div className="space-y-6 p-6">
+                ) : (
+                  <div className="space-y-2">
+                    {approvedTemplates.map((t) => (
+                      <TemplateCard key={t.id} template={t} onPick={handlePick} />
+                    ))}
+                  </div>
+                )}
+              </div>
+            </motion.div>
+          ) : (
+            /* ── Variable fill + preview ────────────────────────────────── */
+            <motion.div
+              key="fill"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.12 }}
+              className="flex flex-col overflow-y-auto"
+            >
+              <div className="space-y-5 px-5 py-4">
+                {/* Variable inputs */}
+                {selectedIndices.length > 0 && (
                   <div className="space-y-3">
-                    <h3 className="flex items-center gap-2 text-sm font-medium">
-                      <MessageSquareText className="h-4 w-4 text-primary" />
-                      Preview
-                    </h3>
-                    <div className="rounded-xl border border-border bg-[url('https://web.whatsapp.com/img/bg-chat-tile-dark_a4be512e7195b6b733d9110b408f075d.png')] p-4 shadow-inner">
-                      {renderPreview()}
-                    </div>
+                    <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Fill in details</p>
+                    {selectedIndices.map((n, i) => {
+                      const label = n === 1 ? "Customer name" : `Field ${n}`;
+                      return (
+                        <div key={n} className="space-y-1">
+                          <label className="text-sm font-medium text-foreground">{label}</label>
+                          <input
+                            type="text"
+                            className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm focus:border-primary/50 focus:outline-none focus:ring-1 focus:ring-primary/30"
+                            value={variables[`${n}`] || ""}
+                            onChange={(e) =>
+                              setVariables((prev) => ({ ...prev, [`${n}`]: e.target.value }))
+                            }
+                            placeholder={n === 1 ? "e.g. John" : `Enter value for field ${n}`}
+                            autoFocus={i === 0}
+                          />
+                        </div>
+                      );
+                    })}
                   </div>
+                )}
 
-                  {selectedIndices.length > 0 && (
-                    <div className="space-y-4 border-t border-border pt-4">
-                      <h3 className="text-sm font-medium">Template variables</h3>
-                      <div className="grid gap-4">
-                        {selectedIndices.map((n, i) => (
-                          <div key={n} className="space-y-1.5">
-                            <label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                              Variable {`{{${n}}}`}
-                            </label>
-                            <input
-                              type="text"
-                              className="w-full rounded-xl border border-input bg-background px-4 py-2.5 text-sm shadow-sm transition-all focus:border-primary focus:ring-2 focus:ring-primary/50"
-                              value={variables[`${n}`] || ""}
-                              onChange={(e) =>
-                                setVariables((prev) => ({ ...prev, [`${n}`]: e.target.value }))
-                              }
-                              placeholder={`Enter value for {{${n}}}`}
-                              autoFocus={i === 0}
-                            />
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  )}
+                {/* Message preview */}
+                <div className="space-y-2">
+                  <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Preview</p>
+                  <div className="rounded-xl bg-muted/50 p-3">
+                    <p className="whitespace-pre-wrap text-sm text-foreground leading-relaxed">
+                      {buildPreviewText(selectedTemplate, variables)}
+                    </p>
+                  </div>
                 </div>
+              </div>
 
-                <div className="mt-auto flex justify-end gap-3 border-t border-border bg-muted/30 p-4">
-                  <Button variant="ghost" onClick={() => setSelectedTemplate(null)}>
-                    Back
-                  </Button>
-                  <Button
-                    onClick={() => {
-                      onSelect(selectedTemplate, variables);
-                      handleClose();
-                    }}
-                    className="gap-2 shadow-lg"
-                    disabled={selectedIndices.some((n) => !variables[`${n}`]?.trim())}
-                  >
-                    <Send className="h-4 w-4" />
-                    Send template
-                  </Button>
-                </div>
-              </motion.div>
-            )}
-          </AnimatePresence>
-        </div>
+              {/* Footer */}
+              <div className="flex items-center justify-between border-t border-border px-5 py-3">
+                <button
+                  type="button"
+                  onClick={() => { setSelectedTemplate(null); setVariables({}); }}
+                  className="text-sm text-muted-foreground hover:text-foreground transition-colors"
+                >
+                  ← Back
+                </button>
+                <Button
+                  onClick={() => {
+                    onSelect(selectedTemplate, variables);
+                    handleClose();
+                  }}
+                  disabled={!allFilled}
+                  className="gap-2"
+                  size="sm"
+                >
+                  <Send className="h-3.5 w-3.5" />
+                  Send message
+                </Button>
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
       </motion.div>
     </div>
   );
+
+  return createPortal(modal, document.body);
 }
 
 function TemplateCard({
   template,
-  getBodyText,
   onPick,
 }: {
   template: WhatsAppTemplate;
-  getBodyText: (t: WhatsAppTemplate) => string;
   onPick: (t: WhatsAppTemplate) => void;
 }) {
+  const body = getBodyText(template);
+  const hasVars = extractVariableIndices(template).length > 0;
+
   return (
     <button
       type="button"
       onClick={() => onPick(template)}
-      className="group flex h-full flex-col rounded-xl border border-border/50 bg-card p-4 text-left transition-all hover:border-primary/30 hover:bg-muted/50 hover:shadow-md"
+      className="group w-full rounded-xl border border-border bg-background px-4 py-3 text-left transition-all hover:border-primary/40 hover:bg-primary/5"
     >
-      <div className="mb-2 flex items-center justify-between gap-2">
-        <span className="truncate text-sm font-semibold transition-colors group-hover:text-primary">
-          {template.name}
-        </span>
-        <span className="shrink-0 rounded-full bg-green-500/10 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-green-600 dark:text-green-400">
-          {template.language}
-        </span>
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0 flex-1">
+          <p className="truncate text-sm font-medium text-foreground group-hover:text-primary transition-colors">
+            {template.name.replace(/_/g, " ")}
+          </p>
+          {body && (
+            <p className="mt-0.5 line-clamp-2 text-xs leading-relaxed text-muted-foreground">
+              {body}
+            </p>
+          )}
+        </div>
+        <div className="flex shrink-0 flex-col items-end gap-1">
+          <span className="flex items-center gap-1 text-[10px] font-medium text-emerald-600 dark:text-emerald-400">
+            <CheckCircle2 className="h-3 w-3" />
+            Approved
+          </span>
+          {hasVars && (
+            <span className="text-[10px] text-muted-foreground">Needs details</span>
+          )}
+        </div>
       </div>
-      <p className="line-clamp-3 flex-1 text-xs leading-relaxed text-muted-foreground">
-        {getBodyText(template) || "No body content."}
-      </p>
     </button>
   );
 }

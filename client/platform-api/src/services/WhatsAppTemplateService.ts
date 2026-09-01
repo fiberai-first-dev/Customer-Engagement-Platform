@@ -27,6 +27,40 @@ function mapMetaError(raw: string): string {
   }
 }
 
+/** Meta expects locale codes (e.g. en_US); we accept short codes in the UI. */
+function toMetaLanguageCode(lang: string): string {
+  const code = lang.trim().toLowerCase();
+  const map: Record<string, string> = {
+    en: "en_US",
+    hi: "hi_IN",
+  };
+  return map[code] || lang;
+}
+
+function languageMatches(a: string, b: string): boolean {
+  if (a === b) return true;
+  const base = (v: string) => v.split("_")[0]?.toLowerCase();
+  return base(a) === base(b);
+}
+
+function templateKey(name: string, language: string): string {
+  return `${name}::${toMetaLanguageCode(language)}`;
+}
+
+async function metaFetch(
+  config: WhatsAppChannelConfig,
+  url: string,
+  init?: RequestInit
+): Promise<Response> {
+  return fetch(url, {
+    ...init,
+    headers: {
+      Authorization: `Bearer ${config.accessToken}`,
+      ...(init?.headers ?? {}),
+    },
+  });
+}
+
 export class WhatsAppTemplateService {
   private static async getWAConfig(): Promise<WhatsAppChannelConfig> {
     const config = await prisma.channelConfig.findFirst({
@@ -36,16 +70,58 @@ export class WhatsAppTemplateService {
     return config.channelConfig as unknown as WhatsAppChannelConfig;
   }
 
-  static async syncTemplatesFromMeta() {
+  private static async verifyMetaTemplate(
+    config: WhatsAppChannelConfig,
+    metaTemplateId: string
+  ): Promise<{ id: string; status: string; name: string; language: string }> {
+    const response = await metaFetch(
+      config,
+      `https://graph.facebook.com/v21.0/${metaTemplateId}?fields=id,name,status,language`
+    );
+    if (!response.ok) {
+      const err = await response.text();
+      throw new Error(`Meta template verification failed: ${mapMetaError(err)}`);
+    }
+    const data = (await response.json()) as {
+      id?: string;
+      status?: string;
+      name?: string;
+      language?: string;
+    };
+    if (!data.id) {
+      throw new Error("Meta template verification failed: template not found");
+    }
+    return {
+      id: String(data.id),
+      status: data.status || "PENDING",
+      name: data.name || "",
+      language: data.language || "",
+    };
+  }
+
+  private static async findLocalByMetaTemplate(
+    name: string,
+    language: string
+  ) {
+    const candidates = await prisma.whatsAppTemplate.findMany({
+      where: { name },
+    });
+    return candidates.find((t) => languageMatches(t.language, language)) ?? null;
+  }
+
+  static async syncTemplatesFromMeta(): Promise<{
+    templates: Awaited<ReturnType<typeof prisma.whatsAppTemplate.findMany>>;
+    removedOrphans: string[];
+  }> {
     const config = await this.getWAConfig();
     if (!config.businessAccountId)
       throw new Error("WhatsApp Business Account ID not configured");
     if (!config.accessToken)
       throw new Error("WhatsApp access token not configured");
 
-    const response = await fetch(
-      `https://graph.facebook.com/v21.0/${config.businessAccountId}/message_templates?limit=100&fields=id,name,language,category,status,components,quality_score,rejected_reason`,
-      { headers: { Authorization: `Bearer ${config.accessToken}` } }
+    const response = await metaFetch(
+      config,
+      `https://graph.facebook.com/v21.0/${config.businessAccountId}/message_templates?limit=100&fields=id,name,language,category,status,components,quality_score,rejected_reason`
     );
 
     if (!response.ok) {
@@ -54,13 +130,31 @@ export class WhatsAppTemplateService {
       throw new Error(`Failed to fetch templates from Meta: ${mapMetaError(err)}`);
     }
 
-    const data = await response.json();
-    const metaTemplates = (data.data || []) as any[];
+    const metaTemplates: any[] = [];
+    let page = (await response.json()) as {
+      data?: any[];
+      paging?: { next?: string };
+    };
+    metaTemplates.push(...(page.data || []));
+
+    while (page.paging?.next) {
+      const nextResponse = await metaFetch(config, page.paging.next);
+      if (!nextResponse.ok) {
+        const err = await nextResponse.text();
+        console.error("Meta API pagination error:", err);
+        break;
+      }
+      page = await nextResponse.json();
+      metaTemplates.push(...(page.data || []));
+    }
+
+    const metaKeys = new Set(
+      metaTemplates.map((tpl) => templateKey(tpl.name, tpl.language))
+    );
+    const metaIds = new Set(metaTemplates.map((tpl) => String(tpl.id)));
 
     for (const tpl of metaTemplates) {
-      const existing = await prisma.whatsAppTemplate.findFirst({
-        where: { name: tpl.name, language: tpl.language },
-      });
+      const existing = await this.findLocalByMetaTemplate(tpl.name, tpl.language);
 
       const sharedData = {
         status: tpl.status,
@@ -80,7 +174,10 @@ export class WhatsAppTemplateService {
       if (existing) {
         await prisma.whatsAppTemplate.update({
           where: { id: existing.id },
-          data: sharedData,
+          data: {
+            ...sharedData,
+            language: tpl.language,
+          },
         });
       } else {
         await prisma.whatsAppTemplate.create({
@@ -94,7 +191,22 @@ export class WhatsAppTemplateService {
       }
     }
 
-    return prisma.whatsAppTemplate.findMany({ orderBy: { createdAt: "desc" } });
+    const removedOrphans: string[] = [];
+    const localTemplates = await prisma.whatsAppTemplate.findMany();
+    for (const local of localTemplates) {
+      const inMetaById =
+        Boolean(local.metaTemplateId) && metaIds.has(local.metaTemplateId!);
+      const inMetaByName = metaKeys.has(templateKey(local.name, local.language));
+      if (!inMetaById && !inMetaByName) {
+        await prisma.whatsAppTemplate.delete({ where: { id: local.id } });
+        removedOrphans.push(local.name);
+      }
+    }
+
+    const templates = await prisma.whatsAppTemplate.findMany({
+      orderBy: { createdAt: "desc" },
+    });
+    return { templates, removedOrphans };
   }
 
   static async syncSingleTemplate(id: string) {
@@ -127,7 +239,10 @@ export class WhatsAppTemplateService {
 
     const data = await response.json();
     const tpl = metaId ? data : (data.data?.[0] ?? null);
-    if (!tpl) throw new Error("Template not found in Meta");
+    if (!tpl) {
+      await prisma.whatsAppTemplate.delete({ where: { id } });
+      throw new Error("Template not found in Meta — removed local copy");
+    }
 
     return prisma.whatsAppTemplate.update({
       where: { id },
@@ -180,21 +295,21 @@ export class WhatsAppTemplateService {
     if (!config.accessToken)
       throw new Error("WhatsApp access token not configured");
 
+    const metaLanguage = toMetaLanguageCode(data.language);
+
     const payload = {
       name: data.name,
-      language: data.language,
+      language: metaLanguage,
       category: data.metaCategory,
       components: data.components,
     };
 
-    const response = await fetch(
+    const response = await metaFetch(
+      config,
       `https://graph.facebook.com/v21.0/${config.businessAccountId}/message_templates`,
       {
         method: "POST",
-        headers: {
-          Authorization: `Bearer ${config.accessToken}`,
-          "Content-Type": "application/json",
-        },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
       }
     );
@@ -205,18 +320,30 @@ export class WhatsAppTemplateService {
       throw new Error(`Failed to create template: ${mapMetaError(err)}`);
     }
 
-    const metaRes = await response.json();
+    const metaRes = (await response.json()) as {
+      id?: string;
+      status?: string;
+    };
+
+    if (!metaRes.id) {
+      throw new Error(
+        "Meta did not return a template ID. Check payment setup and permissions in Meta Business Manager."
+      );
+    }
+
+    const verified = await this.verifyMetaTemplate(config, String(metaRes.id));
 
     return prisma.whatsAppTemplate.create({
       data: {
         name: data.name,
-        language: data.language,
+        language: verified.language || metaLanguage,
         internalCategory: data.internalCategory,
         metaCategory: data.metaCategory,
         components: data.components as Prisma.InputJsonValue,
-        status: (metaRes.status as any) || "PENDING",
-        metaTemplateId: metaRes.id ? String(metaRes.id) : null,
+        status: (verified.status as any) || (metaRes.status as any) || "PENDING",
+        metaTemplateId: verified.id,
         wabaId: config.businessAccountId,
+        lastSyncedAt: new Date(),
       },
     });
   }

@@ -40,8 +40,8 @@ export const whatsAppTemplateRoutes: FastifyPluginAsync = async (app) => {
   app.post("/sync", async (req, reply) => {
     try {
       await requireTemplatesEnabled();
-      const templates = await WhatsAppTemplateService.syncTemplatesFromMeta();
-      return reply.send({ templates });
+      const result = await WhatsAppTemplateService.syncTemplatesFromMeta();
+      return reply.send(result);
     } catch (err: any) {
       req.log.error(err);
       const status = err.statusCode ?? 500;

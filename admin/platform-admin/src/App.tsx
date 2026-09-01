@@ -744,7 +744,8 @@ export function App() {
                     {(() => {
                       const standardKeys = [
                         { key: "rrweb", description: "Enable RRWeb session recording" },
-                        { key: "whatsapp_templates_enabled", description: "Enable WhatsApp Templates feature" },
+                        { key: "whatsapp_templates_enabled", description: "Enable WhatsApp Templates management page" },
+                        { key: "whatsapp_template_injection_enabled", description: "Show 'Use template' button in WhatsApp chat — lets agents send approved templates during active conversations" },
                         { key: "instagram_human_agent_enabled", description: "Allow Instagram HUMAN_AGENT replies from CEP after 24h" }
                       ];
                       
@@ -778,7 +779,12 @@ export function App() {
                             <div key={feature.key} className="p-6 flex items-center justify-between hover:bg-background/80 transition-colors group">
                               <div>
                                 <h3 className="font-semibold text-foreground flex items-center gap-3">
-                                  {feature.key}
+                                  {{
+                                    "rrweb": "Session Replays",
+                                    "whatsapp_templates_enabled": "WhatsApp Templates",
+                                    "whatsapp_template_injection_enabled": "Send Template in Chat",
+                                    "instagram_human_agent_enabled": "Instagram Human Agent"
+                                  }[feature.key] ?? feature.key}
                                   <span className={`text-[10px] uppercase font-bold px-2 py-0.5 rounded-full ${feature.enabled ? "bg-green-50 text-green-700 border border-green-200" : "bg-muted text-muted-foreground border border-border"}`}>
                                     {feature.enabled ? "Active" : "Disabled"}
                                   </span>

@@ -178,7 +178,16 @@ export function WhatsAppTemplateManager() {
 
   const handleSync = () => {
     syncTemplates(undefined, {
-      onSuccess: () => toast.success("Templates synced from Meta"),
+      onSuccess: (data: { removedOrphans?: string[] }) => {
+        const removed = data?.removedOrphans ?? [];
+        if (removed.length > 0) {
+          toast.success(
+            `Synced from Meta. Removed ${removed.length} template(s) not found in Meta: ${removed.join(", ")}`,
+          );
+        } else {
+          toast.success("Templates synced from Meta");
+        }
+      },
       onError: (err: any) => toast.error(err.message ?? "Sync failed"),
     });
   };
@@ -286,19 +295,21 @@ export function WhatsAppTemplateManager() {
           </select>
         )}
 
-        <div className="flex shrink-0 flex-col items-end gap-1 sm:flex-row sm:items-center sm:gap-3">
-          {lastSyncTime && !isSyncing && (
-            <span className="whitespace-nowrap text-xs text-muted-foreground">
-              Last synced {formatRelativeTime(lastSyncTime)}
-            </span>
-          )}
-          <Button variant="outline" size="sm" onClick={handleSync} disabled={isSyncing} className="gap-2">
+        <div className="flex shrink-0 items-center gap-3">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={handleSync}
+            disabled={isSyncing}
+            className="gap-2"
+            title={lastSyncTime && !isSyncing ? `Last synced ${formatRelativeTime(lastSyncTime)}` : "Sync templates from Meta"}
+          >
             {isSyncing ? (
               <Loader2 className="h-3.5 w-3.5 animate-spin" />
             ) : (
               <RefreshCw className="h-3.5 w-3.5" />
             )}
-            {isSyncing ? "Syncing…" : "Sync from Meta"}
+            Sync from Meta
           </Button>
           <Button size="sm" onClick={() => setCreateOpen(true)} className="gap-2">
             <Plus className="h-3.5 w-3.5" />

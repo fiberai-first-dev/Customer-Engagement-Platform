@@ -278,9 +278,44 @@ export function WhatsAppTemplateDetailDrawer({ template, onClose }: Props) {
 
               {template.status === "PENDING" && (
                 <section className="mx-6 my-4 rounded-lg border border-yellow-500/20 bg-yellow-500/5 px-4 py-3 text-sm text-muted-foreground">
-                  Waiting for Meta approval. This usually takes a few hours.
+                  {template.metaTemplateId ? (
+                    <>
+                      Submitted to Meta and waiting for review. In WhatsApp Manager, search for{" "}
+                      <span className="font-mono font-medium text-foreground">{template.name}</span>{" "}
+                      and clear the status/date filters if you do not see it.
+                    </>
+                  ) : (
+                    <>
+                      This template is only saved in CEP — Meta did not confirm submission. Create it
+                      again or submit directly in Meta Business Manager.
+                    </>
+                  )}
                 </section>
               )}
+
+              <section className="border-b border-border px-6 py-4">
+                <h3 className="mb-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                  Meta details
+                </h3>
+                <dl className="space-y-2 text-sm">
+                  <div className="flex justify-between gap-4">
+                    <dt className="text-muted-foreground">Meta template ID</dt>
+                    <dd className="font-mono text-right text-foreground">
+                      {template.metaTemplateId || "Not submitted"}
+                    </dd>
+                  </div>
+                  <div className="flex justify-between gap-4">
+                    <dt className="text-muted-foreground">Business account</dt>
+                    <dd className="font-mono text-right text-foreground">
+                      {template.wabaId || "—"}
+                    </dd>
+                  </div>
+                </dl>
+                <p className="mt-2 text-xs text-muted-foreground">
+                  Match the business account ID with Settings → Channels in CEP and Svasthyaa Organics in
+                  Meta Business Manager.
+                </p>
+              </section>
 
               <AnalyticsSection templateId={template.id} />
 
