@@ -21,6 +21,7 @@ import {
 } from "lucide-react";
 import type { ChannelType, Conversation, Message } from "../../api";
 import { useFeatureFlag } from "../../api";
+import { resolveConversationWindow } from "../../lib/messagingWindow";
 import {
   uploadConversationAttachment,
   channelSupportsAttachments,
@@ -249,6 +250,20 @@ export function ConversationThread({
   const menuRef = useRef<HTMLDivElement>(null);
 
   const { data: featureFlag } = useFeatureFlag("whatsapp_templates_enabled");
+  const { data: instagramHumanAgentFlag } = useFeatureFlag("instagram_human_agent_enabled");
+
+  const effectiveWindow = resolveConversationWindow(
+    activeTab,
+    selectedConversation?.windowState,
+    messages,
+    instagramHumanAgentFlag?.enabled ?? false,
+  );
+
+  const composerBlocked =
+    activeTab !== "email" &&
+    (effectiveWindow.requiresExternalInbox ||
+      effectiveWindow.state === "EXPIRED" ||
+      (!effectiveWindow.canSendNormalMessage && effectiveWindow.state !== "TEMPLATE_REQUIRED"));
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
@@ -280,11 +295,13 @@ export function ConversationThread({
         const timestamp = new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19);
         const file = new File([blob], `voice-message-${timestamp}.${ext}`, { type: mimeType });
         const limit = getChannelMediaLimit(activeTab, mimeType);
-        if (file.size > limit) {
-          setFileError(`Recording too large (${formatBytes(limit)} limit for this channel)`);
-        } else {
-          setFileError(null);
-          setPendingFile(file);
+        if (audioChunksRef.current.length > 0) {
+          if (file.size > limit) {
+            setFileError(`Recording too large (${formatBytes(limit)} limit for this channel)`);
+          } else {
+            setFileError(null);
+            setPendingFile(file);
+          }
         }
       };
       recorder.start(250);
@@ -299,8 +316,9 @@ export function ConversationThread({
     }
   };
 
-  const stopRecording = () => {
+  const stopRecording = (cancel = false) => {
     if (!isRecording || !mediaRecorderRef.current) return;
+    if (cancel) audioChunksRef.current = []; // clear chunks so no file is created
     mediaRecorderRef.current.stop();
     mediaRecorderRef.current = null;
     setIsRecording(false);
@@ -309,6 +327,10 @@ export function ConversationThread({
       recordingTimerRef.current = null;
     }
     setRecordingSeconds(0);
+  };
+
+  const cancelRecording = () => {
+    stopRecording(true);
   };
 
   // Cleanup on unmount
@@ -899,19 +921,19 @@ export function ConversationThread({
 
           {!selecting && (
             <div className="shrink-0 border-t border-border bg-card">
-              {selectedConversation?.windowState && (
+              {effectiveWindow && (
                 <ConversationWindowBanner 
-                  channel={selectedConversation.windowState.channel}
-                  state={selectedConversation.windowState.state}
-                  expiresAt={selectedConversation.windowState.expiresAt}
-                  canSendNormalMessage={selectedConversation.windowState.canSendNormalMessage}
-                  requiresTemplate={selectedConversation.windowState.requiresTemplate}
-                  requiresHumanAgentTag={selectedConversation.windowState.requiresHumanAgentTag}
-                  requiresExternalInbox={selectedConversation.windowState.requiresExternalInbox}
+                  channel={effectiveWindow.channel}
+                  state={effectiveWindow.state}
+                  expiresAt={effectiveWindow.expiresAt}
+                  canSendNormalMessage={effectiveWindow.canSendNormalMessage}
+                  requiresTemplate={effectiveWindow.requiresTemplate}
+                  requiresHumanAgentTag={effectiveWindow.requiresHumanAgentTag}
+                  requiresExternalInbox={effectiveWindow.requiresExternalInbox}
                 />
               )}
               <div className="p-3">
-                {selectedConversation?.windowState?.state === "TEMPLATE_REQUIRED" ? (
+                {effectiveWindow.state === "TEMPLATE_REQUIRED" ? (
                   <div className="rounded-xl border border-border bg-background p-3">
                     {featureFlag?.enabled ? (
                       <WhatsAppTemplateSelector 
@@ -933,15 +955,25 @@ export function ConversationThread({
                       </div>
                     )}
                   </div>
-                ) : selectedConversation?.windowState?.requiresExternalInbox &&
-                  selectedConversation?.windowState?.channel === "instagram" ? (
+                ) : effectiveWindow.requiresExternalInbox && activeTab === "instagram" ? (
                   <InstagramExternalInboxPanel
                     message={
-                      selectedConversation.windowState.state === "EXPIRED"
+                      effectiveWindow.state === "EXPIRED"
                         ? "The 7-day messaging window is closed. Open Instagram to continue chatting, or wait for the customer to reply."
                         : "The 24-hour Instagram window has closed. Open Instagram to reply directly until the customer messages again."
                     }
                   />
+                ) : composerBlocked ? (
+                  <div className="rounded-xl border border-amber-500/30 bg-amber-500/5 p-6 text-center space-y-2">
+                    <p className="text-sm font-medium text-amber-800 dark:text-amber-300">
+                      Messaging window closed
+                    </p>
+                    <p className="text-sm text-muted-foreground">
+                      {activeTab === "whatsapp"
+                        ? "The 24-hour WhatsApp window has expired. Use an approved template to contact this customer."
+                        : "You cannot send a message from CEP until the customer replies again."}
+                    </p>
+                  </div>
                 ) : (
                   <div
                     className={cn(
@@ -1041,19 +1073,18 @@ export function ConversationThread({
                         <Paperclip className="h-4 w-4" />
                       </Button>
 
-                      {/* Microphone – voice recording */}
+                      {/* Microphone / Cancel Recording */}
                       {isRecording ? (
                         <Button
                           type="button"
                           size="icon"
                           variant="ghost"
-                          className="relative mb-0.5 h-9 w-9 shrink-0 text-red-500 hover:bg-red-500/10 hover:text-red-600"
-                          onClick={stopRecording}
-                          title={`Stop recording · ${recordingSeconds}s`}
-                          aria-label="Stop recording"
+                          className="mb-0.5 h-9 w-9 shrink-0 text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
+                          onClick={cancelRecording}
+                          title="Cancel recording"
+                          aria-label="Cancel recording"
                         >
-                          <span className="absolute inset-0 animate-ping rounded-full bg-red-400/25" />
-                          <Square className="relative h-3.5 w-3.5 fill-current" />
+                          <Trash2 className="h-4 w-4" />
                         </Button>
                       ) : (
                         <Button
@@ -1071,25 +1102,46 @@ export function ConversationThread({
                       )}
                     </>
                   )}
-                  <textarea
-                    value={draft}
-                    onChange={(e) => setDraft(e.target.value)}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter" && !e.shiftKey) {
-                        e.preventDefault();
-                        handleSend();
+                  {isRecording ? (
+                    <div className="flex-1 flex items-center justify-between bg-transparent px-4 py-2">
+                      <div className="flex items-center gap-3">
+                        <div className="h-2.5 w-2.5 rounded-full bg-red-500 animate-pulse shadow-[0_0_8px_rgba(239,68,68,0.6)]" />
+                        <span className="text-sm font-medium tabular-nums text-foreground tracking-widest">
+                          {Math.floor(recordingSeconds / 60).toString().padStart(2, '0')}:{(recordingSeconds % 60).toString().padStart(2, '0')}
+                        </span>
+                      </div>
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="ghost"
+                        className="h-8 bg-red-500/10 text-red-600 hover:bg-red-500/20 hover:text-red-700 font-medium"
+                        onClick={() => stopRecording(false)}
+                      >
+                        <Square className="mr-2 h-3.5 w-3.5 fill-current" />
+                        Stop
+                      </Button>
+                    </div>
+                  ) : (
+                    <textarea
+                      value={draft}
+                      onChange={(e) => setDraft(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter" && !e.shiftKey) {
+                          e.preventDefault();
+                          handleSend();
+                        }
+                      }}
+                      placeholder={
+                        isNewEmailCompose
+                          ? "Write a new email…"
+                          : isLinkedAwaitingFirst && canInitiateChannel
+                            ? `Message on ${channelLabel(activeTab)}…`
+                            : `Reply on ${channelLabel(activeTab)}…`
                       }
-                    }}
-                    placeholder={
-                      isNewEmailCompose
-                        ? "Write a new email…"
-                        : isLinkedAwaitingFirst && canInitiateChannel
-                          ? `Message on ${channelLabel(activeTab)}…`
-                          : `Reply on ${channelLabel(activeTab)}…`
-                    }
-                    rows={1}
-                    className="max-h-[120px] min-h-[40px] flex-1 resize-none bg-transparent px-2 py-2 text-sm leading-relaxed focus:outline-none"
-                  />
+                      rows={1}
+                      className="max-h-[120px] min-h-[40px] flex-1 resize-none bg-transparent px-2 py-2 text-sm leading-relaxed focus:outline-none"
+                    />
+                  )}
                   <Button
                     size="icon"
                     onClick={handleSend}

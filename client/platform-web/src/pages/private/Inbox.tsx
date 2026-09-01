@@ -606,7 +606,23 @@ export function InboxPage() {
       );
       return true;
     } catch (err: any) {
-      toast.error(err.message || "Failed to send message");
+      const msg = err.message || "Failed to send message";
+      const isWindowError =
+        /messaging window|template is required|template required|Reply from the Instagram/i.test(msg);
+
+      if (isWindowError) {
+        toast.error("Cannot send message", {
+          description:
+            channel === "instagram"
+              ? "The Instagram reply window has closed. Use Open Instagram Inbox below, or wait for the customer to message you."
+              : channel === "whatsapp"
+                ? "The 24-hour WhatsApp window has closed. Send an approved template instead."
+                : msg,
+          duration: 7000,
+        });
+      } else {
+        toast.error(msg);
+      }
       return false;
     }
   };
