@@ -1,5 +1,5 @@
 import { useEffect, useState, type ReactNode } from "react";
-import { AlertCircle, Clock, ExternalLink, MessageSquareText, Send } from "lucide-react";
+import { AlertCircle, Clock, ExternalLink, Send } from "lucide-react";
 import type { ChannelType, Contact } from "../../api";
 import { formatDistanceToNow, intervalToDuration } from "date-fns";
 import { Button } from "../ui/button";
