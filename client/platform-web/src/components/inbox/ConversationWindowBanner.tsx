@@ -93,38 +93,36 @@ export function InstagramExternalInboxPanel({ contact, state }: InstagramExterna
   const isExpired = state === "EXPIRED";
 
   return (
-    <div className="overflow-hidden rounded-xl border border-border bg-card shadow-sm mx-4 mb-4">
-      <div className="border-b border-border bg-muted/30 px-5 py-4">
+    <div className="overflow-hidden rounded-xl border border-border bg-card shadow-sm mx-4 mb-4 flex flex-col sm:flex-row sm:items-center">
+      <div className="flex-1 bg-muted/30 px-4 py-3 sm:px-5 sm:py-4">
         <p className="text-sm font-semibold text-foreground">Instagram window closed</p>
-        <p className="mt-1 text-sm text-muted-foreground leading-relaxed">
+        <p className="mt-0.5 text-xs text-muted-foreground leading-relaxed">
           {isExpired
             ? "The 7-day messaging window has expired. Please use the Instagram app to reply."
             : "The 24-hour messaging window has expired. Please use the Instagram app to reply."}
         </p>
       </div>
 
-      <div className="flex flex-col items-center gap-3 px-5 py-6 bg-background">
+      <div className="flex flex-col items-center justify-center gap-2 border-t border-border bg-background px-4 py-3 sm:border-l sm:border-t-0 sm:px-5 sm:py-4 shrink-0">
         {link.hasDirectThread && link.handleLabel ? (
-          <>
-            <Button asChild className="gap-2 px-8 shadow-sm">
-              <a href={link.url} target="_blank" rel="noopener noreferrer">
-                <Send className="h-4 w-4" />
-                Message {link.handleLabel}
-              </a>
-            </Button>
-          </>
+          <Button asChild size="sm" className="w-full sm:w-auto gap-2 shadow-sm">
+            <a href={link.url} target="_blank" rel="noopener noreferrer">
+              <Send className="h-3.5 w-3.5" />
+              Message {link.handleLabel}
+            </a>
+          </Button>
         ) : (
-          <>
-            <p className="text-center text-sm text-muted-foreground">
-              We couldn't resolve this customer's Instagram handle. Please search for them in your inbox.
+          <div className="flex flex-col items-center gap-2">
+            <p className="text-[10px] text-center text-muted-foreground sm:max-w-[150px] leading-tight">
+              We couldn't resolve this customer's Instagram handle.
             </p>
-            <Button asChild variant="outline" className="gap-2 px-8">
+            <Button asChild variant="outline" size="sm" className="w-full sm:w-auto gap-1.5">
               <a href={link.url} target="_blank" rel="noopener noreferrer">
-                Open Instagram Inbox
-                <ExternalLink className="h-4 w-4 opacity-70" />
+                Open Inbox
+                <ExternalLink className="h-3.5 w-3.5 opacity-70" />
               </a>
             </Button>
-          </>
+          </div>
         )}
       </div>
     </div>
