@@ -47,6 +47,77 @@ export function isLikelyInstagramUsername(raw: string | null | undefined): boole
   return /^[a-zA-Z0-9._]+$/.test(u);
 }
 
+/** Meta standard Instagram API reply window (Human Agent extends to 7 days server-side). */
+export const INSTAGRAM_API_WINDOW_MS = 24 * 60 * 60 * 1000;
+
+export function lastIncomingMessageAt(
+  messages: { direction: string; createdAt: string }[] | undefined,
+): Date | null {
+  if (!messages?.length) return null;
+  let latest: Date | null = null;
+  for (const m of messages) {
+    if (m.direction !== "incoming") continue;
+    const at = new Date(m.createdAt);
+    if (Number.isNaN(at.getTime())) continue;
+    if (!latest || at > latest) latest = at;
+  }
+  return latest;
+}
+
+export function isInstagramApiWindowExpired(
+  messages: { direction: string; createdAt: string }[] | undefined,
+  nowMs = Date.now(),
+): boolean {
+  const lastIncoming = lastIncomingMessageAt(messages);
+  if (!lastIncoming) return false;
+  return nowMs - lastIncoming.getTime() > INSTAGRAM_API_WINDOW_MS;
+}
+
+/** Resolve @handle for deep links (ig.me/m/…). */
+export function instagramUsernameFromContact(contact: {
+  instagramId?: string | null;
+  instagramDetails?: { username?: string | null } | null;
+  identifiers?: Record<string, string>;
+  identities?: Array<{ channel?: string; displayId?: string; metadata?: { username?: string } }>;
+} | null | undefined): string | null {
+  if (!contact) return null;
+  const igIdentity = (contact.identities ?? []).find((i) => i.channel === "instagram");
+  const candidates = [
+    igIdentity?.displayId,
+    igIdentity?.metadata?.username,
+    contact.instagramDetails?.username,
+    contact.instagramId,
+    contact.identifiers?.instagram,
+  ];
+  for (const raw of candidates) {
+    if (typeof raw !== "string") continue;
+    const u = raw.replace(/^@/, "").trim();
+    if (isLikelyInstagramUsername(u)) return u;
+  }
+  return null;
+}
+
+/** Best-effort link to the customer's Instagram DM thread. */
+export function instagramThreadOpenUrl(contact: Parameters<typeof instagramUsernameFromContact>[0]): {
+  url: string;
+  hasDirectThread: boolean;
+  handleLabel: string | null;
+} {
+  const username = instagramUsernameFromContact(contact);
+  if (username) {
+    return {
+      url: `https://ig.me/m/${encodeURIComponent(username)}`,
+      hasDirectThread: true,
+      handleLabel: `@${username}`,
+    };
+  }
+  return {
+    url: "https://www.instagram.com/direct/inbox/",
+    hasDirectThread: false,
+    handleLabel: null,
+  };
+}
+
 /** All external IDs for a channel (WhatsApp / email can have multiple). */
 export function identitiesFor(contact: any, channel: ChannelType): string[] {
   if (!contact) return [];
