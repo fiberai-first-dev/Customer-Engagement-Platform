@@ -8,7 +8,7 @@ export function TemplatesPage() {
           <div className="min-w-0">
             <h1 className="text-3xl font-bold tracking-tight">WhatsApp Templates</h1>
             <p className="mt-1.5 text-sm text-muted-foreground max-w-xl">
-              Create and manage your WhatsApp message templates. Templates must be approved by Meta before they can be used to start conversations.
+              Build message templates here and submit them to Meta for approval. Once approved, agents can use them from the inbox when the 24-hour chat window has closed.
             </p>
           </div>
         </div>

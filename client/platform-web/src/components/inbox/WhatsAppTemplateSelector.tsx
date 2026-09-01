@@ -9,20 +9,52 @@ interface Props {
   disabled?: boolean;
   /** Inline closed-window panel vs full-width trigger */
   variant?: "default" | "compact";
+  /** Prefer templates for expired WhatsApp window (e.g. CUSTOMER_REENGAGEMENT) */
+  preferInternalCategory?: string;
 }
 
-export function WhatsAppTemplateSelector({ onSelect, disabled, variant = "default" }: Props) {
+export function WhatsAppTemplateSelector({
+  onSelect,
+  disabled,
+  variant = "default",
+  preferInternalCategory,
+}: Props) {
   const { data: templates = [], isLoading } = useWhatsAppTemplates();
   const [open, setOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedTemplate, setSelectedTemplate] = useState<WhatsAppTemplate | null>(null);
   const [variables, setVariables] = useState<Record<string, string>>({});
 
-  const approvedTemplates = useMemo(() => {
-    return templates
+  const { preferredTemplates, otherTemplates } = useMemo(() => {
+    const approved = templates
       .filter((t: WhatsAppTemplate) => t.status === "APPROVED")
-      .filter((t: WhatsAppTemplate) => t.name.toLowerCase().includes(searchQuery.toLowerCase()));
-  }, [templates, searchQuery]);
+      .filter((t: WhatsAppTemplate) =>
+        t.name.toLowerCase().includes(searchQuery.toLowerCase()),
+      );
+
+    if (!preferInternalCategory) {
+      return { preferredTemplates: approved, otherTemplates: [] as WhatsAppTemplate[] };
+    }
+
+    const preferred = approved.filter(
+      (t) => t.internalCategory === preferInternalCategory,
+    );
+    const other = approved.filter(
+      (t) => t.internalCategory !== preferInternalCategory,
+    );
+
+    // If no categorized templates yet, show all approved so agents aren't blocked
+    if (preferred.length === 0) {
+      return { preferredTemplates: approved, otherTemplates: [] as WhatsAppTemplate[] };
+    }
+
+    return { preferredTemplates: preferred, otherTemplates: other };
+  }, [templates, searchQuery, preferInternalCategory]);
+
+  const approvedTemplates = useMemo(
+    () => [...preferredTemplates, ...otherTemplates],
+    [preferredTemplates, otherTemplates],
+  );
 
   const getBodyText = (template: WhatsAppTemplate) => {
     return template.components?.find((c: any) => c.type === "BODY" || c.type === "body")?.text || "";
@@ -142,40 +174,71 @@ export function WhatsAppTemplateSelector({ onSelect, disabled, variant = "defaul
                     />
                   </div>
                 </div>
-                <div className="flex-1 overflow-y-auto p-4">
+                <div className="flex-1 overflow-y-auto p-4 space-y-5">
                   {approvedTemplates.length === 0 ? (
-                    <div className="h-full flex flex-col items-center justify-center text-muted-foreground space-y-3">
+                    <div className="h-full flex flex-col items-center justify-center text-muted-foreground space-y-3 py-12">
                       <MessageSquareText className="h-10 w-10 opacity-20" />
-                      <p>No templates found.</p>
+                      <p>No approved templates found.</p>
+                      <p className="text-xs max-w-xs text-center">
+                        Create a Customer Re-engagement template on the Templates page and wait for Meta approval.
+                      </p>
                     </div>
                   ) : (
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                      {approvedTemplates.map(t => (
-                        <button
-                          key={t.id}
-                          onClick={() => {
-                            const count = getVariableCount(t);
-                            if (count > 0) {
-                              setSelectedTemplate(t);
-                            } else {
-                              onSelect(t, {});
-                              handleClose();
-                            }
-                          }}
-                          className="text-left p-4 rounded-xl border border-border/50 bg-card hover:bg-muted/50 hover:border-primary/30 hover:shadow-md transition-all group flex flex-col h-full"
-                        >
-                          <div className="flex items-center justify-between mb-2">
-                            <span className="font-semibold text-sm group-hover:text-primary transition-colors">{t.name}</span>
-                            <span className="text-[10px] uppercase font-bold tracking-wider px-2 py-0.5 rounded-full bg-green-500/10 text-green-600 dark:text-green-400">
-                              {t.language}
-                            </span>
-                          </div>
-                          <p className="text-xs text-muted-foreground line-clamp-3 leading-relaxed flex-1">
-                            {getBodyText(t) || "No body content."}
+                    <>
+                      {preferInternalCategory && preferredTemplates.length > 0 && (
+                        <div className="space-y-2">
+                          <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground px-1">
+                            Recommended · Re-engagement
                           </p>
-                        </button>
-                      ))}
-                    </div>
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                            {preferredTemplates.map((t) => (
+                              <TemplateCard
+                                key={t.id}
+                                template={t}
+                                getBodyText={getBodyText}
+                                onPick={(template) => {
+                                  const count = getVariableCount(template);
+                                  if (count > 0) setSelectedTemplate(template);
+                                  else {
+                                    onSelect(template, {});
+                                    handleClose();
+                                  }
+                                }}
+                              />
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                      {otherTemplates.length > 0 && (
+                        <div className="space-y-2">
+                          <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground px-1">
+                            {preferInternalCategory && preferredTemplates.length > 0
+                              ? "Other templates"
+                              : "All templates"}
+                          </p>
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                            {(preferInternalCategory && preferredTemplates.length > 0
+                              ? otherTemplates
+                              : approvedTemplates
+                            ).map((t) => (
+                              <TemplateCard
+                                key={t.id}
+                                template={t}
+                                getBodyText={getBodyText}
+                                onPick={(template) => {
+                                  const count = getVariableCount(template);
+                                  if (count > 0) setSelectedTemplate(template);
+                                  else {
+                                    onSelect(template, {});
+                                    handleClose();
+                                  }
+                                }}
+                              />
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                    </>
                   )}
                 </div>
               </motion.div>
@@ -246,5 +309,35 @@ export function WhatsAppTemplateSelector({ onSelect, disabled, variant = "defaul
         </div>
       </motion.div>
     </div>
+  );
+}
+
+function TemplateCard({
+  template,
+  getBodyText,
+  onPick,
+}: {
+  template: WhatsAppTemplate;
+  getBodyText: (t: WhatsAppTemplate) => string;
+  onPick: (t: WhatsAppTemplate) => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={() => onPick(template)}
+      className="text-left p-4 rounded-xl border border-border/50 bg-card hover:bg-muted/50 hover:border-primary/30 hover:shadow-md transition-all group flex flex-col h-full"
+    >
+      <div className="flex items-center justify-between mb-2 gap-2">
+        <span className="font-semibold text-sm group-hover:text-primary transition-colors truncate">
+          {template.name}
+        </span>
+        <span className="text-[10px] uppercase font-bold tracking-wider px-2 py-0.5 rounded-full bg-green-500/10 text-green-600 dark:text-green-400 shrink-0">
+          {template.language}
+        </span>
+      </div>
+      <p className="text-xs text-muted-foreground line-clamp-3 leading-relaxed flex-1">
+        {getBodyText(template) || "No body content."}
+      </p>
+    </button>
   );
 }

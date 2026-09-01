@@ -3,7 +3,6 @@ import {
   RefreshCw,
   Trash2,
   Copy,
-  ExternalLink,
   Loader2,
   Clock,
   AlertTriangle,
@@ -22,6 +21,7 @@ import {
   useSyncSingleTemplate,
   useDeleteTemplate,
   useTemplateAnalytics,
+  usePatchTemplate,
 } from "../../api";
 import { toast } from "sonner";
 import { useState } from "react";
@@ -284,7 +284,16 @@ export function WhatsAppTemplateDetailDrawer({
 }: Props) {
   const { mutateAsync: syncTemplate, isPending: isSyncing } = useSyncSingleTemplate();
   const { mutateAsync: deleteTemplate, isPending: isDeleting } = useDeleteTemplate();
+  const { mutateAsync: patchTemplate, isPending: isPatching } = usePatchTemplate();
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+
+  const INTERNAL_CATEGORIES = [
+    { value: "CUSTOMER_REENGAGEMENT", label: "Customer Re-engagement" },
+    { value: "MARKETING", label: "Marketing" },
+    { value: "UTILITY", label: "Utility" },
+    { value: "AUTHENTICATION", label: "Authentication" },
+    { value: "OTHER", label: "Other" },
+  ];
 
   const handleSync = async () => {
     if (!template) return;
@@ -406,8 +415,34 @@ export function WhatsAppTemplateDetailDrawer({
                     Last synced: {formatRelativeTime(template.lastSyncedAt)}
                   </div>
                   <div>
-                    Internal category:{" "}
-                    <span className="text-foreground/80">{template.internalCategory}</span>
+                    <label className="text-[10px] uppercase tracking-wider text-muted-foreground block mb-1">
+                      Internal category (CEP)
+                    </label>
+                    <select
+                      className="w-full text-sm rounded-lg border border-border bg-background px-2 py-1.5 focus:outline-none focus:ring-2 focus:ring-primary/30"
+                      value={template.internalCategory}
+                      disabled={isPatching}
+                      onChange={async (e) => {
+                        try {
+                          await patchTemplate({
+                            id: template.id,
+                            internalCategory: e.target.value,
+                          });
+                          toast.success("Category updated");
+                        } catch (err: any) {
+                          toast.error(err.message || "Failed to update category");
+                        }
+                      }}
+                    >
+                      {INTERNAL_CATEGORIES.map((c) => (
+                        <option key={c.value} value={c.value}>
+                          {c.label}
+                        </option>
+                      ))}
+                    </select>
+                    <p className="text-[10px] text-muted-foreground mt-1">
+                      Re-engagement templates are shown first when the 24h window is closed.
+                    </p>
                   </div>
                 </div>
 
@@ -444,52 +479,69 @@ export function WhatsAppTemplateDetailDrawer({
                     Preview
                   </p>
                   <div
-                    className="rounded-xl p-4"
-                    style={{
-                      backgroundImage:
-                        "repeating-linear-gradient(45deg, transparent, transparent 10px, rgba(0,0,0,.015) 10px, rgba(0,0,0,.015) 20px)",
-                    }}
+                    className="rounded-xl p-4 bg-[#efeae2] dark:bg-[#0b141a] relative overflow-hidden"
                   >
-                    <div className="max-w-[260px] space-y-0.5">
-                      {header && (
-                        <div className="bg-[#E7FFDB] dark:bg-[#005C4B] rounded-t-2xl rounded-br-2xl px-3 pt-2.5 pb-1.5">
-                          {header.format === "TEXT" ? (
-                            <p className="text-sm font-semibold text-gray-800 dark:text-white">
-                              {applyPlaceholders(header.text ?? "")}
-                            </p>
+                    <div className="absolute inset-0 opacity-[0.4] mix-blend-overlay dark:opacity-[0.15]" style={{ backgroundImage: "url('https://i.pinimg.com/736x/8c/98/99/8c98994518b575bfd8c949e91d20548b.jpg')", backgroundSize: 'cover', pointerEvents: 'none' }} />
+                    <div className="max-w-[280px] space-y-0.5 relative z-10">
+                      {/* Tail */}
+                      <svg viewBox="0 0 8 13" width="8" height="13" className="absolute -left-2 top-0 text-[#fff] dark:text-[#202c33] drop-shadow-sm">
+                        <path opacity="1" fill="currentColor" d="M1.533 3.118L8 12.118V0H2.8C1.5 0 1.253 1.84 1.533 3.118z"></path>
+                      </svg>
+
+                      <div className="bg-[#fff] dark:bg-[#202c33] rounded-lg rounded-tl-none shadow-sm flex flex-col overflow-hidden">
+                        {header && (
+                          <div className="px-2 pt-2 pb-1">
+                            {header.format === "TEXT" ? (
+                              <p className="text-[15px] font-bold text-[#111b21] dark:text-[#e9edef] px-1">
+                                {applyPlaceholders(header.text ?? "")}
+                              </p>
+                            ) : (
+                              <div className="h-32 bg-black/5 dark:bg-white/5 rounded-md flex items-center justify-center text-xs text-muted-foreground">
+                                {header.format} media
+                              </div>
+                            )}
+                          </div>
+                        )}
+                        {body && (
+                          <div className="px-3 pt-1 pb-2 text-[14.5px] text-[#111b21] dark:text-[#e9edef] whitespace-pre-wrap leading-[20px]">
+                            {bodyWithExamples || applyPlaceholders(body)}
+                          </div>
+                        )}
+                        <div className="px-3 pb-1.5 flex items-end justify-between gap-4 mt-auto">
+                          {footer ? (
+                            <span className="text-[12px] text-[#667781] dark:text-[#8696a0] leading-tight truncate flex-1">
+                              {footer}
+                            </span>
                           ) : (
-                            <div className="h-16 bg-black/10 rounded-lg flex items-center justify-center text-xs text-muted-foreground">
-                              {header.format} media
-                            </div>
+                            <span className="flex-1" />
                           )}
+                          <span className="text-[10px] text-[#667781] dark:text-[#8696a0] shrink-0 mt-1 self-end translate-y-0.5">
+                            12:00
+                          </span>
+                        </div>
+                      </div>
+
+                      {/* Buttons */}
+                      {buttons.length > 0 && (
+                        <div className="space-y-0.5 mt-0.5">
+                          {buttons.map((btn: any, i: number) => (
+                            <div
+                              key={i}
+                              className="bg-[#fff] dark:bg-[#202c33] shadow-sm rounded-lg px-3 py-2.5 text-center text-[14px] text-[#00a884] dark:text-[#00a884] border border-transparent"
+                            >
+                              <span className="font-medium flex items-center justify-center gap-2">
+                                {btn.type === "URL" && (
+                                  <svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" strokeWidth="2" fill="none" strokeLinecap="round" strokeLinejoin="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path><polyline points="15 3 21 3 21 9"></polyline><line x1="10" y1="14" x2="21" y2="3"></line></svg>
+                                )}
+                                {btn.type === "PHONE_NUMBER" && (
+                                  <svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" strokeWidth="2" fill="none" strokeLinecap="round" strokeLinejoin="round"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"></path></svg>
+                                )}
+                                {btn.text}
+                              </span>
+                            </div>
+                          ))}
                         </div>
                       )}
-                      {body && (
-                        <div
-                          className={`bg-[#E7FFDB] dark:bg-[#005C4B] px-3 py-2.5 text-sm text-gray-800 dark:text-white whitespace-pre-wrap leading-snug ${
-                            !header ? "rounded-t-2xl" : ""
-                          } ${
-                            !footer && !buttons.length
-                              ? "rounded-b-2xl rounded-br-none"
-                              : ""
-                          }`}
-                        >
-                          {bodyWithExamples || applyPlaceholders(body)}
-                        </div>
-                      )}
-                      {footer && (
-                        <div className="bg-[#E7FFDB] dark:bg-[#005C4B] px-3 pb-2 text-xs text-gray-500 dark:text-gray-400">
-                          {footer}
-                        </div>
-                      )}
-                      {buttons.map((btn: any, i: number) => (
-                        <div
-                          key={i}
-                          className="bg-white dark:bg-[#1f2c34] border border-[#d1f4cc] dark:border-[#005C4B]/60 rounded-xl px-3 py-2 text-center text-xs font-semibold text-primary"
-                        >
-                          {btn.text}
-                        </div>
-                      ))}
                     </div>
                   </div>
                 </div>
@@ -547,16 +599,6 @@ export function WhatsAppTemplateDetailDrawer({
                 >
                   <Copy className="h-3.5 w-3.5" />
                   Duplicate
-                </Button>
-                <Button variant="outline" size="sm" asChild className="gap-1.5">
-                  <a
-                    href="https://business.facebook.com/wa/manage/message-templates/"
-                    target="_blank"
-                    rel="noopener noreferrer"
-                  >
-                    <ExternalLink className="h-3.5 w-3.5" />
-                    Meta Manager
-                  </a>
                 </Button>
                 <Button
                   variant="ghost"

@@ -2,9 +2,7 @@ import { useState, useMemo, useEffect } from "react";
 import {
   useWhatsAppTemplates,
   useSyncTemplates,
-  useTemplateQuota,
   type WhatsAppTemplate,
-  type TemplateQuota,
 } from "../../api";
 import { Button } from "../ui/button";
 import {
@@ -12,7 +10,6 @@ import {
   Plus,
   RefreshCw,
   Search,
-  ExternalLink,
   CheckCircle2,
   Clock,
   XCircle,
@@ -20,7 +17,6 @@ import {
   MinusCircle,
   AlertTriangle,
   Eye,
-  LayoutGrid,
 } from "lucide-react";
 import { toast } from "sonner";
 import { WhatsAppTemplateCreateModal } from "./WhatsAppTemplateCreateModal";
@@ -109,53 +105,6 @@ function getBodyPreviewWithExamples(components: any[]): string {
   });
 }
 
-// ─── Quota Card ───────────────────────────────────────────────────────────────
-
-function QuotaCard({ quota, loading }: { quota?: TemplateQuota; loading: boolean }) {
-  if (loading) {
-    return (
-      <div className="rounded-2xl border border-border bg-card shadow-sm p-5 flex items-center gap-3 animate-pulse">
-        <div className="h-10 w-10 rounded-xl bg-muted" />
-        <div className="space-y-2 flex-1">
-          <div className="h-3 bg-muted rounded w-32" />
-          <div className="h-3 bg-muted rounded w-56" />
-        </div>
-      </div>
-    );
-  }
-
-  if (!quota) return null;
-
-  return (
-    <div className="rounded-2xl border border-border bg-card shadow-sm p-5 flex items-start gap-4">
-      <div className="h-10 w-10 rounded-xl bg-blue-500/10 flex items-center justify-center shrink-0">
-        <LayoutGrid className="h-5 w-5 text-blue-500" />
-      </div>
-      <div className="flex-1 min-w-0">
-        <p className="text-sm font-semibold text-foreground">Template messaging usage</p>
-        <p className="text-xs text-muted-foreground mt-0.5 leading-relaxed">
-          {quota.message ??
-            "Usage details are not available via the API. Check Meta Business Manager for billing and limits."}
-        </p>
-        {quota.tier && (
-          <p className="text-xs text-muted-foreground mt-1">
-            Account review status: <span className="text-foreground font-medium">{quota.tier}</span>
-          </p>
-        )}
-      </div>
-      <a
-        href={quota.metaBusinessSuiteUrl}
-        target="_blank"
-        rel="noopener noreferrer"
-        className="text-xs text-primary hover:underline flex items-center gap-1 shrink-0 font-medium mt-0.5"
-      >
-        Meta Business Suite
-        <ExternalLink className="h-3 w-3" />
-      </a>
-    </div>
-  );
-}
-
 // ─── Table row skeleton ───────────────────────────────────────────────────────
 
 function SkeletonRow() {
@@ -195,7 +144,7 @@ function EmptyState({
         <p className="text-sm text-muted-foreground mt-1 max-w-xs">
           {filtered
             ? "Try changing your search or filters."
-            : "Sync from Meta to import your existing templates, or create a new one right here."}
+            : "Sync from Meta to import existing templates, or create a new one in CEP."}
         </p>
       </div>
       {!filtered && (
@@ -219,7 +168,6 @@ function EmptyState({
 export function WhatsAppTemplateManager() {
   const { data: templates = [], isLoading } = useWhatsAppTemplates();
   const { mutate: syncTemplates, isPending: isSyncing } = useSyncTemplates();
-  const { data: quota, isLoading: quotaLoading } = useTemplateQuota();
 
   const [createOpen, setCreateOpen] = useState(false);
   const [selectedTemplate, setSelectedTemplate] = useState<WhatsAppTemplate | null>(null);
@@ -312,9 +260,6 @@ export function WhatsAppTemplateManager() {
 
   return (
     <div className="space-y-6">
-      {/* Quota card */}
-      <QuotaCard quota={quota} loading={quotaLoading} />
-
       {/* Status summary chips */}
       {!isLoading && templates.length > 0 && (
         <div className="flex flex-wrap gap-2">

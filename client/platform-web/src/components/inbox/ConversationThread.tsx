@@ -930,6 +930,7 @@ export function ConversationThread({
                     <div className="flex justify-center">
                       <WhatsAppTemplateSelector
                         variant="compact"
+                        preferInternalCategory="CUSTOMER_REENGAGEMENT"
                         onSelect={async (template, variables) => {
                           if (onSendTemplate) {
                             const ok = await onSendTemplate(template.id, variables);

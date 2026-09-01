@@ -9,21 +9,7 @@ import { motion, AnimatePresence } from "framer-motion";
 
 const LANGUAGES = [
   { value: "en", label: "English (en)" },
-  { value: "en_US", label: "English US (en_US)" },
   { value: "hi", label: "Hindi (hi)" },
-  { value: "ar", label: "Arabic (ar)" },
-  { value: "es", label: "Spanish (es)" },
-  { value: "es_MX", label: "Spanish MX (es_MX)" },
-  { value: "pt_BR", label: "Portuguese BR (pt_BR)" },
-  { value: "fr", label: "French (fr)" },
-  { value: "de", label: "German (de)" },
-  { value: "it", label: "Italian (it)" },
-  { value: "ru", label: "Russian (ru)" },
-  { value: "id", label: "Indonesian (id)" },
-  { value: "ms", label: "Malay (ms)" },
-  { value: "th", label: "Thai (th)" },
-  { value: "tr", label: "Turkish (tr)" },
-  { value: "uk", label: "Ukrainian (uk)" },
 ];
 
 const INTERNAL_CATEGORIES = [
@@ -38,6 +24,42 @@ const META_CATEGORIES = [
   { value: "MARKETING", label: "Marketing" },
   { value: "UTILITY", label: "Utility" },
   { value: "AUTHENTICATION", label: "Authentication" },
+];
+
+const TEMPLATE_PRESETS = [
+  {
+    id: "support_followup",
+    label: "Support follow-up",
+    name: "support_followup_01",
+    internalCategory: "CUSTOMER_REENGAGEMENT",
+    metaCategory: "UTILITY",
+    body: "Hi {{1}}, we are following up on your recent message but our chat window has expired. Do you still need assistance with this?",
+    buttons: [
+      { type: "QUICK_REPLY" as const, text: "Yes, I need help" },
+      { type: "QUICK_REPLY" as const, text: "No, it's resolved" },
+    ],
+    examples: { 1: { label: "Customer name", example: "John" } },
+  },
+  {
+    id: "resume_chat",
+    label: "Resume chat",
+    name: "resume_chat_request",
+    internalCategory: "CUSTOMER_REENGAGEMENT",
+    metaCategory: "UTILITY",
+    body: "Hi {{1}}, an agent is ready to help you now! Since it's been a while, WhatsApp requires you to click below to reopen our chat.",
+    buttons: [{ type: "QUICK_REPLY" as const, text: "Resume Chat" }],
+    examples: { 1: { label: "Customer name", example: "Sarah" } },
+  },
+  {
+    id: "action_required",
+    label: "Action required",
+    name: "action_required_update",
+    internalCategory: "CUSTOMER_REENGAGEMENT",
+    metaCategory: "UTILITY",
+    body: "Hi {{1}}, we have an important update regarding your account. Please tap below to speak securely with our team.",
+    buttons: [{ type: "QUICK_REPLY" as const, text: "Speak to Team" }],
+    examples: { 1: { label: "Customer name", example: "Alex" } },
+  },
 ];
 
 const HEADER_TYPES = [
@@ -164,9 +186,9 @@ interface Props {
 }
 
 const labelCls =
-  "block text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-1.5";
+  "block text-[11px] font-bold text-muted-foreground uppercase tracking-widest mb-1.5";
 const inputCls =
-  "w-full rounded-xl border border-input bg-background px-4 py-2.5 text-sm shadow-sm transition-all focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-primary placeholder:text-muted-foreground/60";
+  "w-full rounded-lg border border-input bg-background px-3 py-2 text-sm shadow-sm transition-all focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary placeholder:text-muted-foreground/50";
 const selectCls = inputCls + " cursor-pointer appearance-none";
 
 export function WhatsAppTemplateCreateModal({ open, onClose, prefill }: Props) {
@@ -176,7 +198,7 @@ export function WhatsAppTemplateCreateModal({ open, onClose, prefill }: Props) {
   const [name, setName] = useState(prefill?.name ?? "");
   const [language, setLanguage] = useState(prefill?.language ?? "en");
   const [internalCategory, setInternalCategory] = useState(
-    prefill?.internalCategory ?? "UTILITY"
+    prefill?.internalCategory ?? "CUSTOMER_REENGAGEMENT"
   );
   const [metaCategory, setMetaCategory] = useState(
     prefill?.metaCategory ?? "UTILITY"
@@ -206,7 +228,7 @@ export function WhatsAppTemplateCreateModal({ open, onClose, prefill }: Props) {
     if (prefill) {
       setName(prefill.name ?? "");
       setLanguage(prefill.language ?? "en");
-      setInternalCategory(prefill.internalCategory ?? "UTILITY");
+      setInternalCategory(prefill.internalCategory ?? "CUSTOMER_REENGAGEMENT");
       setMetaCategory(prefill.metaCategory ?? "UTILITY");
       setHeaderType(prefill.headerType ?? "NONE");
       setHeaderContent(prefill.headerContent ?? "");
@@ -276,7 +298,7 @@ export function WhatsAppTemplateCreateModal({ open, onClose, prefill }: Props) {
   const handleClose = () => {
     setName("");
     setLanguage("en");
-    setInternalCategory("UTILITY");
+    setInternalCategory("CUSTOMER_REENGAGEMENT");
     setMetaCategory("UTILITY");
     setHeaderType("NONE");
     setHeaderContent("");
@@ -349,6 +371,38 @@ export function WhatsAppTemplateCreateModal({ open, onClose, prefill }: Props) {
         <div className="flex-1 overflow-hidden flex flex-col lg:flex-row min-h-0">
           {/* Form */}
           <div className="flex-1 overflow-y-auto p-6 space-y-6">
+            {!prefill && (
+              <section className="space-y-3">
+                <h3 className="text-xs font-bold text-muted-foreground uppercase tracking-widest">
+                  Quick start
+                </h3>
+                <p className="text-xs text-muted-foreground">
+                  Re-open the 24-hour window when customers tap a quick reply button.
+                </p>
+                <div className="flex flex-wrap gap-2">
+                  {TEMPLATE_PRESETS.map((preset) => (
+                    <button
+                      key={preset.id}
+                      type="button"
+                      onClick={() => {
+                        setName(preset.name);
+                        setInternalCategory(preset.internalCategory);
+                        setMetaCategory(preset.metaCategory);
+                        setBody(preset.body);
+                        setFooter("");
+                        setHeaderType("NONE");
+                        setHeaderContent("");
+                        setButtons(preset.buttons);
+                        setBodyExamples(preset.examples as Record<number, VariableExample>);
+                      }}
+                      className="rounded-full border border-border bg-muted/40 px-3 py-1.5 text-xs font-medium hover:bg-muted hover:border-primary/30 transition-colors"
+                    >
+                      {preset.label}
+                    </button>
+                  ))}
+                </div>
+              </section>
+            )}
             {/* Basic info */}
             <section className="space-y-4">
               <h3 className="text-xs font-bold text-muted-foreground uppercase tracking-widest border-b border-border pb-2">
@@ -677,84 +731,96 @@ export function WhatsAppTemplateCreateModal({ open, onClose, prefill }: Props) {
           </div>
 
           {/* Live Preview Panel */}
-          <div className="hidden lg:flex flex-col w-72 xl:w-80 border-l border-border bg-muted/20 overflow-y-auto shrink-0">
-            <div className="px-5 py-4 border-b border-border">
-              <p className="text-xs font-bold text-muted-foreground uppercase tracking-widest">
-                Live Preview
-              </p>
+          <div className="hidden lg:flex flex-col w-80 xl:w-[360px] border-l border-border bg-[#efeae2] dark:bg-[#0b141a] overflow-hidden shrink-0 relative">
+            <div className="absolute inset-0 opacity-[0.4] mix-blend-overlay dark:opacity-[0.15]" style={{ backgroundImage: "url('https://i.pinimg.com/736x/8c/98/99/8c98994518b575bfd8c949e91d20548b.jpg')", backgroundSize: 'cover', pointerEvents: 'none' }} />
+            
+            <div className="px-4 py-3 bg-[#f0f2f5] dark:bg-[#202c33] border-b border-border/40 flex items-center gap-3 z-10 shadow-sm">
+              <div className="h-8 w-8 rounded-full bg-emerald-500 flex items-center justify-center shrink-0 text-white">
+                <MessageSquare className="h-4 w-4" />
+              </div>
+              <div>
+                <p className="text-sm font-semibold text-[#111b21] dark:text-[#e9edef]">WhatsApp Business</p>
+                <p className="text-[11px] text-[#667781] dark:text-[#8696a0]">Live Preview</p>
+              </div>
             </div>
-            <div
-              className="flex-1 p-4 flex flex-col gap-3"
-              style={{
-                backgroundImage:
-                  "repeating-linear-gradient(45deg, transparent, transparent 10px, rgba(0,0,0,.015) 10px, rgba(0,0,0,.015) 20px)",
-              }}
-            >
+
+            <div className="flex-1 p-4 flex flex-col gap-3 overflow-y-auto z-10">
               {/* WhatsApp-style bubble */}
-              <div className="max-w-[240px] w-full space-y-0.5">
-                {/* Header */}
-                {headerType !== "NONE" && headerContent && (
-                  <div className="bg-[#E7FFDB] dark:bg-[#005C4B] rounded-t-2xl rounded-br-2xl px-3 pt-2.5 pb-1">
-                    {headerType === "TEXT" ? (
-                      <p className="text-sm font-semibold text-gray-800 dark:text-white">
-                        {previewHeader}
-                      </p>
+              <div className="max-w-[280px] w-full self-start relative">
+                {/* Tail */}
+                <svg viewBox="0 0 8 13" width="8" height="13" className="absolute -left-2 top-0 text-[#fff] dark:text-[#202c33] drop-shadow-sm">
+                  <path opacity="1" fill="currentColor" d="M1.533 3.118L8 12.118V0H2.8C1.5 0 1.253 1.84 1.533 3.118z"></path>
+                </svg>
+
+                <div className="bg-[#fff] dark:bg-[#202c33] rounded-lg rounded-tl-none shadow-sm flex flex-col overflow-hidden">
+                  {/* Header */}
+                  {headerType !== "NONE" && headerContent && (
+                    <div className="px-2 pt-2 pb-1">
+                      {headerType === "TEXT" ? (
+                        <p className="text-[15px] font-bold text-[#111b21] dark:text-[#e9edef] px-1">
+                          {previewHeader}
+                        </p>
+                      ) : (
+                        <div className="h-32 bg-black/5 dark:bg-white/5 rounded-md flex items-center justify-center text-xs text-muted-foreground">
+                          {headerType} media
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {/* Body */}
+                  {body && (
+                    <div className="px-3 pt-1 pb-2 text-[14.5px] text-[#111b21] dark:text-[#e9edef] whitespace-pre-wrap leading-[20px]">
+                      {previewBody || <span className="opacity-40">Your body text…</span>}
+                    </div>
+                  )}
+
+                  {/* Footer & Timestamp inline */}
+                  <div className="px-3 pb-1.5 flex items-end justify-between gap-4 mt-auto">
+                    {footer ? (
+                      <span className="text-[12px] text-[#667781] dark:text-[#8696a0] leading-tight truncate flex-1">
+                        {footer}
+                      </span>
                     ) : (
-                      <div className="h-20 bg-black/10 rounded-lg flex items-center justify-center text-xs text-muted-foreground">
-                        {headerType} media
-                      </div>
+                      <span className="flex-1" />
                     )}
+                    <span className="text-[10px] text-[#667781] dark:text-[#8696a0] shrink-0 mt-1 self-end translate-y-0.5">
+                      12:00
+                    </span>
                   </div>
-                )}
+                </div>
 
-                {/* Body */}
-                {body && (
-                  <div
-                    className={`bg-[#E7FFDB] dark:bg-[#005C4B] px-3 py-2.5 text-sm text-gray-800 dark:text-white whitespace-pre-wrap leading-snug ${
-                      headerType === "NONE"
-                        ? "rounded-t-2xl rounded-br-2xl"
-                        : footer || buttons.length > 0
-                        ? ""
-                        : "rounded-b-2xl rounded-br-none"
-                    }`}
-                  >
-                    {previewBody || <span className="opacity-40">Your body text…</span>}
-                  </div>
-                )}
-
-                {/* Footer */}
-                {footer && (
-                  <div className="bg-[#E7FFDB] dark:bg-[#005C4B] px-3 pb-2 text-xs text-gray-500 dark:text-gray-300">
-                    {footer}
-                  </div>
-                )}
-
-                {/* Buttons */}
+                {/* Buttons (WhatsApp renders these as separate clickable areas attached to the bubble, or below it) */}
                 {buttons.length > 0 && (
-                  <div className="space-y-0.5">
+                  <div className="space-y-0.5 mt-0.5">
                     {buttons.map((btn, i) => (
                       <div
                         key={i}
-                        className="bg-white dark:bg-[#1f2c34] border border-[#d1f4cc] dark:border-[#005C4B]/60 rounded-xl px-3 py-2 text-center text-xs font-semibold text-primary"
+                        className="bg-[#fff] dark:bg-[#202c33] shadow-sm rounded-lg px-3 py-2.5 text-center text-[14px] text-[#00a884] dark:text-[#00a884] cursor-pointer hover:bg-black/5 dark:hover:bg-white/5 transition-colors border border-transparent"
                       >
-                        {btn.text || "Button"}
+                        <span className="font-medium flex items-center justify-center gap-2">
+                          {btn.type === "URL" && (
+                            <svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" strokeWidth="2" fill="none" strokeLinecap="round" strokeLinejoin="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path><polyline points="15 3 21 3 21 9"></polyline><line x1="10" y1="14" x2="21" y2="3"></line></svg>
+                          )}
+                          {btn.type === "PHONE_NUMBER" && (
+                            <svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" strokeWidth="2" fill="none" strokeLinecap="round" strokeLinejoin="round"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"></path></svg>
+                          )}
+                          {btn.text || "Button"}
+                        </span>
                       </div>
                     ))}
                   </div>
                 )}
 
+
                 {!body && (
-                  <div className="bg-[#E7FFDB] dark:bg-[#005C4B] rounded-2xl px-3 py-2.5 text-sm text-gray-400 dark:text-gray-500 italic">
+                  <div className="bg-[#fff] dark:bg-[#202c33] rounded-lg px-3 py-2.5 text-sm text-gray-400 dark:text-gray-500 italic shadow-sm mt-1">
                     Body text will appear here…
                   </div>
                 )}
-
-                {/* Timestamp */}
-                <div className="text-right pr-1">
-                  <span className="text-[10px] text-muted-foreground">12:00</span>
-                </div>
               </div>
             </div>
+
           </div>
         </div>
 

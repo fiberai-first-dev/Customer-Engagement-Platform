@@ -93,54 +93,45 @@ export function InstagramExternalInboxPanel({ contact, state }: InstagramExterna
   const isExpired = state === "EXPIRED";
 
   return (
-    <div className="overflow-hidden rounded-xl border border-border bg-card shadow-sm">
-      <div className="flex items-start gap-3 border-b border-border bg-muted/30 px-4 py-3">
-        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-[#833AB4] via-[#FD1D1D] to-[#F77737] text-white shadow-sm">
-          <Send className="h-4 w-4" />
-        </div>
-        <div className="min-w-0 pt-0.5">
-          <p className="text-sm font-semibold text-foreground">
-            {isExpired ? "Messaging window closed" : "24-hour window closed"}
-          </p>
-          <p className="mt-0.5 text-xs text-muted-foreground leading-relaxed">
-            {isExpired
-              ? "This customer has not replied in over 7 days. CEP cannot send messages until they message you again."
-              : "CEP cannot send Instagram replies after 24 hours without Human Agent approval. Continue the conversation in Instagram."}
-          </p>
-        </div>
+    <div className="overflow-hidden rounded-xl border border-border bg-card shadow-sm mx-4 mb-4">
+      <div className="border-b border-border bg-muted/30 px-5 py-4">
+        <p className="text-sm font-semibold text-foreground">
+          {isExpired ? "Messaging window closed" : "24-hour window closed"}
+        </p>
+        <p className="mt-1 text-sm text-muted-foreground leading-relaxed">
+          {isExpired
+            ? "This customer has been inactive for 7 days. Replies are disabled until they message you again."
+            : "Direct replies are restricted after 24 hours. Please continue the conversation natively."}
+        </p>
       </div>
 
-      <div className="flex flex-col items-center gap-3 px-4 py-5">
+      <div className="flex flex-col items-center gap-3 px-5 py-6 bg-background">
         {link.hasDirectThread && link.handleLabel ? (
           <>
             <p className="text-center text-sm text-muted-foreground">
               Open a direct message with{" "}
-              <span className="font-medium text-foreground">{link.handleLabel}</span>
+              <span className="font-semibold text-foreground">{link.handleLabel}</span>
             </p>
-            <Button asChild size="lg" className="gap-2 px-6 shadow-sm">
+            <Button asChild className="gap-2 px-8 shadow-sm">
               <a href={link.url} target="_blank" rel="noopener noreferrer">
                 <Send className="h-4 w-4" />
                 Message {link.handleLabel}
-                <ExternalLink className="h-3.5 w-3.5 opacity-70" />
               </a>
             </Button>
           </>
         ) : (
           <>
             <p className="text-center text-sm text-muted-foreground">
-              We could not resolve this customer&apos;s Instagram username. Open your inbox and search for them manually.
+              We couldn't resolve this customer's Instagram handle. Please search for them in your inbox.
             </p>
-            <Button asChild variant="outline" size="lg" className="gap-2">
+            <Button asChild variant="outline" className="gap-2 px-8">
               <a href={link.url} target="_blank" rel="noopener noreferrer">
                 Open Instagram Inbox
-                <ExternalLink className="h-3.5 w-3.5 opacity-70" />
+                <ExternalLink className="h-4 w-4 opacity-70" />
               </a>
             </Button>
           </>
         )}
-        <p className="text-[11px] text-muted-foreground/80">
-          Opens Instagram in a new tab · log in with your business account if prompted
-        </p>
       </div>
     </div>
   );
@@ -156,27 +147,22 @@ export function WhatsAppTemplateClosedPanel({
   children,
 }: WhatsAppTemplateClosedPanelProps) {
   return (
-    <div className="overflow-hidden rounded-xl border border-border bg-card shadow-sm">
-      <div className="flex items-start gap-3 border-b border-border bg-muted/30 px-4 py-3">
-        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[#25D366] text-white shadow-sm">
-          <MessageSquareText className="h-4 w-4" />
-        </div>
-        <div className="min-w-0 pt-0.5">
-          <p className="text-sm font-semibold text-foreground">WhatsApp window closed</p>
-          <p className="mt-0.5 text-xs text-muted-foreground leading-relaxed">
-            The customer has not messaged in the last 24 hours. Send an approved template to start the conversation again.
-          </p>
-        </div>
+    <div className="overflow-hidden rounded-xl border border-border bg-card shadow-sm mx-4 mb-4">
+      <div className="border-b border-border bg-muted/30 px-5 py-4">
+        <p className="text-sm font-semibold text-foreground">WhatsApp window closed</p>
+        <p className="mt-1 text-sm text-muted-foreground leading-relaxed">
+          The 24-hour service window has expired. Send an approved template to resume the conversation.
+        </p>
       </div>
 
-      <div className="px-4 py-5">
+      <div className="px-5 py-6 bg-background">
         {templatesEnabled ? (
-          children
+          <div className="flex justify-center">{children}</div>
         ) : (
-          <div className="rounded-lg border border-dashed border-border bg-muted/20 px-4 py-6 text-center">
+          <div className="rounded-lg border border-dashed border-border bg-muted/20 px-4 py-6 text-center max-w-md mx-auto">
             <p className="text-sm font-medium text-foreground">Templates are disabled</p>
             <p className="mt-1 text-xs text-muted-foreground">
-              Enable WhatsApp Templates in Settings or the admin panel to contact this customer.
+              Enable WhatsApp Templates in Settings to contact this customer.
             </p>
           </div>
         )}
