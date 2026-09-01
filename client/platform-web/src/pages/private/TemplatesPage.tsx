@@ -1,13 +1,14 @@
 import { Navigate } from "react-router-dom";
 import { WhatsAppTemplateManager } from "../../components/settings/WhatsAppTemplateManager";
-import { useAuth, useFeatureFlag, useEnabledChannelTypes } from "../../api";
+import { useFeatureFlag, useEnabledChannelTypes } from "../../api";
+import { useAuthStore } from "../../store/auth";
 
 export function TemplatesPage() {
-  const { user } = useAuth();
+  const user = useAuthStore((s) => s.user);
   const { data: featureFlag, isLoading: loadingFeature } = useFeatureFlag("whatsapp_templates_enabled");
-  const { enabledChannels, isLoading: loadingChannels } = useEnabledChannelTypes();
+  const { enabledChannels, channelsReady } = useEnabledChannelTypes();
 
-  if (loadingFeature || loadingChannels) return null;
+  if (loadingFeature || !channelsReady) return null;
 
   const hasWhatsapp = enabledChannels.includes("whatsapp");
   const canView = user && (user.role === "SUPER_ADMIN" || user.role === "ADMIN") && featureFlag?.enabled && hasWhatsapp;
