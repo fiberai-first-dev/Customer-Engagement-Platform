@@ -152,8 +152,16 @@ export const whatsappChannelMedia: ChannelMediaHandler = {
 
   async buildOutboundWithMedia({ config, message, to, buffer }) {
     const waConfig = config as WhatsAppChannelConfig;
-    const mimeType = message.mediaMimeType ?? "application/octet-stream";
-    const filename = message.mediaFilename ?? "file";
+    let mimeType = message.mediaMimeType ?? "application/octet-stream";
+    let filename = message.mediaFilename ?? "file";
+
+    // WhatsApp API does not accept audio/webm. Remap to audio/ogg (same Opus codec,
+    // different container — Meta accepts audio/ogg).
+    if (mimeType === "audio/webm" || mimeType.startsWith("audio/webm;")) {
+      mimeType = "audio/ogg";
+      filename = filename.replace(/\.webm$/, ".ogg");
+    }
+
     const waMediaId = await uploadProviderMedia(waConfig, buffer, mimeType, filename);
     const waType = outboundMessageType(mimeType);
     const caption = message.content?.trim() || undefined;
