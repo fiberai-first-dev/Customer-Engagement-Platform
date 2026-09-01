@@ -7,6 +7,7 @@ import {
   resolveChannelConfig,
   type NormalizedInboundMessage,
   type ChannelConfig,
+  type WhatsAppChannelConfig,
 } from "../adapters/shared/index.js";
 import {
   buildReplyReferences,
@@ -27,6 +28,8 @@ import {
   getChannelMediaHandler,
   resolveInboundMedia,
 } from "./channel-media/index.js";
+import { getMessagingWindow } from "./ConversationWindowService.js";
+import { isFeatureEnabled } from "./FeatureService.js";
 
 export function mergeChannelConfig(
   existing: Prisma.JsonValue,
@@ -334,7 +337,7 @@ export async function findOrCreateCustomerForInbound(input: {
         data: { resolved: false, metadata: mergedMeta },
       });
     }
-    await touchIdentityLastMessageAt(channelType, existing.id, occurredAt);
+    await touchIdentityLastMessageAt(channelType, existing.id, occurredAt, true);
 
     if (channelType === "instagram" && igHandle) {
       const customer = await prisma.customer.findUniqueOrThrow({ where: { id: customerId } });
@@ -479,7 +482,7 @@ export async function findOrCreateCustomerForInbound(input: {
   });
   const occurredAt =
     inbound.occurredAt instanceof Date ? inbound.occurredAt : new Date();
-  await touchIdentityLastMessageAt(channelType, identity.id, occurredAt);
+  await touchIdentityLastMessageAt(channelType, identity.id, occurredAt, true);
   await recomputeCustomerResolved(customerId);
   return {
     customerId,
@@ -493,41 +496,74 @@ async function touchIdentityLastMessageAt(
   channelType: ChannelType,
   identityId: string,
   at: Date = new Date(),
+  isIncoming: boolean = false
 ) {
   const when = at instanceof Date && !Number.isNaN(at.getTime()) ? at : new Date();
+  
   if (channelType === "whatsapp") {
     const row = await prisma.whatsAppChannel.findUnique({
       where: { id: identityId },
-      select: { lastMessageAt: true },
+      select: { lastMessageAt: true, lastCustomerMessageAt: true },
     });
-    if (row?.lastMessageAt && row.lastMessageAt.getTime() >= when.getTime()) return;
-    await prisma.whatsAppChannel.update({
-      where: { id: identityId },
-      data: { lastMessageAt: when },
-    });
+    
+    const updateData: any = {};
+    if (!row?.lastMessageAt || row.lastMessageAt.getTime() < when.getTime()) {
+      updateData.lastMessageAt = when;
+    }
+    if (isIncoming && (!row?.lastCustomerMessageAt || row.lastCustomerMessageAt.getTime() < when.getTime())) {
+      updateData.lastCustomerMessageAt = when;
+    }
+    
+    if (Object.keys(updateData).length > 0) {
+      await prisma.whatsAppChannel.update({
+        where: { id: identityId },
+        data: updateData,
+      });
+    }
     return;
   }
   if (channelType === "instagram") {
     const row = await prisma.instagramChannel.findUnique({
       where: { id: identityId },
-      select: { lastMessageAt: true },
+      select: { lastMessageAt: true, lastCustomerMessageAt: true },
     });
-    if (row?.lastMessageAt && row.lastMessageAt.getTime() >= when.getTime()) return;
-    await prisma.instagramChannel.update({
-      where: { id: identityId },
-      data: { lastMessageAt: when },
-    });
+    
+    const updateData: any = {};
+    if (!row?.lastMessageAt || row.lastMessageAt.getTime() < when.getTime()) {
+      updateData.lastMessageAt = when;
+    }
+    if (isIncoming && (!row?.lastCustomerMessageAt || row.lastCustomerMessageAt.getTime() < when.getTime())) {
+      updateData.lastCustomerMessageAt = when;
+    }
+    
+    if (Object.keys(updateData).length > 0) {
+      await prisma.instagramChannel.update({
+        where: { id: identityId },
+        data: updateData,
+      });
+    }
     return;
   }
+  
   const row = await prisma.emailChannel.findUnique({
     where: { id: identityId },
-    select: { lastMessageAt: true },
+    select: { lastMessageAt: true, lastCustomerMessageAt: true },
   });
-  if (row?.lastMessageAt && row.lastMessageAt.getTime() >= when.getTime()) return;
-  await prisma.emailChannel.update({
-    where: { id: identityId },
-    data: { lastMessageAt: when },
-  });
+  
+  const updateData: any = {};
+  if (!row?.lastMessageAt || row.lastMessageAt.getTime() < when.getTime()) {
+    updateData.lastMessageAt = when;
+  }
+  if (isIncoming && (!row?.lastCustomerMessageAt || row.lastCustomerMessageAt.getTime() < when.getTime())) {
+    updateData.lastCustomerMessageAt = when;
+  }
+  
+  if (Object.keys(updateData).length > 0) {
+    await prisma.emailChannel.update({
+      where: { id: identityId },
+      data: updateData,
+    });
+  }
 }
 
 /**
@@ -807,6 +843,37 @@ export async function sendCustomerChannelMessage(input: {
   const identity = await getMostRecentIdentity(input.customerId, input.channelType);
   if (!identity) throw new Error(`No ${input.channelType} identity on customer`);
 
+  const instagramHumanAgentEnabled = await isFeatureEnabled(
+    "instagram_human_agent_enabled",
+    false,
+  );
+  const windowState = getMessagingWindow(
+    input.channelType,
+    (identity as { lastCustomerMessageAt?: Date | null }).lastCustomerMessageAt,
+    { instagramHumanAgentEnabled },
+  );
+
+  if (windowState.requiresExternalInbox) {
+    throw new Error(
+      input.channelType === "instagram"
+        ? "The Instagram messaging window has expired for CEP. Reply from the Instagram app or wait for the customer to message again."
+        : "Cannot send message. The messaging window has expired.",
+    );
+  }
+
+  if (windowState.state === "EXPIRED") {
+    throw new Error(`Cannot send message on ${input.channelType}. The messaging window has expired.`);
+  }
+
+  if (windowState.state === "TEMPLATE_REQUIRED") {
+    const err = new Error(
+      `Cannot send normal message on ${input.channelType}. A template is required because the messaging window has expired.`,
+    ) as Error & { code?: string; requiresTemplate?: boolean };
+    err.code = "WHATSAPP_WINDOW_EXPIRED";
+    err.requiresTemplate = true;
+    throw err;
+  }
+
   const adapter =
     input.channelType === "email"
       ? getEmailAdapter(channelCfg.channelConfig)
@@ -909,6 +976,7 @@ export async function sendCustomerChannelMessage(input: {
         }
       : {
           replyToExternalId: lastInbound?.externalId ?? undefined,
+          ...(windowState.requiresHumanAgentTag ? { messagingType: "MESSAGE_TAG", tag: "HUMAN_AGENT" } : {}),
         }),
   });
 
@@ -1111,5 +1179,108 @@ export function shapeCustomer(customer: {
     },
     identities,
     metadata: customer.metadata,
+  };
+}
+
+export async function sendWhatsAppTemplateMessage(input: {
+  customerId: string;
+  templateId: string;
+  variables: Record<string, string>;
+}) {
+  const config = await getEnabledChannelConfig("whatsapp");
+  if (!config) throw new Error("WhatsApp channel not configured");
+
+  const identity = await getMostRecentIdentity(input.customerId, "whatsapp");
+  if (!identity) throw new Error("No known WhatsApp identity for this customer");
+
+  const template = await prisma.whatsAppTemplate.findUnique({
+    where: { id: input.templateId },
+  });
+  if (!template) throw new Error("Template not found");
+  if (template.status !== "APPROVED") {
+    throw new Error("Only APPROVED templates can be sent");
+  }
+
+  const adapter = getChannelAdapter("whatsapp");
+  
+  // Build sending components based on variables
+  const sendingComponents = [];
+  if (Object.keys(input.variables).length > 0) {
+    const parameters = Object.keys(input.variables)
+      .sort((a, b) => parseInt(a) - parseInt(b)) // Order 1, 2, 3
+      .map(key => ({
+        type: "text",
+        text: input.variables[key]
+      }));
+      
+    sendingComponents.push({
+      type: "body",
+      parameters
+    });
+  }
+
+  const templatePayload = {
+    name: template.name,
+    language: { code: template.language },
+    components: sendingComponents
+  };
+
+  const to =
+    "externalId" in identity && typeof identity.externalId === "string"
+      ? identity.externalId
+      : "";
+
+  if (!to) throw new Error("No recipient identity ID found");
+
+  const result = await adapter.sendMessage(config.channelConfig as unknown as WhatsAppChannelConfig, {
+    to,
+    content: `[WhatsApp Template: ${template.name}]`,
+    contentType: "template",
+    templatePayload,
+  });
+
+  if (!result.ok || result.status === "failed") {
+    return {
+      message: null,
+      result: {
+        ok: false,
+        status: result.status,
+        error: result.error ?? "Failed to send WhatsApp template",
+        externalId: result.externalId,
+      },
+    };
+  }
+
+  const message = await prisma.message.create({
+    data: {
+      id: ulid(),
+      channelType: "whatsapp",
+      channelId: identity.id,
+      customerId: input.customerId,
+      direction: "outgoing",
+      content: `[WhatsApp Template: ${template.name}]`,
+      contentType: "template",
+      externalId: result.externalId ?? `local_${ulid()}`,
+      status: mapSendStatus(result.status),
+      isRead: true,
+      rawPayload: {
+        to,
+        template: templatePayload,
+        ...(result.raw && typeof result.raw === "object" ? (result.raw as object) : {}),
+      } as Prisma.InputJsonValue,
+    },
+  });
+
+  await touchIdentityLastMessageAt("whatsapp", identity.id, message.createdAt);
+  await recomputeCustomerResolved(input.customerId);
+
+  return {
+    message,
+    result: {
+      ok: result.ok,
+      status: result.status,
+      error: result.error,
+      externalId: result.externalId,
+    },
   };
 }

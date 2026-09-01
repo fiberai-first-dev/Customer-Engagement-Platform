@@ -35,6 +35,7 @@ enum ContentType {
   file
   audio
   video
+  template
   unknown
 }
 
@@ -145,6 +146,7 @@ model WhatsAppChannel {
   externalId    String    @map("external_id")
   resolved      Boolean   @default(false)
   lastMessageAt DateTime? @map("last_message_at")
+  lastCustomerMessageAt DateTime? @map("last_customer_message_at")
   metadata      Json      @default("{}")
   createdAt     DateTime  @default(now()) @map("created_at")
   updatedAt     DateTime  @updatedAt @map("updated_at")
@@ -165,6 +167,7 @@ model InstagramChannel {
   externalId    String    @map("external_id")
   resolved      Boolean   @default(false)
   lastMessageAt DateTime? @map("last_message_at")
+  lastCustomerMessageAt DateTime? @map("last_customer_message_at")
   metadata      Json      @default("{}")
   createdAt     DateTime  @default(now()) @map("created_at")
   updatedAt     DateTime  @updatedAt @map("updated_at")
@@ -185,6 +188,7 @@ model EmailChannel {
   externalId    String    @map("external_id")
   resolved      Boolean   @default(false)
   lastMessageAt DateTime? @map("last_message_at")
+  lastCustomerMessageAt DateTime? @map("last_customer_message_at")
   metadata      Json      @default("{}")
   createdAt     DateTime  @default(now()) @map("created_at")
   updatedAt     DateTime  @updatedAt @map("updated_at")
@@ -391,4 +395,31 @@ model SessionEvent {
   data      Json
   createdAt DateTime @default(now())
   session   UserSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+}
+
+enum TemplateStatus {
+  APPROVED
+  PENDING
+  REJECTED
+  PAUSED
+  DISABLED
+  UNKNOWN
+}
+
+model WhatsAppTemplate {
+  id               String         @id @default(cuid())
+  wabaId           String?        @map("waba_id")
+  metaTemplateId   String?        @map("meta_template_id")
+  name             String
+  language         String
+  internalCategory String         @map("internal_category")
+  metaCategory     String         @map("meta_category")
+  status           TemplateStatus @default(PENDING)
+  components       Json           @default("[]")
+  createdAt        DateTime       @default(now()) @map("created_at")
+  updatedAt        DateTime       @updatedAt @map("updated_at")
+  lastSyncedAt     DateTime?      @map("last_synced_at")
+
+  @@unique([name, language])
+  @@map("whatsapp_templates")
 }

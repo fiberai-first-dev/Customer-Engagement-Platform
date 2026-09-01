@@ -1,6 +1,6 @@
 export type ChannelType = "whatsapp" | "instagram" | "email";
 
-export type MessageContentType = "text" | "html" | "image" | "file" | "audio" | "video" | "unknown";
+export type MessageContentType = "text" | "html" | "image" | "file" | "audio" | "video" | "template" | "unknown";
 
 export interface WhatsAppChannelConfig {
   phoneNumberId: string;
@@ -61,6 +61,11 @@ export interface OutboundTextMessage {
   subject?: string;
   /** Email: Gmail API thread id so the send stays in the same Gmail conversation */
   threadId?: string;
+  /** WhatsApp Template Data */
+  templatePayload?: unknown;
+  /** Instagram Messaging API: MESSAGE_TAG with HUMAN_AGENT for 24h–7d window */
+  messagingType?: "MESSAGE_TAG" | "RESPONSE";
+  tag?: "HUMAN_AGENT";
 }
 
 export interface SendResult {

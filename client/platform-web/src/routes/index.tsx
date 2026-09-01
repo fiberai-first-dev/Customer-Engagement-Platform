@@ -9,6 +9,7 @@ import { TicketsPage } from "../pages/private/Tickets";
 import { TicketDetailPage } from "../pages/private/TicketDetail";
 import { UsersPage } from "../pages/private/UsersPage";
 import { TeamsPage } from "../pages/private/TeamsPage";
+import { TemplatesPage } from "../pages/private/TemplatesPage";
 import { LoginPage } from "../pages/public/Login";
 
 export function AppRoutes() {
@@ -26,6 +27,7 @@ export function AppRoutes() {
             <Route path="tickets/:id" element={<TicketDetailPage />} />
             <Route path="admin/users" element={<UsersPage />} />
             <Route path="admin/teams" element={<TeamsPage />} />
+            <Route path="admin/templates" element={<TemplatesPage />} />
             <Route path="settings" element={<SettingsPage />} />
           </Route>
         </Route>

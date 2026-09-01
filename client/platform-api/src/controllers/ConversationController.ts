@@ -1,5 +1,6 @@
 import type { FastifyRequest, FastifyReply } from "fastify";
 import { ConversationService } from "../services/ConversationService.js";
+import { isFeatureEnabled } from "../services/FeatureService.js";
 
 export class ConversationController {
   static async listConversations(
@@ -82,6 +83,35 @@ export class ConversationController {
               mediaFilename: request.body?.mediaFilename,
             }
           : undefined,
+      );
+      return reply.code(201).send(result);
+    } catch (err: any) {
+      return reply.code(400).send({ error: err.message });
+    }
+  }
+
+  static async sendWhatsAppTemplate(
+    request: FastifyRequest<{
+      Params: { id: string };
+      Body: {
+        templateId: string;
+        variables: Record<string, string>;
+      };
+    }>,
+    reply: FastifyReply,
+  ) {
+    const templateId = request.body?.templateId;
+    if (!templateId) return reply.code(400).send({ error: "templateId is required" });
+
+    try {
+      const templatesEnabled = await isFeatureEnabled("whatsapp_templates_enabled", false);
+      if (!templatesEnabled) {
+        return reply.code(403).send({ error: "WhatsApp Templates are disabled for this workspace" });
+      }
+      const result = await ConversationService.sendWhatsAppTemplate(
+        request.params.id,
+        templateId,
+        request.body?.variables || {}
       );
       return reply.code(201).send(result);
     } catch (err: any) {

@@ -20,6 +20,7 @@ import {
   AlertTriangle,
 } from "lucide-react";
 import type { ChannelType, Conversation, Message } from "../../api";
+import { useFeatureFlag } from "../../api";
 import {
   uploadConversationAttachment,
   channelSupportsAttachments,
@@ -28,6 +29,8 @@ import {
 } from "../../lib/channel-media";
 import { useAuthStore } from "../../store/auth";
 import { MessageMedia } from "./MessageMedia";
+import { ConversationWindowBanner, InstagramExternalInboxPanel } from "./ConversationWindowBanner";
+import { WhatsAppTemplateSelector } from "./WhatsAppTemplateSelector";
 import { Button } from "../ui/button";
 import { toast } from "sonner";
 import {
@@ -195,6 +198,10 @@ type Props = {
     subject?: string,
     media?: { mediaKey: string; mediaMimeType: string; mediaFilename: string },
   ) => Promise<boolean>;
+  onSendTemplate?: (
+    templateId: string,
+    variables: Record<string, string>
+  ) => Promise<boolean>;
   sending: boolean;
   customerContextOpen: boolean;
   onToggleCustomerContext: () => void;
@@ -221,6 +228,7 @@ export function ConversationThread({
   onDeleteMessages,
   deletingMessages,
   onSend,
+  onSendTemplate,
   sending,
   customerContextOpen,
   onToggleCustomerContext,
@@ -239,6 +247,9 @@ export function ConversationThread({
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [menuOpen, setMenuOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
+
+  const { data: featureFlag } = useFeatureFlag("whatsapp_templates_enabled");
+
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   // ── Audio recording ──────────────────────────────────────────────────────
@@ -887,13 +898,57 @@ export function ConversationThread({
           </div>
 
           {!selecting && (
-            <div className="shrink-0 border-t border-border bg-card p-3">
-              <div
-                className={cn(
-                  "flex flex-col gap-1.5 rounded-xl border bg-background p-1.5",
-                  needsAttentionHere ? "border-primary/25" : "border-border",
-                )}
-              >
+            <div className="shrink-0 border-t border-border bg-card">
+              {selectedConversation?.windowState && (
+                <ConversationWindowBanner 
+                  channel={selectedConversation.windowState.channel}
+                  state={selectedConversation.windowState.state}
+                  expiresAt={selectedConversation.windowState.expiresAt}
+                  canSendNormalMessage={selectedConversation.windowState.canSendNormalMessage}
+                  requiresTemplate={selectedConversation.windowState.requiresTemplate}
+                  requiresHumanAgentTag={selectedConversation.windowState.requiresHumanAgentTag}
+                  requiresExternalInbox={selectedConversation.windowState.requiresExternalInbox}
+                />
+              )}
+              <div className="p-3">
+                {selectedConversation?.windowState?.state === "TEMPLATE_REQUIRED" ? (
+                  <div className="rounded-xl border border-border bg-background p-3">
+                    {featureFlag?.enabled ? (
+                      <WhatsAppTemplateSelector 
+                        onSelect={async (template, variables) => {
+                          if (onSendTemplate) {
+                            const ok = await onSendTemplate(template.id, variables);
+                            if (ok) {
+                              toast.success("Template sent successfully");
+                            }
+                          } else {
+                            toast.error("Template sending not fully wired on this page");
+                          }
+                        }}
+                      />
+                    ) : (
+                      <div className="p-4 text-center text-sm text-muted-foreground flex flex-col items-center justify-center gap-2">
+                        <p>The messaging window is closed and WhatsApp Templates are disabled.</p>
+                        <p>Enable Templates in the admin dashboard to start a new conversation.</p>
+                      </div>
+                    )}
+                  </div>
+                ) : selectedConversation?.windowState?.requiresExternalInbox &&
+                  selectedConversation?.windowState?.channel === "instagram" ? (
+                  <InstagramExternalInboxPanel
+                    message={
+                      selectedConversation.windowState.state === "EXPIRED"
+                        ? "The 7-day messaging window is closed. Open Instagram to continue chatting, or wait for the customer to reply."
+                        : "The 24-hour Instagram window has closed. Open Instagram to reply directly until the customer messages again."
+                    }
+                  />
+                ) : (
+                  <div
+                    className={cn(
+                      "flex flex-col gap-1.5 rounded-xl border bg-background p-1.5",
+                      needsAttentionHere ? "border-primary/25" : "border-border",
+                    )}
+                  >
                 {activeTab === "email" && (
                   <input
                     type="text"
@@ -1054,9 +1109,13 @@ export function ConversationThread({
                   </Button>
                 </div>
               </div>
-              <p className="mt-1.5 text-center text-[10px] text-muted-foreground">
-                Enter to send · Shift+Enter for new line
-              </p>
+              )}
+              {selectedConversation?.windowState?.canSendNormalMessage !== false && (
+                <p className="mt-1.5 text-center text-[10px] text-muted-foreground">
+                  Enter to send · Shift+Enter for new line
+                </p>
+              )}
+              </div>
             </div>
           )}
         </>

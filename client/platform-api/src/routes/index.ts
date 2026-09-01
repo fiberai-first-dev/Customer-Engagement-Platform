@@ -18,6 +18,7 @@ import { ticketRoutes } from "./v1/ticket.routes.js";
 import { mediaRoutes } from "./v1/media.routes.js";
 import { teamRoutes } from "./v1/teams.routes.js";
 import { userRoutes } from "./v1/users.routes.js";
+import { whatsAppTemplateRoutes } from "../controllers/WhatsAppTemplateController.js";
 import { requireAuth } from "../middleware/auth.js";
 import { prisma } from "../config/db.js";
 import { ulid } from "ulid";
@@ -103,6 +104,7 @@ export async function registerRoutes(app: FastifyInstance) {
   app.register(mediaRoutes, { prefix: "/api/v1/media" });
   app.register(teamRoutes, { prefix: "/api/v1/teams" });
   app.register(userRoutes, { prefix: "/api/v1/users" });
+  app.register(whatsAppTemplateRoutes, { prefix: "/api/v1/whatsapp-templates" });
   
   app.get<{ Querystring: { key: string } }>("/api/v1/features", async (request, reply) => {
     const key = request.query.key;
@@ -110,6 +112,16 @@ export async function registerRoutes(app: FastifyInstance) {
     const { isFeatureEnabled } = await import("../services/FeatureService.js");
     const enabled = await isFeatureEnabled(key);
     return reply.send({ enabled });
+  });
+
+  app.post<{ Body: { key: string; enabled: boolean; description?: string } }>("/api/v1/features", async (request, reply) => {
+    const { key, enabled, description } = request.body;
+    if (typeof key !== "string" || typeof enabled !== "boolean") {
+      return reply.code(400).send({ error: "Invalid payload" });
+    }
+    const { setFeatureEnabled } = await import("../services/FeatureService.js");
+    const newEnabled = await setFeatureEnabled(key, enabled, description);
+    return reply.send({ enabled: newEnabled });
   });
   // Back-compat alias
   app.register(emailRoutes, { prefix: "/api/v1/gmail" });

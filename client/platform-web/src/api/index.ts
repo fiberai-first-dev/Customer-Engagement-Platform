@@ -141,6 +141,19 @@ export interface Message {
   }>;
 }
 
+export interface WhatsAppTemplate {
+  id: string;
+  name: string;
+  language: string;
+  internalCategory: string;
+  metaCategory: string;
+  status: "APPROVED" | "PENDING" | "REJECTED" | "PAUSED" | "DISABLED" | "UNKNOWN";
+  components: any[];
+  createdAt: string;
+  updatedAt: string;
+  lastSyncedAt?: string | null;
+}
+
 export interface Conversation {
   id: string;
   accountId: string;
@@ -157,6 +170,16 @@ export interface Conversation {
   inbox?: { id: string; name: string; channelType: ChannelType };
   messages?: Message[];
   hasUnread?: boolean;
+  windowState?: {
+    channel: ChannelType;
+    state: "ACTIVE" | "EXTENDED" | "EXPIRED" | "TEMPLATE_REQUIRED";
+    lastCustomerMessageAt: string | null;
+    expiresAt: string | null;
+    canSendNormalMessage: boolean;
+    requiresTemplate: boolean;
+    requiresHumanAgentTag: boolean;
+    requiresExternalInbox: boolean;
+  };
 }
 
 export interface ShopifyConfig {
@@ -1026,6 +1049,88 @@ export const useUploadMedia = () => {
         mimeType: string;
         filename: string;
       }>;
+    },
+  });
+};
+
+export const useSendWhatsAppTemplate = () => {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({
+      id,
+      templateId,
+      variables,
+    }: {
+      id: string;
+      templateId: string;
+      variables: Record<string, string>;
+    }) =>
+      request<{
+        conversationId?: string;
+        message: Message | null;
+        result: { ok: boolean; status: string; error?: string };
+      }>(`/api/v1/conversations/${encodeURIComponent(id)}/whatsapp/templates/send`, {
+        method: "POST",
+        body: JSON.stringify({ templateId, variables }),
+      }),
+    onSuccess: (data, variables) => {
+      const resolvedId = data.conversationId || variables.id;
+      if (data.message) {
+        queryClient.setQueryData<Message[]>(["messages", resolvedId], (current) => {
+          const list = current ?? [];
+          return [...list, data.message!];
+        });
+      }
+      queryClient.invalidateQueries({ queryKey: ["conversations"] });
+    },
+  });
+};
+
+export const useWhatsAppTemplates = () =>
+  useQuery({
+    queryKey: ["whatsapp-templates"],
+    queryFn: async () => {
+      const data = await request<{ templates: WhatsAppTemplate[] }>("/api/v1/whatsapp-templates");
+      return data.templates ?? [];
+    },
+  });
+
+export const useSyncTemplates = () => {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: () => request("/api/v1/whatsapp-templates/sync", { method: "POST" }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["whatsapp-templates"] }),
+  });
+};
+
+export const useDeleteTemplate = () => {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) =>
+      request(`/api/v1/whatsapp-templates/${id}`, { method: "DELETE" }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["whatsapp-templates"] }),
+  });
+};
+
+export const useFeatureFlag = (key: string) =>
+  useQuery({
+    queryKey: ['feature-flag', key],
+    queryFn: () => request<{ enabled: boolean }>(`/api/v1/features?key=${key}`),
+  });
+
+export const useToggleFeatureFlag = () => {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ key, enabled, description }: { key: string; enabled: boolean; description?: string }) =>
+      request<{ enabled: boolean }>('/api/v1/features', { method: 'POST', body: JSON.stringify({ key, enabled, description }) }),
+    onSuccess: (_data, variables) => {
+      queryClient.invalidateQueries({ queryKey: ['feature-flag', variables.key] });
+      if (
+        variables.key === "instagram_human_agent_enabled" ||
+        variables.key === "whatsapp_templates_enabled"
+      ) {
+        queryClient.invalidateQueries({ queryKey: ["conversations"] });
+      }
     },
   });
 };

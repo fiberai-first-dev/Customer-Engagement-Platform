@@ -198,6 +198,13 @@ export const whatsappAdapter: ChannelAdapter<WhatsAppChannelConfig> = {
           to,
           buffer,
         });
+      } else if (message.contentType === "template" && message.templatePayload) {
+        body = {
+          messaging_product: "whatsapp",
+          to,
+          type: "template",
+          template: message.templatePayload,
+        };
       } else {
         const text = message.content?.trim();
         if (!text) {

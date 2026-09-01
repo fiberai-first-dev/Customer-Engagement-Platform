@@ -32,31 +32,21 @@ export async function ensureWorkspace() {
       channel === "whatsapp" ? "WhatsApp" : channel === "instagram" ? "Instagram" : "Email";
     const preferredId = `channel_${channel}`;
 
-    const existing =
-      (await prisma.channelConfig.findUnique({ where: { id: preferredId } })) ??
-      (await prisma.channelConfig.findFirst({ where: { channelType: channel } }));
-
-    if (existing) {
-      // Never overwrite channelConfig from env — only ensure name stays consistent
-      if (existing.name !== name) {
-        await prisma.channelConfig.update({
-          where: { id: existing.id },
-          data: { name },
-        });
-      }
-      continue;
+    try {
+      await prisma.channelConfig.upsert({
+        where: { id: preferredId },
+        update: { name },
+        create: {
+          id: preferredId,
+          name,
+          channelType: channel,
+          enabled: false,
+          channelConfig: {},
+        },
+      });
+    } catch (err) {
+      console.warn(`[workspace] Failed to upsert ${channel} config, ignoring...`);
     }
-
-    await prisma.channelConfig.create({
-      data: {
-        id: preferredId,
-        name,
-        channelType: channel,
-        enabled: false,
-        channelConfig: {},
-      },
-    });
-    console.log(`[workspace] created empty ${channel} channels_config`);
   }
 
   const shopify = await prisma.shopifyConfig.findUnique({ where: { id: "shopify_default" } });

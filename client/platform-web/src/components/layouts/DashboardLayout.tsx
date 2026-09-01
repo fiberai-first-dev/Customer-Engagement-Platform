@@ -12,7 +12,9 @@ import {
   Building2,
   ShieldCheck,
   UserRound,
+  LayoutTemplate,
 } from "lucide-react";
+import { useFeatureFlag } from "../../api";
 import { cn } from "../../utils/utils";
 
 function roleShort(role?: string) {
@@ -52,9 +54,12 @@ export function DashboardLayout() {
     { to: "/tickets", icon: TicketIcon, label: "Tickets" },
   ];
 
+  const { data: featureFlag } = useFeatureFlag("whatsapp_templates_enabled");
+
   const orgLinks = [
     ...(canManageUsers ? [{ to: "/admin/users", icon: ShieldCheck, label: "Users" }] : []),
     ...(canViewTeams ? [{ to: "/admin/teams", icon: Building2, label: "Teams" }] : []),
+    ...(featureFlag?.enabled ? [{ to: "/admin/templates", icon: LayoutTemplate, label: "Templates" }] : []),
   ];
 
   const bottomLinks =

@@ -331,6 +331,9 @@ export const instagramAdapter: ChannelAdapter<InstagramChannelConfig> = {
         body = {
           recipient: { id: message.to },
           message: { text },
+          ...(message.messagingType === "MESSAGE_TAG" && message.tag
+            ? { messaging_type: "MESSAGE_TAG", tag: message.tag }
+            : {}),
         };
       }
 

@@ -23,6 +23,7 @@ import {
   type ChannelType,
   type Conversation,
   type TicketStatus,
+  useSendWhatsAppTemplate,
 } from "../../api";
 import { useNavigate } from "react-router-dom";
 import { useAppStore } from "../../store";
@@ -604,8 +605,30 @@ export function InboxPage() {
           : `${channelLabel(channel)} reply sent`,
       );
       return true;
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Failed to send message");
+    } catch (err: any) {
+      toast.error(err.message || "Failed to send message");
+      return false;
+    }
+  };
+
+  const sendWhatsAppTemplate = useSendWhatsAppTemplate();
+
+  const handleSendTemplate = async (templateId: string, variables: Record<string, string>) => {
+    if (!selectedConversation || !selectedContactId) return false;
+    
+    try {
+      const data = await sendWhatsAppTemplate.mutateAsync({
+        id: selectedConversation.id,
+        templateId,
+        variables
+      });
+      if (!data.result?.ok || !data.message) {
+        toast.error(data.result?.error || "Template failed to send");
+        return false;
+      }
+      return true;
+    } catch (err: any) {
+      toast.error(err.message || "Failed to send template");
       return false;
     }
   };
@@ -887,7 +910,8 @@ export function InboxPage() {
           onDeleteMessages={handleDeleteMessages}
           deletingMessages={deleteMessages.isPending}
           onSend={handleSend}
-          sending={sendMessage.isPending}
+          onSendTemplate={handleSendTemplate}
+          sending={sendMessage.isPending || sendWhatsAppTemplate.isPending}
           customerContextOpen={customerContextOpen}
           onToggleCustomerContext={() => setCustomerContextOpen((open) => !open)}
           enabledChannels={enabledChannels}

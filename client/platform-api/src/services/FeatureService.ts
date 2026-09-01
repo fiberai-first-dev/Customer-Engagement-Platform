@@ -27,3 +27,13 @@ export async function isFeatureEnabled(key: string, defaultValue = false): Promi
   
   return defaultValue;
 }
+
+export async function setFeatureEnabled(key: string, enabled: boolean, description?: string): Promise<boolean> {
+  await prisma.featureFlag.upsert({
+    where: { key },
+    update: { enabled, description },
+    create: { key, enabled, description }
+  });
+  featuresCache[key] = enabled;
+  return enabled;
+}

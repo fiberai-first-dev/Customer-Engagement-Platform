@@ -9,6 +9,11 @@ import {
   resolveAllIdentitiesForCustomerChannel,
 } from "./ResolveService.js";
 import {
+  getMessagingWindow,
+  serializeConversationWindow,
+} from "./ConversationWindowService.js";
+import { isFeatureEnabled } from "./FeatureService.js";
+import {
   suppressConversation,
   suppressMessages as suppressSelectedMessages,
 } from "./SuppressService.js";
@@ -211,6 +216,11 @@ export class ConversationService {
       where: { enabled: true },
     });
     const enabledTypes = new Set(enabledConfigs.map((c) => c.channelType));
+    const instagramHumanAgentEnabled = await isFeatureEnabled(
+      "instagram_human_agent_enabled",
+      false,
+    );
+    const windowOptions = { instagramHumanAgentEnabled };
 
     const customers = await prisma.customer.findMany({
       include: {
@@ -285,6 +295,10 @@ export class ConversationService {
             orderBy: { createdAt: "desc" },
           });
 
+          const windowState = serializeConversationWindow(
+            getMessagingWindow(type, latest.lastCustomerMessageAt ?? null, windowOptions),
+          );
+
           const conversationId = buildConversationId(customer.id, type);
           rows.push({
             id: conversationId,
@@ -298,6 +312,7 @@ export class ConversationService {
             hasUnread: (unreadMap.get(customer.id)?.[type] ?? 0) > 0,
             inbox: inboxMeta,
             contact: contactBase,
+            windowState,
             messages: lastMsg ? [shapeMessage(conversationId, lastMsg)] : [],
           });
           continue;
@@ -348,6 +363,9 @@ export class ConversationService {
             hasUnread: (unreadMap.get(customer.id)?.email ?? 0) > 0,
             inbox: inboxMeta,
             contact: contactBase,
+            windowState: serializeConversationWindow(
+              getMessagingWindow("email", lastMsg.createdAt, windowOptions),
+            ),
             messages: [shapeMessage(conversationId, lastMsg)],
           });
         }
@@ -462,14 +480,38 @@ export class ConversationService {
             hasMedia: Boolean(result.message.mediaKey),
             mediaFilename: result.message.mediaFilename ?? null,
             mediaMimeType: result.message.mediaMimeType ?? null,
-            mediaItems: normalizeMediaItems(result.message.mediaItems, {
-              mediaKey: result.message.mediaKey,
-              mediaMimeType: result.message.mediaMimeType,
-              mediaFilename: result.message.mediaFilename,
-              contentType: result.message.contentType,
+            mediaItems: normalizeMediaItems(result.message!.mediaItems, {
+              mediaKey: result.message!.mediaKey,
+              mediaMimeType: result.message!.mediaMimeType,
+              mediaFilename: result.message!.mediaFilename,
+              contentType: result.message!.contentType,
             }),
           }
         : null,
+      result: result.result,
+    };
+  }
+
+  static async sendWhatsAppTemplate(
+    conversationId: string,
+    templateId: string,
+    variables: Record<string, string>
+  ) {
+    const { customerId, channelType } = this.parseConversationId(conversationId);
+    if (channelType !== "whatsapp") {
+      throw new Error("Templates can only be sent on WhatsApp");
+    }
+
+    const { sendWhatsAppTemplateMessage } = await import("./MessagingService.js");
+    const result = await sendWhatsAppTemplateMessage({
+      customerId,
+      templateId,
+      variables,
+    });
+
+    return {
+      conversationId,
+      message: result.message ? fullShapeMessage(conversationId, result.message) : null,
       result: result.result,
     };
   }
