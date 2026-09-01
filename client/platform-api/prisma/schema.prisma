@@ -416,6 +416,8 @@ model WhatsAppTemplate {
   metaCategory     String         @map("meta_category")
   status           TemplateStatus @default(PENDING)
   components       Json           @default("[]")
+  rejectionReason  String?        @map("rejection_reason")
+  qualityScore     String?        @map("quality_score")
   createdAt        DateTime       @default(now()) @map("created_at")
   updatedAt        DateTime       @updatedAt @map("updated_at")
   lastSyncedAt     DateTime?      @map("last_synced_at")
@@ -423,3 +425,4 @@ model WhatsAppTemplate {
   @@unique([name, language])
   @@map("whatsapp_templates")
 }
+

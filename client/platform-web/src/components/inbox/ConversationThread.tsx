@@ -30,7 +30,10 @@ import {
 } from "../../lib/channel-media";
 import { useAuthStore } from "../../store/auth";
 import { MessageMedia } from "./MessageMedia";
-import { InstagramExternalInboxPanel } from "./ConversationWindowBanner";
+import {
+  InstagramExternalInboxPanel,
+  WhatsAppTemplateClosedPanel,
+} from "./ConversationWindowBanner";
 import { WhatsAppTemplateSelector } from "./WhatsAppTemplateSelector";
 import { Button } from "../ui/button";
 import { toast } from "sonner";
@@ -923,56 +926,38 @@ export function ConversationThread({
             <div className="shrink-0 border-t border-border bg-card">
               <div className="p-3">
                 {effectiveWindow.state === "TEMPLATE_REQUIRED" ? (
-                  <div className="rounded-xl border border-amber-500/30 bg-amber-500/5 p-5 text-center space-y-4">
-                    <div className="space-y-1">
-                      <p className="text-sm font-medium text-amber-800 dark:text-amber-300">
-                        Messaging window closed
-                      </p>
-                      <p className="text-sm text-amber-700/80 dark:text-amber-400/80">
-                        The 24-hour WhatsApp window has expired. Use an approved template to contact this customer.
-                      </p>
-                    </div>
-                    {featureFlag?.enabled ? (
-                      <div className="flex justify-center">
-                        <WhatsAppTemplateSelector 
-                          onSelect={async (template, variables) => {
-                            if (onSendTemplate) {
-                              const ok = await onSendTemplate(template.id, variables);
-                              if (ok) {
-                                toast.success("Template sent successfully");
-                              }
-                            } else {
-                              toast.error("Template sending not fully wired on this page");
+                  <WhatsAppTemplateClosedPanel templatesEnabled={featureFlag?.enabled ?? false}>
+                    <div className="flex justify-center">
+                      <WhatsAppTemplateSelector
+                        variant="compact"
+                        onSelect={async (template, variables) => {
+                          if (onSendTemplate) {
+                            const ok = await onSendTemplate(template.id, variables);
+                            if (ok) {
+                              toast.success("Template sent successfully");
                             }
-                          }}
-                        />
-                      </div>
-                    ) : (
-                      <div className="pt-2 text-sm text-amber-700/80 flex flex-col items-center gap-1">
-                        <p>WhatsApp Templates are currently disabled.</p>
-                        <p>Enable them in the admin dashboard to continue chatting.</p>
-                      </div>
-                    )}
-                  </div>
+                          } else {
+                            toast.error("Template sending not fully wired on this page");
+                          }
+                        }}
+                      />
+                    </div>
+                  </WhatsAppTemplateClosedPanel>
                 ) : effectiveWindow.requiresExternalInbox && activeTab === "instagram" ? (
                   <InstagramExternalInboxPanel
-                    message={
-                      effectiveWindow.state === "EXPIRED"
-                        ? "The 7-day messaging window is closed. Open Instagram to continue chatting, or wait for the customer to reply."
-                        : "The 24-hour Instagram window has closed. Open Instagram to reply directly until the customer messages again."
-                    }
+                    contact={contact}
+                    state={effectiveWindow.state === "EXPIRED" ? "EXPIRED" : "EXTENDED"}
                   />
                 ) : composerBlocked ? (
-                  <div className="rounded-xl border border-amber-500/30 bg-amber-500/5 p-6 text-center space-y-2">
-                    <p className="text-sm font-medium text-amber-800 dark:text-amber-300">
-                      Messaging window closed
-                    </p>
-                    <p className="text-sm text-muted-foreground">
-                      {activeTab === "whatsapp"
-                        ? "The 24-hour WhatsApp window has expired. Use an approved template to contact this customer."
-                        : "You cannot send a message from CEP until the customer replies again."}
-                    </p>
-                  </div>
+                  activeTab === "instagram" ? (
+                    <InstagramExternalInboxPanel contact={contact} state="EXPIRED" />
+                  ) : (
+                    <WhatsAppTemplateClosedPanel templatesEnabled={false}>
+                      <p className="text-center text-sm text-muted-foreground">
+                        You cannot send a message from CEP until the customer replies again.
+                      </p>
+                    </WhatsAppTemplateClosedPanel>
+                  )
                 ) : (
                   <div
                     className={cn(

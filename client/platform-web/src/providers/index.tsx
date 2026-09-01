@@ -25,7 +25,7 @@ export function Providers({ children }: { children: React.ReactNode }) {
     <GoogleOAuthProvider clientId={import.meta.env.VITE_GOOGLE_CLIENT_ID ?? ""}>
       <QueryClientProvider client={queryClient}>
         {children}
-        <Toaster richColors position="top-center" />
+        <Toaster richColors position="top-right" />
       </QueryClientProvider>
     </GoogleOAuthProvider>
   );

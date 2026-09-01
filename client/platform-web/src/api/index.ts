@@ -149,9 +149,32 @@ export interface WhatsAppTemplate {
   metaCategory: string;
   status: "APPROVED" | "PENDING" | "REJECTED" | "PAUSED" | "DISABLED" | "UNKNOWN";
   components: any[];
+  rejectionReason?: string | null;
+  qualityScore?: string | null;
+  metaTemplateId?: string | null;
+  wabaId?: string | null;
   createdAt: string;
   updatedAt: string;
   lastSyncedAt?: string | null;
+}
+
+export interface TemplateQuota {
+  available: boolean;
+  usedToday?: number;
+  limitToday?: number;
+  tier?: string;
+  message?: string;
+  metaBusinessSuiteUrl: string;
+}
+
+export interface TemplateAnalytics {
+  available: boolean;
+  sent: number;
+  delivered: number;
+  read: number;
+  usageCount: number;
+  period: { start: string; end: string };
+  message?: string;
 }
 
 export interface Conversation {
@@ -1111,6 +1134,70 @@ export const useDeleteTemplate = () => {
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["whatsapp-templates"] }),
   });
 };
+
+export const useCreateTemplate = () => {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (data: {
+      name: string;
+      language: string;
+      internalCategory: string;
+      metaCategory: string;
+      components: any[];
+    }) =>
+      request<{ template: WhatsAppTemplate }>("/api/v1/whatsapp-templates", {
+        method: "POST",
+        body: JSON.stringify(data),
+      }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["whatsapp-templates"] }),
+  });
+};
+
+export const useSyncSingleTemplate = () => {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) =>
+      request<{ template: WhatsAppTemplate }>(`/api/v1/whatsapp-templates/${id}/sync`, {
+        method: "POST",
+      }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["whatsapp-templates"] }),
+  });
+};
+
+export const usePatchTemplate = () => {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({
+      id,
+      ...data
+    }: {
+      id: string;
+      components?: any[];
+      internalCategory?: string;
+    }) =>
+      request<{ template: WhatsAppTemplate }>(`/api/v1/whatsapp-templates/${id}`, {
+        method: "PATCH",
+        body: JSON.stringify(data),
+      }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["whatsapp-templates"] }),
+  });
+};
+
+export const useTemplateQuota = () =>
+  useQuery({
+    queryKey: ["whatsapp-template-quota"],
+    queryFn: () => request<TemplateQuota>("/api/v1/whatsapp-templates/quota"),
+    staleTime: 5 * 60 * 1000,
+  });
+
+export const useTemplateAnalytics = (id: string | null | undefined) =>
+  useQuery({
+    queryKey: ["whatsapp-template-analytics", id],
+    queryFn: () =>
+      request<TemplateAnalytics>(`/api/v1/whatsapp-templates/${id}/analytics`),
+    enabled: Boolean(id),
+    staleTime: 10 * 60 * 1000,
+  });
 
 export const useFeatureFlag = (key: string) =>
   useQuery({

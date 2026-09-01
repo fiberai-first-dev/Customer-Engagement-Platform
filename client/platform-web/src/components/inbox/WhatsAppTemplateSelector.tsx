@@ -7,9 +7,11 @@ import { motion, AnimatePresence } from "framer-motion";
 interface Props {
   onSelect: (template: WhatsAppTemplate, variables: Record<string, string>) => void;
   disabled?: boolean;
+  /** Inline closed-window panel vs full-width trigger */
+  variant?: "default" | "compact";
 }
 
-export function WhatsAppTemplateSelector({ onSelect, disabled }: Props) {
+export function WhatsAppTemplateSelector({ onSelect, disabled, variant = "default" }: Props) {
   const { data: templates = [], isLoading } = useWhatsAppTemplates();
   const [open, setOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
@@ -51,16 +53,21 @@ export function WhatsAppTemplateSelector({ onSelect, disabled }: Props) {
   };
 
   if (!open) {
+    const compact = variant === "compact";
     return (
-      <Button 
-        type="button" 
-        size="lg" 
+      <Button
+        type="button"
+        size={compact ? "default" : "lg"}
         onClick={() => setOpen(true)}
         disabled={disabled || isLoading}
-        className="w-full shadow-sm bg-primary/10 hover:bg-primary/20 text-primary border-primary/20 hover:border-primary/30 transition-all font-medium"
+        className={
+          compact
+            ? "gap-2 shadow-sm"
+            : "w-full shadow-sm bg-primary/10 hover:bg-primary/20 text-primary border border-primary/20 hover:border-primary/30 font-medium"
+        }
       >
-        <MessageSquareText className="mr-2 h-5 w-5" />
-        {isLoading ? "Loading templates..." : "Choose WhatsApp Template"}
+        <MessageSquareText className="h-4 w-4" />
+        {isLoading ? "Loading templates…" : "Choose approved template"}
       </Button>
     );
   }
