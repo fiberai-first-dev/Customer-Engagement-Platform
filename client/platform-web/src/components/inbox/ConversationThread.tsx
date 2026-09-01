@@ -939,7 +939,6 @@ export function ConversationThread({
                   <WhatsAppTemplateClosedPanel templatesEnabled={featureFlag?.enabled ?? false}>
                     <div className="flex justify-center">
                       <WhatsAppTemplateSelector
-                        variant="compact"
                         preferInternalCategory="CUSTOMER_REENGAGEMENT"
                         contactName={contactName}
                         onSelect={async (template, variables) => {
@@ -983,6 +982,7 @@ export function ConversationThread({
                       {templateSelectorOpen && (
                         <WhatsAppTemplateSelector
                           forceOpen
+                          preferInternalCategory="CUSTOMER_REENGAGEMENT"
                           contactName={contactName}
                           onClose={() => setTemplateSelectorOpen(false)}
                           onSelect={async (template, variables) => {

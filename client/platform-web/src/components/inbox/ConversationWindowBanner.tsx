@@ -140,6 +140,19 @@ export function WhatsAppTemplateClosedPanel({
   templatesEnabled,
   children,
 }: WhatsAppTemplateClosedPanelProps) {
+  if (!templatesEnabled) {
+    return (
+      <div className="overflow-hidden rounded-xl border border-border bg-card shadow-sm mx-4 mb-4">
+        <div className="bg-muted/30 px-5 py-4">
+          <p className="text-sm font-semibold text-foreground">WhatsApp window closed</p>
+          <p className="mt-1 text-sm text-muted-foreground leading-relaxed">
+            The 24-hour service window has expired. You must wait for the customer to send a new message before you can reply.
+          </p>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="overflow-hidden rounded-xl border border-border bg-card shadow-sm mx-4 mb-4">
       <div className="border-b border-border bg-muted/30 px-5 py-4">
@@ -150,16 +163,7 @@ export function WhatsAppTemplateClosedPanel({
       </div>
 
       <div className="px-5 py-6 bg-background">
-        {templatesEnabled ? (
-          <div className="flex justify-center">{children}</div>
-        ) : (
-          <div className="rounded-lg border border-dashed border-border bg-muted/20 px-4 py-6 text-center max-w-md mx-auto">
-            <p className="text-sm font-medium text-foreground">Templates are disabled</p>
-            <p className="mt-1 text-xs text-muted-foreground">
-              Enable WhatsApp Templates in Settings to contact this customer.
-            </p>
-          </div>
-        )}
+        <div className="flex justify-center">{children}</div>
       </div>
     </div>
   );

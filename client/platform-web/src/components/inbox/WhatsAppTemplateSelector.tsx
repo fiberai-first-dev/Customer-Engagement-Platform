@@ -40,6 +40,11 @@ function defaultFirstName(contactName?: string): string {
   return contactName.replace(/^@+/, "").trim().split(/\s+/)[0] || "";
 }
 
+/** Meta's bundled test template — only works on Meta's public test numbers. */
+function isMetaTestTemplate(template: WhatsAppTemplate): boolean {
+  return template.name.toLowerCase() === "hello_world";
+}
+
 function buildDefaultVariables(indices: number[], contactName?: string): Record<string, string> {
   const vars: Record<string, string> = {};
   if (indices.includes(1) && contactName) vars["1"] = defaultFirstName(contactName);
@@ -76,6 +81,7 @@ export function WhatsAppTemplateSelector({
     () =>
       templates
         .filter((t) => t.status === "APPROVED")
+        .filter((t) => !isMetaTestTemplate(t))
         .filter((t) => (preferInternalCategory ? t.internalCategory === preferInternalCategory : true))
         .filter((t) => {
           const q = searchQuery.toLowerCase();

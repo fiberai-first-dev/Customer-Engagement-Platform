@@ -225,8 +225,18 @@ export function WhatsAppTemplateCreateModal({ open, onClose, prefill }: Props) {
     return null;
   }, [buttons]);
 
+  const exampleErrors = useMemo(() => {
+    for (const n of headerVarNums) {
+      if (!headerExamples[n]?.example?.trim()) return `Header {{${n}}} requires an example value`;
+    }
+    for (const n of bodyVarNums) {
+      if (!bodyExamples[n]?.example?.trim()) return `Body {{${n}}} requires an example value`;
+    }
+    return null;
+  }, [headerVarNums, bodyVarNums, headerExamples, bodyExamples]);
+
   const isValid =
-    !nameError && !bodyError && !buttonErrors;
+    !nameError && !bodyError && !buttonErrors && !exampleErrors;
 
   // Preview shows raw placeholders ({{1}}, etc.) — not example values
   const previewHeader = headerType === "TEXT" ? headerContent : null;

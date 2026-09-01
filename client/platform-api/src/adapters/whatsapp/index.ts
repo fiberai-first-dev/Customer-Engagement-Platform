@@ -240,6 +240,8 @@ export const whatsappAdapter: ChannelAdapter<WhatsAppChannelConfig> = {
           code === 102 ||
           /auth|oauth|access token|session has expired|permission/i.test(detail);
         const isNotRegistered = code === 133010 || /not registered/i.test(detail);
+        const isHelloWorldTest =
+          code === 131058 || /hello world templates can only be sent/i.test(detail);
         return {
           ok: false,
           status: "failed",
@@ -247,7 +249,9 @@ export const whatsappAdapter: ChannelAdapter<WhatsAppChannelConfig> = {
             ? "WhatsApp access token is invalid or expired. Update it in Settings → Channels."
             : isNotRegistered
               ? "WhatsApp phone number is not registered on Cloud API. Register it in Meta (POST /{phone-number-id}/register) and retry."
-              : detail,
+              : isHelloWorldTest
+                ? "The hello_world template only works on Meta's test phone numbers. Create and approve a re-engagement template in Templates, then sync from Meta."
+                : detail,
           raw,
         };
       }

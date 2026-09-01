@@ -59,9 +59,9 @@ export function DashboardLayout() {
   const hasWhatsapp = enabledChannels.includes("whatsapp");
 
   const orgLinks = [
-    ...(canManageUsers ? [{ to: "/admin/users", icon: ShieldCheck, label: "Users" }] : []),
-    ...(canViewTeams ? [{ to: "/admin/teams", icon: Building2, label: "Teams" }] : []),
-    ...(featureFlag?.enabled && hasWhatsapp ? [{ to: "/admin/templates", icon: LayoutTemplate, label: "Templates" }] : []),
+    ...(canManageUsers ? [{ to: "/users", icon: ShieldCheck, label: "Users" }] : []),
+    ...(canViewTeams ? [{ to: "/teams", icon: Building2, label: "Teams" }] : []),
+    ...(featureFlag?.enabled && hasWhatsapp && (user?.role === "ADMIN" || user?.role === "SUPER_ADMIN") ? [{ to: "/templates", icon: LayoutTemplate, label: "Templates" }] : []),
   ];
 
   const bottomLinks =

@@ -276,23 +276,6 @@ export function WhatsAppTemplateDetailDrawer({ template, onClose }: Props) {
                 </section>
               )}
 
-              {template.status === "PENDING" && (
-                <section className="mx-6 my-4 rounded-lg border border-yellow-500/20 bg-yellow-500/5 px-4 py-3 text-sm text-muted-foreground">
-                  {template.metaTemplateId ? (
-                    <>
-                      Submitted to Meta and waiting for review. In WhatsApp Manager, search for{" "}
-                      <span className="font-mono font-medium text-foreground">{template.name}</span>{" "}
-                      and clear the status/date filters if you do not see it.
-                    </>
-                  ) : (
-                    <>
-                      This template is only saved in CEP — Meta did not confirm submission. Create it
-                      again or submit directly in Meta Business Manager.
-                    </>
-                  )}
-                </section>
-              )}
-
               <section className="border-b border-border px-6 py-4">
                 <h3 className="mb-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">
                   Meta details
@@ -311,10 +294,6 @@ export function WhatsAppTemplateDetailDrawer({ template, onClose }: Props) {
                     </dd>
                   </div>
                 </dl>
-                <p className="mt-2 text-xs text-muted-foreground">
-                  Match the business account ID with Settings → Channels in CEP and Svasthyaa Organics in
-                  Meta Business Manager.
-                </p>
               </section>
 
               <AnalyticsSection templateId={template.id} />

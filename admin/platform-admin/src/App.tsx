@@ -365,9 +365,13 @@ export function App() {
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.error || "Failed to update feature");
       
-      setFeatures((prev) =>
-        prev.map((f) => (f.key === featureKey ? { ...f, enabled } : f)),
-      );
+      setFeatures((prev) => {
+        const exists = prev.some((f) => f.key === featureKey);
+        if (exists) {
+          return prev.map((f) => (f.key === featureKey ? { ...f, enabled } : f));
+        }
+        return [...prev, { key: featureKey, enabled, description: "", updatedAt: new Date().toISOString() }];
+      });
     } catch (err: any) {
       alert(err.message);
     }
@@ -761,7 +765,26 @@ export function App() {
                         }
                       });
                       
-                      const filteredFeatures = allFeatures.filter(f => f.key.toLowerCase().includes(featureSearchQuery.toLowerCase()));
+                      const featureLabels: Record<string, string> = {
+                        "rrweb": "Session Replays",
+                        "whatsapp_templates_enabled": "WhatsApp Templates",
+                        "whatsapp_template_injection_enabled": "Send Template in Chat",
+                        "instagram_human_agent_enabled": "Instagram Human Agent"
+                      };
+                      
+                      const filteredFeatures = allFeatures.filter(f => {
+                        const q = featureSearchQuery.toLowerCase();
+                        const label = featureLabels[f.key] ?? f.key;
+                        return f.key.toLowerCase().includes(q) || label.toLowerCase().includes(q);
+                      });
+                      if (loading) {
+                        return (
+                          <div className="p-16 flex flex-col items-center justify-center text-muted-foreground">
+                            <Loader2 className="h-8 w-8 animate-spin mb-4 text-primary/50" />
+                            <p className="font-medium text-foreground">Loading features...</p>
+                          </div>
+                        );
+                      }
                       
                       return (
                         <>
@@ -779,17 +802,11 @@ export function App() {
                             <div key={feature.key} className="p-6 flex items-center justify-between hover:bg-background/80 transition-colors group">
                               <div>
                                 <h3 className="font-semibold text-foreground flex items-center gap-3">
-                                  {{
-                                    "rrweb": "Session Replays",
-                                    "whatsapp_templates_enabled": "WhatsApp Templates",
-                                    "whatsapp_template_injection_enabled": "Send Template in Chat",
-                                    "instagram_human_agent_enabled": "Instagram Human Agent"
-                                  }[feature.key] ?? feature.key}
+                                  {featureLabels[feature.key] ?? feature.key}
                                   <span className={`text-[10px] uppercase font-bold px-2 py-0.5 rounded-full ${feature.enabled ? "bg-green-50 text-green-700 border border-green-200" : "bg-muted text-muted-foreground border border-border"}`}>
                                     {feature.enabled ? "Active" : "Disabled"}
                                   </span>
                                 </h3>
-                                {feature.description && <p className="text-sm text-muted-foreground mt-1">{feature.description}</p>}
                               </div>
                               
                               <button

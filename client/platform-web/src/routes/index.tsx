@@ -25,9 +25,9 @@ export function AppRoutes() {
             <Route path="contacts" element={<ContactsPage />} />
             <Route path="tickets" element={<TicketsPage />} />
             <Route path="tickets/:id" element={<TicketDetailPage />} />
-            <Route path="admin/users" element={<UsersPage />} />
-            <Route path="admin/teams" element={<TeamsPage />} />
-            <Route path="admin/templates" element={<TemplatesPage />} />
+            <Route path="users" element={<UsersPage />} />
+            <Route path="teams" element={<TeamsPage />} />
+            <Route path="templates" element={<TemplatesPage />} />
             <Route path="settings" element={<SettingsPage />} />
           </Route>
         </Route>
