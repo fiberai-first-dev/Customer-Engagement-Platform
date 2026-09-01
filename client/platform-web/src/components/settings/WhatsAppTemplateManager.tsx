@@ -157,8 +157,7 @@ function EmptyState({
     </div>
   );
 }
-
-const TABLE_HEADERS = ["Name", "Category", "Language", "Status", ""];
+const TABLE_HEADERS = ["Name", "Internal Category", "Language", "Status", ""];
 
 const LANGUAGE_LABELS: Record<string, string> = {
   en: "English",
@@ -286,7 +285,7 @@ export function WhatsAppTemplateManager() {
             onChange={(e) => setCategoryFilter(e.target.value)}
             className="shrink-0 cursor-pointer rounded-xl border border-border bg-muted/50 px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary/50"
           >
-            <option value="ALL">All categories</option>
+            <option value="ALL">All internal categories</option>
             {allCategories.map((c) => (
               <option key={c} value={c}>
                 {CATEGORY_LABELS[c] ?? c}

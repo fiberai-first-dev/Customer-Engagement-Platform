@@ -358,9 +358,10 @@ export class WhatsAppTemplateService {
     const template = await prisma.whatsAppTemplate.findUnique({ where: { id } });
     if (!template) throw new Error("Template not found");
 
-    if (template.status === "APPROVED") {
+    // If it's approved, we cannot edit Meta components, but we CAN edit our internalCategory.
+    if (template.status === "APPROVED" && data.components) {
       throw new Error(
-        "Approved templates cannot be edited. Duplicate it to create a new version."
+        "Approved templates cannot have their content edited. Duplicate it to create a new version."
       );
     }
 
