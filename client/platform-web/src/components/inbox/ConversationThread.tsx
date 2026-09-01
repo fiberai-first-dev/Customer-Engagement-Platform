@@ -1,8 +1,9 @@
-import { Fragment, useEffect, useRef, useState } from "react";
+import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import {
   AlertCircle,
   CheckCircle2,
   CheckSquare,
+  ExternalLink,
   Loader2,
   MessageSquare,
   Mic,
@@ -40,7 +41,9 @@ import {
   formatIdentities,
   identitiesFor,
   initials,
+  instagramThreadOpenUrl,
   isActiveStatus,
+  isInstagramApiWindowExpired,
   isSameCalendarDay,
 } from "./utils";
 
@@ -313,6 +316,14 @@ export function ConversationThread({
 
   const needsAttentionHere = Boolean(
     selectedConversation && isActiveStatus(selectedConversation.status),
+  );
+  const instagramWindowExpired = useMemo(
+    () => activeTab === "instagram" && isInstagramApiWindowExpired(messages),
+    [activeTab, messages],
+  );
+  const instagramOpen = useMemo(
+    () => (activeTab === "instagram" ? instagramThreadOpenUrl(contact) : null),
+    [activeTab, contact],
   );
   const busy = resolving || clearingChat || deletingMessages;
   const hasMessages = Boolean(messages?.length);
@@ -888,6 +899,29 @@ export function ConversationThread({
 
           {!selecting && (
             <div className="shrink-0 border-t border-border bg-card p-3">
+              {instagramWindowExpired && instagramOpen && (
+                <div className="mb-3 flex flex-col gap-2 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2.5 sm:flex-row sm:items-center sm:justify-between">
+                  <div className="min-w-0 text-xs text-amber-950 dark:text-amber-100">
+                    <p className="font-medium">Instagram messaging window</p>
+                    <p className="mt-0.5 leading-relaxed text-amber-900/80 dark:text-amber-100/80">
+                      Instagram limits replies to 24 hours after the customer&apos;s last message.
+                      Use the button below to continue this conversation directly on Instagram.
+                    </p>
+                  </div>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    className="shrink-0 border-amber-600/40 bg-background/80 text-amber-950 hover:bg-amber-500/15 dark:text-amber-50"
+                    onClick={() => window.open(instagramOpen.url, "_blank", "noopener,noreferrer")}
+                  >
+                    <ExternalLink className="mr-1.5 h-3.5 w-3.5" />
+                    {instagramOpen.hasDirectThread
+                      ? `Open in Instagram`
+                      : "Open Instagram Inbox"}
+                  </Button>
+                </div>
+              )}
               <div
                 className={cn(
                   "flex flex-col gap-1.5 rounded-xl border bg-background p-1.5",
