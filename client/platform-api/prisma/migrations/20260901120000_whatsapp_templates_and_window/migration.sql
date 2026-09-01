@@ -1,28 +1,34 @@
 -- WhatsApp templates + per-channel last customer message timestamps
+-- Table names are singular (whatsapp_channel), matching existing CEP schema.
 
-ALTER TABLE "whatsapp_channels"
+ALTER TABLE "whatsapp_channel"
   ADD COLUMN IF NOT EXISTS "last_customer_message_at" TIMESTAMP(3);
 
-ALTER TABLE "instagram_channels"
+ALTER TABLE "instagram_channel"
   ADD COLUMN IF NOT EXISTS "last_customer_message_at" TIMESTAMP(3);
 
-ALTER TABLE "email_channels"
+ALTER TABLE "email_channel"
   ADD COLUMN IF NOT EXISTS "last_customer_message_at" TIMESTAMP(3);
 
-CREATE INDEX IF NOT EXISTS "whatsapp_channels_last_customer_message_at_idx"
-  ON "whatsapp_channels" ("last_customer_message_at");
+CREATE INDEX IF NOT EXISTS "whatsapp_channel_last_customer_message_at_idx"
+  ON "whatsapp_channel" ("last_customer_message_at");
 
-CREATE INDEX IF NOT EXISTS "instagram_channels_last_customer_message_at_idx"
-  ON "instagram_channels" ("last_customer_message_at");
+CREATE INDEX IF NOT EXISTS "instagram_channel_last_customer_message_at_idx"
+  ON "instagram_channel" ("last_customer_message_at");
 
-CREATE TYPE "TemplateStatus" AS ENUM (
-  'APPROVED',
-  'PENDING',
-  'REJECTED',
-  'PAUSED',
-  'DISABLED',
-  'UNKNOWN'
-);
+DO $$
+BEGIN
+  CREATE TYPE "TemplateStatus" AS ENUM (
+    'APPROVED',
+    'PENDING',
+    'REJECTED',
+    'PAUSED',
+    'DISABLED',
+    'UNKNOWN'
+  );
+EXCEPTION
+  WHEN duplicate_object THEN NULL;
+END $$;
 
 CREATE TABLE IF NOT EXISTS "whatsapp_templates" (
   "id" TEXT NOT NULL,
@@ -35,7 +41,7 @@ CREATE TABLE IF NOT EXISTS "whatsapp_templates" (
   "status" "TemplateStatus" NOT NULL DEFAULT 'PENDING',
   "components" JSONB NOT NULL DEFAULT '[]',
   "created_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  "updated_at" TIMESTAMP(3) NOT NULL,
+  "updated_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
   "last_synced_at" TIMESTAMP(3),
 
   CONSTRAINT "whatsapp_templates_pkey" PRIMARY KEY ("id")
@@ -48,7 +54,7 @@ CREATE INDEX IF NOT EXISTS "whatsapp_templates_status_idx"
   ON "whatsapp_templates"("status");
 
 -- Backfill last customer message from latest inbound message per channel identity
-UPDATE "whatsapp_channels" wc
+UPDATE "whatsapp_channel" wc
 SET "last_customer_message_at" = sub.max_at
 FROM (
   SELECT "channel_id", MAX("created_at") AS max_at
@@ -59,7 +65,7 @@ FROM (
 WHERE wc."id" = sub."channel_id"
   AND wc."last_customer_message_at" IS NULL;
 
-UPDATE "instagram_channels" ic
+UPDATE "instagram_channel" ic
 SET "last_customer_message_at" = sub.max_at
 FROM (
   SELECT "channel_id", MAX("created_at") AS max_at
@@ -70,7 +76,7 @@ FROM (
 WHERE ic."id" = sub."channel_id"
   AND ic."last_customer_message_at" IS NULL;
 
-UPDATE "email_channels" ec
+UPDATE "email_channel" ec
 SET "last_customer_message_at" = sub.max_at
 FROM (
   SELECT "channel_id", MAX("created_at") AS max_at
