@@ -169,7 +169,8 @@ export function WhatsAppTemplateManager() {
   const { mutate: syncTemplates, isPending: isSyncing } = useSyncTemplates();
 
   const [createOpen, setCreateOpen] = useState(false);
-  const [selectedTemplate, setSelectedTemplate] = useState<WhatsAppTemplate | null>(null);
+  const [selectedTemplateId, setSelectedTemplateId] = useState<string | null>(null);
+  const selectedTemplate = useMemo(() => templates.find((t: WhatsAppTemplate) => t.id === selectedTemplateId) || null, [templates, selectedTemplateId]);
 
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("ALL");
@@ -392,7 +393,7 @@ export function WhatsAppTemplateManager() {
                         <StatusBadge status={template.status} />
                       </td>
                       <td className="px-4 py-4">
-                        <ViewTemplateButton onView={() => setSelectedTemplate(template)} />
+                        <ViewTemplateButton onView={() => setSelectedTemplateId(template.id)} />
                       </td>
                     </motion.tr>
                   ))}
@@ -407,7 +408,7 @@ export function WhatsAppTemplateManager() {
 
       <WhatsAppTemplateDetailDrawer
         template={selectedTemplate}
-        onClose={() => setSelectedTemplate(null)}
+        onClose={() => setSelectedTemplateId(null)}
       />
     </div>
   );
