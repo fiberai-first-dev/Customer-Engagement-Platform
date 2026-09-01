@@ -753,59 +753,61 @@ export function App() {
                         className="w-full pl-9 pr-4 py-2 bg-background border border-border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary/20"
                       />
                     </div>
-                    {!loading && (
-                      <div className="flex flex-wrap gap-2">
-                        {[
-                          { key: 'rrweb', label: 'Add RRWeb' },
-                          { key: 'whatsapp_templates_enabled', label: 'Add WA Templates' },
-                          { key: 'instagram_human_agent_enabled', label: 'Add IG Human Agent' }
-                        ].map((f) => (
-                          !features.some(existing => existing.key === f.key) && (
-                            <button
-                              key={f.key}
-                              onClick={() => addFeature(f.key)}
-                              className="px-3 py-1.5 text-sm font-medium bg-primary/10 text-primary hover:bg-primary/20 border border-primary/20 rounded-lg transition-colors"
-                            >
-                              {f.label}
-                            </button>
-                          )
-                        ))}
-                      </div>
-                    )}
                   </div>
                 )}
                 {activeTab === "features" && (
                   <div className="divide-y divide-border">
-                    {features.filter(f => f.key.toLowerCase().includes(featureSearchQuery.toLowerCase())).length === 0 && !loading && !error && (
-                      <div className="p-16 text-center text-muted-foreground">
-                        <div className="w-16 h-16 bg-background rounded-full flex items-center justify-center mx-auto mb-4 border border-border">
-                          <Key className="w-8 h-8 text-muted-foreground" />
-                        </div>
-                        <p className="font-medium text-foreground">No feature flags found</p>
-                        <p className="text-sm mt-1">Try adjusting your search or add a new feature flag.</p>
-                      </div>
-                    )}
-                    
-                    {features.filter(f => f.key.toLowerCase().includes(featureSearchQuery.toLowerCase())).map((feature) => (
-                      <div key={feature.key} className="p-6 flex items-center justify-between hover:bg-background/80 transition-colors group">
-                        <div>
-                          <h3 className="font-semibold text-foreground flex items-center gap-3">
-                            {feature.key}
-                            <span className={`text-[10px] uppercase font-bold px-2 py-0.5 rounded-full ${feature.enabled ? "bg-green-50 text-green-700 border border-green-200" : "bg-muted text-muted-foreground border border-border"}`}>
-                              {feature.enabled ? "Active" : "Disabled"}
-                            </span>
-                          </h3>
-                          {feature.description && <p className="text-sm text-muted-foreground mt-1">{feature.description}</p>}
-                        </div>
-                        
-                        <button
-                          onClick={() => toggleFeature(feature.key, !feature.enabled)}
-                          className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-blue-600 focus:ring-offset-2 ${feature.enabled ? "bg-[#f38020]" : "bg-slate-200"}`}
-                        >
-                          <span className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-card shadow ring-0 transition duration-200 ease-in-out ${feature.enabled ? "translate-x-5" : "translate-x-0"}`} />
-                        </button>
-                      </div>
-                    ))}
+                    {(() => {
+                      const standardKeys = [
+                        { key: "rrweb", description: "Enable RRWeb session recording" },
+                        { key: "whatsapp_templates_enabled", description: "Enable WhatsApp Templates feature" },
+                        { key: "instagram_human_agent_enabled", description: "Allow Instagram HUMAN_AGENT replies from CEP after 24h" }
+                      ];
+                      
+                      const allFeatures = [...features];
+                      standardKeys.forEach(sk => {
+                        if (!allFeatures.some(f => f.key === sk.key)) {
+                          allFeatures.push({ key: sk.key, enabled: false, description: sk.description, organizationId: selectedOrgId! });
+                        }
+                      });
+                      
+                      const filteredFeatures = allFeatures.filter(f => f.key.toLowerCase().includes(featureSearchQuery.toLowerCase()));
+                      
+                      return (
+                        <>
+                          {filteredFeatures.length === 0 && !loading && !error && (
+                            <div className="p-16 text-center text-muted-foreground">
+                              <div className="w-16 h-16 bg-background rounded-full flex items-center justify-center mx-auto mb-4 border border-border">
+                                <Key className="w-8 h-8 text-muted-foreground" />
+                              </div>
+                              <p className="font-medium text-foreground">No feature flags found</p>
+                              <p className="text-sm mt-1">Try adjusting your search or add a new feature flag.</p>
+                            </div>
+                          )}
+                          
+                          {filteredFeatures.map((feature) => (
+                            <div key={feature.key} className="p-6 flex items-center justify-between hover:bg-background/80 transition-colors group">
+                              <div>
+                                <h3 className="font-semibold text-foreground flex items-center gap-3">
+                                  {feature.key}
+                                  <span className={`text-[10px] uppercase font-bold px-2 py-0.5 rounded-full ${feature.enabled ? "bg-green-50 text-green-700 border border-green-200" : "bg-muted text-muted-foreground border border-border"}`}>
+                                    {feature.enabled ? "Active" : "Disabled"}
+                                  </span>
+                                </h3>
+                                {feature.description && <p className="text-sm text-muted-foreground mt-1">{feature.description}</p>}
+                              </div>
+                              
+                              <button
+                                onClick={() => toggleFeature(feature.key, !feature.enabled)}
+                                className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-blue-600 focus:ring-offset-2 ${feature.enabled ? "bg-[#f38020]" : "bg-slate-200"}`}
+                              >
+                                <span className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-card shadow ring-0 transition duration-200 ease-in-out ${feature.enabled ? "translate-x-5" : "translate-x-0"}`} />
+                              </button>
+                            </div>
+                          ))}
+                        </>
+                      );
+                    })()}
                   </div>
                 )}
 

@@ -340,7 +340,7 @@ async function subscribeInstagramMessages(accessToken: string) {
   await subscribeInstagramMessaging(accessToken);
 }
 
-/** Instagram Graph token endpoints now reject GET in production; use POST + form body. */
+/** Instagram Graph token endpoints require GET with URL parameters. */
 async function instagramGraphTokenExchange(
   endpoint: "access_token" | "refresh_access_token",
   params: Record<string, string>,
@@ -349,10 +349,10 @@ async function instagramGraphTokenExchange(
   expires_in?: number;
   error?: { message?: string; code?: number };
 }> {
-  const res = await fetch(`https://graph.instagram.com/${endpoint}`, {
-    method: "POST",
-    headers: { "Content-Type": "application/x-www-form-urlencoded" },
-    body: new URLSearchParams(params),
+  const url = new URL(`https://graph.instagram.com/${endpoint}`);
+  Object.entries(params).forEach(([k, v]) => url.searchParams.append(k, v));
+  const res = await fetch(url.toString(), {
+    method: "GET",
   });
   return (await res.json().catch(() => ({}))) as {
     access_token?: string;
@@ -416,12 +416,7 @@ export async function completeInstagramOAuth(input: {
     access_token: shortJson.access_token,
   });
   if (!longJson.access_token) {
-    const msg = longJson.error?.message || "long-lived exchange failed";
-    throw new Error(
-      longJson.error?.code === 100 && /method type:\s*get/i.test(msg)
-        ? `${msg} (Instagram Graph token exchange must use POST — redeploy platform-api if this persists)`
-        : msg,
-    );
+    throw new Error(longJson.error?.message || "long-lived exchange failed");
   }
 
   let username: string | undefined;

@@ -30,7 +30,7 @@ import {
 } from "../../lib/channel-media";
 import { useAuthStore } from "../../store/auth";
 import { MessageMedia } from "./MessageMedia";
-import { ConversationWindowBanner, InstagramExternalInboxPanel } from "./ConversationWindowBanner";
+import { InstagramExternalInboxPanel } from "./ConversationWindowBanner";
 import { WhatsAppTemplateSelector } from "./WhatsAppTemplateSelector";
 import { Button } from "../ui/button";
 import { toast } from "sonner";
@@ -921,37 +921,36 @@ export function ConversationThread({
 
           {!selecting && (
             <div className="shrink-0 border-t border-border bg-card">
-              {effectiveWindow && (
-                <ConversationWindowBanner 
-                  channel={effectiveWindow.channel}
-                  state={effectiveWindow.state}
-                  expiresAt={effectiveWindow.expiresAt}
-                  canSendNormalMessage={effectiveWindow.canSendNormalMessage}
-                  requiresTemplate={effectiveWindow.requiresTemplate}
-                  requiresHumanAgentTag={effectiveWindow.requiresHumanAgentTag}
-                  requiresExternalInbox={effectiveWindow.requiresExternalInbox}
-                />
-              )}
               <div className="p-3">
                 {effectiveWindow.state === "TEMPLATE_REQUIRED" ? (
-                  <div className="rounded-xl border border-border bg-background p-3">
+                  <div className="rounded-xl border border-amber-500/30 bg-amber-500/5 p-5 text-center space-y-4">
+                    <div className="space-y-1">
+                      <p className="text-sm font-medium text-amber-800 dark:text-amber-300">
+                        Messaging window closed
+                      </p>
+                      <p className="text-sm text-amber-700/80 dark:text-amber-400/80">
+                        The 24-hour WhatsApp window has expired. Use an approved template to contact this customer.
+                      </p>
+                    </div>
                     {featureFlag?.enabled ? (
-                      <WhatsAppTemplateSelector 
-                        onSelect={async (template, variables) => {
-                          if (onSendTemplate) {
-                            const ok = await onSendTemplate(template.id, variables);
-                            if (ok) {
-                              toast.success("Template sent successfully");
+                      <div className="flex justify-center">
+                        <WhatsAppTemplateSelector 
+                          onSelect={async (template, variables) => {
+                            if (onSendTemplate) {
+                              const ok = await onSendTemplate(template.id, variables);
+                              if (ok) {
+                                toast.success("Template sent successfully");
+                              }
+                            } else {
+                              toast.error("Template sending not fully wired on this page");
                             }
-                          } else {
-                            toast.error("Template sending not fully wired on this page");
-                          }
-                        }}
-                      />
+                          }}
+                        />
+                      </div>
                     ) : (
-                      <div className="p-4 text-center text-sm text-muted-foreground flex flex-col items-center justify-center gap-2">
-                        <p>The messaging window is closed and WhatsApp Templates are disabled.</p>
-                        <p>Enable Templates in the admin dashboard to start a new conversation.</p>
+                      <div className="pt-2 text-sm text-amber-700/80 flex flex-col items-center gap-1">
+                        <p>WhatsApp Templates are currently disabled.</p>
+                        <p>Enable them in the admin dashboard to continue chatting.</p>
                       </div>
                     )}
                   </div>

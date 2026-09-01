@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useWhatsAppTemplates, useSyncTemplates, useDeleteTemplate, type WhatsAppTemplate } from "../../api";
 import { Button } from "../ui/button";
 import { Loader2, Plus, RefreshCw, Trash2 } from "lucide-react";
@@ -12,12 +12,16 @@ export function WhatsAppTemplateManager() {
   
   const [deleteTarget, setDeleteTarget] = useState<WhatsAppTemplate | null>(null);
 
-  const handleSync = () => {
+  useEffect(() => {
     syncTemplates(undefined, {
-      onSuccess: () => toast.success("Templates synced successfully"),
-      onError: (err: any) => toast.error(err.message),
+      onError: (err: any) => {
+        // Only show error if it's not a generic unconfigured error
+        if (!err.message?.includes("not configured")) {
+          toast.error(err.message);
+        }
+      }
     });
-  };
+  }, [syncTemplates]);
 
   const handleDelete = async () => {
     if (!deleteTarget) return;
@@ -34,20 +38,21 @@ export function WhatsAppTemplateManager() {
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
-        <div>
-          <h2 className="text-base font-semibold leading-none">WhatsApp Templates</h2>
-          <p className="mt-2 text-sm text-muted-foreground">
-            Manage your Meta-approved message templates.
-          </p>
+        <div className="flex-1">
+          {/* Header removed as it is rendered by the parent page */}
         </div>
         <div className="flex items-center gap-2">
-          <Button variant="outline" size="sm" onClick={handleSync} disabled={isSyncing}>
-            {isSyncing ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <RefreshCw className="mr-2 h-4 w-4" />}
-            Sync from Meta
-          </Button>
-          <Button size="sm">
-            <Plus className="mr-2 h-4 w-4" />
-            New Template
+          {isSyncing && (
+            <span className="text-xs text-muted-foreground flex items-center mr-2">
+              <Loader2 className="mr-2 h-3 w-3 animate-spin" />
+              Syncing...
+            </span>
+          )}
+          <Button size="sm" asChild>
+            <a href="https://business.facebook.com/wa/manage/message-templates/" target="_blank" rel="noopener noreferrer">
+              <Plus className="mr-2 h-4 w-4" />
+              New Template
+            </a>
           </Button>
         </div>
       </div>
@@ -65,7 +70,7 @@ export function WhatsAppTemplateManager() {
             </div>
             <p className="text-sm font-medium">No templates found</p>
             <p className="text-xs text-muted-foreground max-w-sm">
-              Click 'Sync from Meta' to fetch your approved WhatsApp templates from your Business Account.
+              Create a new template in Meta's Business Manager. We'll automatically sync it when you return to this page.
             </p>
           </div>
         ) : (
