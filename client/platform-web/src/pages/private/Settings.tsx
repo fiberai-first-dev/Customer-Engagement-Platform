@@ -16,8 +16,6 @@ import {
   useUpdateInbox,
   useUpdateShopifyConfig,
   setupGuidePdfUrl,
-  useFeatureFlag,
-  useToggleFeatureFlag,
   type Inbox,
 } from "../../api";
 import { ConfirmDialog } from "../../components/ui/confirm-dialog";
@@ -371,10 +369,6 @@ export function SettingsPage() {
   const [submitting, setSubmitting] = useState(false);
   const [disconnectTarget, setDisconnectTarget] = useState<ChannelKey | null>(null);
 
-  const { data: featureFlag } = useFeatureFlag("whatsapp_templates_enabled");
-  const { data: instagramHumanAgentFlag } = useFeatureFlag("instagram_human_agent_enabled");
-  const { mutate: toggleFeature, isPending: togglingFeature } = useToggleFeatureFlag();
-
   useEffect(() => {
     setConnecting(null);
     const onPageShow = (e: PageTransitionEvent) => {
@@ -680,53 +674,6 @@ export function SettingsPage() {
               onDisconnect={() => setDisconnectTarget("shopify")}
             />
           </div>
-        </section>
-
-        <section className="space-y-3 pt-4 border-t border-border flex items-center justify-between">
-          <div>
-            <h2 className="text-base font-semibold leading-none">WhatsApp Templates</h2>
-            <p className="mt-2 text-sm text-muted-foreground">
-              Enable the WhatsApp Templates feature in the sidebar.
-            </p>
-          </div>
-          <label className="relative inline-flex cursor-pointer items-center">
-            <input
-              type="checkbox"
-              className="peer sr-only"
-              checked={featureFlag?.enabled ?? false}
-              disabled={togglingFeature}
-              onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
-                toggleFeature({ key: "whatsapp_templates_enabled", enabled: e.target.checked, description: "Enable WhatsApp Templates feature" });
-              }}
-            />
-            <div className="peer h-6 w-11 rounded-full bg-muted after:absolute after:left-[2px] after:top-[2px] after:h-5 after:w-5 after:rounded-full after:border after:border-gray-300 after:bg-white after:transition-all after:content-[''] peer-checked:bg-primary peer-checked:after:translate-x-full peer-checked:after:border-white peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-primary/50 dark:border-gray-600 dark:bg-gray-700"></div>
-          </label>
-        </section>
-
-        <section className="space-y-3 pt-4 border-t border-border flex items-center justify-between">
-          <div>
-            <h2 className="text-base font-semibold leading-none">Instagram Human Agent</h2>
-            <p className="mt-2 text-sm text-muted-foreground">
-              When enabled, CEP can send Instagram replies in the 24h–7d window using Meta&apos;s HUMAN_AGENT tag.
-              Keep this off until Meta approves the permission. When off, agents see a link to open Instagram Inbox after 24 hours.
-            </p>
-          </div>
-          <label className="relative inline-flex cursor-pointer items-center">
-            <input
-              type="checkbox"
-              className="peer sr-only"
-              checked={instagramHumanAgentFlag?.enabled ?? false}
-              disabled={togglingFeature}
-              onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
-                toggleFeature({
-                  key: "instagram_human_agent_enabled",
-                  enabled: e.target.checked,
-                  description: "Allow Instagram HUMAN_AGENT replies from CEP after 24h",
-                });
-              }}
-            />
-            <div className="peer h-6 w-11 rounded-full bg-muted after:absolute after:left-[2px] after:top-[2px] after:h-5 after:w-5 after:rounded-full after:border after:border-gray-300 after:bg-white after:transition-all after:content-[''] peer-checked:bg-primary peer-checked:after:translate-x-full peer-checked:after:border-white peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-primary/50 dark:border-gray-600 dark:bg-gray-700"></div>
-          </label>
         </section>
       </div>
 

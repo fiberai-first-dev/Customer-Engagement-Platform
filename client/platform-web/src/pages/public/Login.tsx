@@ -35,7 +35,8 @@ export function LoginPage() {
         toast.success(`Welcome, ${data.username}!`);
         navigate("/inbox");
       } catch (err: any) {
-        toast.error(err.message || "Google sign-in failed");
+        const errorMsg = err.message || "Google sign-in failed";
+        toast.error(errorMsg === "Failed to fetch" ? "Unauthorized" : errorMsg);
       } finally {
         setLoading(false);
       }

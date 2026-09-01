@@ -354,10 +354,10 @@ export function App() {
     }
   };
 
-  const addRrwebFeature = async () => {
+  const addFeature = async (featureKey: string) => {
     if (!selectedOrgId) return;
     try {
-      const res = await fetch(`${API_BASE}/admin/organizations/${selectedOrgId}/features/rrweb`, {
+      const res = await fetch(`${API_BASE}/admin/organizations/${selectedOrgId}/features/${featureKey}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
         body: JSON.stringify({ enabled: false }),
@@ -753,13 +753,24 @@ export function App() {
                         className="w-full pl-9 pr-4 py-2 bg-background border border-border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary/20"
                       />
                     </div>
-                    {!loading && !features.some(f => f.key === 'rrweb') && (
-                      <button 
-                        onClick={addRrwebFeature} 
-                        className="px-3 py-1.5 text-sm font-medium bg-primary text-primary-foreground rounded-lg hover:bg-primary/90"
-                      >
-                        Add RRWeb Toggle
-                      </button>
+                    {!loading && (
+                      <div className="flex flex-wrap gap-2">
+                        {[
+                          { key: 'rrweb', label: 'Add RRWeb' },
+                          { key: 'whatsapp_templates_enabled', label: 'Add WA Templates' },
+                          { key: 'instagram_human_agent_enabled', label: 'Add IG Human Agent' }
+                        ].map((f) => (
+                          !features.some(existing => existing.key === f.key) && (
+                            <button
+                              key={f.key}
+                              onClick={() => addFeature(f.key)}
+                              className="px-3 py-1.5 text-sm font-medium bg-primary/10 text-primary hover:bg-primary/20 border border-primary/20 rounded-lg transition-colors"
+                            >
+                              {f.label}
+                            </button>
+                          )
+                        ))}
+                      </div>
                     )}
                   </div>
                 )}
