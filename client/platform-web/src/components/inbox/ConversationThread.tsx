@@ -1,9 +1,8 @@
-import { Fragment, useEffect, useMemo, useRef, useState } from "react";
+import { Fragment, useEffect, useRef, useState } from "react";
 import {
   AlertCircle,
   CheckCircle2,
   CheckSquare,
-  ExternalLink,
   Loader2,
   MessageSquare,
   Mic,
@@ -44,9 +43,7 @@ import {
   formatIdentities,
   identitiesFor,
   initials,
-  instagramThreadOpenUrl,
   isActiveStatus,
-  isInstagramApiWindowExpired,
   isSameCalendarDay,
 } from "./utils";
 
@@ -327,14 +324,6 @@ export function ConversationThread({
 
   const needsAttentionHere = Boolean(
     selectedConversation && isActiveStatus(selectedConversation.status),
-  );
-  const instagramWindowExpired = useMemo(
-    () => activeTab === "instagram" && isInstagramApiWindowExpired(messages),
-    [activeTab, messages],
-  );
-  const instagramOpen = useMemo(
-    () => (activeTab === "instagram" ? instagramThreadOpenUrl(contact) : null),
-    [activeTab, contact],
   );
   const busy = resolving || clearingChat || deletingMessages;
   const hasMessages = Boolean(messages?.length);

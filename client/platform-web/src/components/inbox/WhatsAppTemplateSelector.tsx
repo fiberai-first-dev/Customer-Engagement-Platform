@@ -1,9 +1,8 @@
 import { useState, useMemo } from "react";
-import { MessageSquareText, Search, X, Send, ChevronLeft, CheckCircle2 } from "lucide-react";
+import { MessageSquareText, Search, X, Send, ChevronLeft } from "lucide-react";
 import { useWhatsAppTemplates, type WhatsAppTemplate } from "../../api";
 import { Button } from "../ui/button";
 import { motion, AnimatePresence } from "framer-motion";
-import { cn } from "./utils";
 
 interface Props {
   onSelect: (template: WhatsAppTemplate, variables: Record<string, string>) => void;
