@@ -709,16 +709,18 @@ export async function ingestInboundMessages(input: {
           },
           select: { id: true, rawPayload: true },
         });
-        for (const msg of toUpdate) {
-          const newRaw = typeof msg.rawPayload === "object" && msg.rawPayload ? { ...msg.rawPayload, errorMessage: inboundEvent.error } : { errorMessage: inboundEvent.error };
-          await prisma.message.update({
+        await Promise.all(toUpdate.map((msg) => {
+          const newRaw = typeof msg.rawPayload === "object" && msg.rawPayload
+            ? { ...msg.rawPayload, errorMessage: inboundEvent.error }
+            : { errorMessage: inboundEvent.error };
+          return prisma.message.update({
             where: { id: msg.id },
             data: {
               status: newStatus as any,
               rawPayload: newRaw as any,
             },
           });
-        }
+        }));
       } else {
         await prisma.message.updateMany({
           where: {

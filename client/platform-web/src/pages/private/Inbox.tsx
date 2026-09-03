@@ -642,6 +642,7 @@ export function InboxPage() {
         toast.error(data.result?.error || "Template failed to send");
         return false;
       }
+      toast.success("Template sent — awaiting delivery confirmation");
       return true;
     } catch (err: any) {
       toast.error(err.message || "Failed to send template");

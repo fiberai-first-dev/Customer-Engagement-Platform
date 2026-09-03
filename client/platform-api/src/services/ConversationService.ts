@@ -238,6 +238,64 @@ export class ConversationService {
 
     const unreadMap = await loadUnreadMap();
 
+    // ── Batch fetch latest non-email messages (prevents N+1 per customer) ──────
+    const nonEmailGroups = await prisma.message.groupBy({
+      by: ["customerId", "channelType"],
+      where: { channelType: { in: ["whatsapp", "instagram"] } },
+      _max: { createdAt: true },
+    });
+    const latestNonEmailMsgs = nonEmailGroups.length > 0
+      ? await prisma.message.findMany({
+          where: {
+            OR: nonEmailGroups
+              .filter((g) => g._max.createdAt !== null)
+              .map((g) => ({
+                customerId: g.customerId,
+                channelType: g.channelType as ChannelType,
+                createdAt: g._max.createdAt!,
+              })),
+          },
+        })
+      : [];
+    const lastNonEmailMsgMap = new Map<string, (typeof latestNonEmailMsgs)[0]>();
+    for (const msg of latestNonEmailMsgs) {
+      // Keep only the most recent if two messages share the same createdAt
+      const key = `${msg.customerId}:${msg.channelType}`;
+      const existing = lastNonEmailMsgMap.get(key);
+      if (!existing || msg.createdAt > existing.createdAt) {
+        lastNonEmailMsgMap.set(key, msg);
+      }
+    }
+
+    // ── Batch fetch all email messages (prevents N+1 per customer) ──────────
+    const allEmailMessages = await prisma.message.findMany({
+      where: { channelType: "email" },
+      orderBy: { createdAt: "desc" },
+      select: {
+        id: true,
+        customerId: true,
+        direction: true,
+        content: true,
+        contentType: true,
+        subject: true,
+        status: true,
+        createdAt: true,
+        externalThreadId: true,
+        rawPayload: true,
+        mediaKey: true,
+        mediaMimeType: true,
+        mediaFilename: true,
+        mediaItems: true,
+        isRead: true,
+      },
+    });
+    const emailMsgsByCustomer = new Map<string, (typeof allEmailMessages)>();
+    for (const msg of allEmailMessages) {
+      const list = emailMsgsByCustomer.get(msg.customerId) ?? [];
+      list.push(msg);
+      emailMsgsByCustomer.set(msg.customerId, list);
+    }
+
     const rows = [];
     for (const customer of customers) {
       const shaped = shapeCustomer(customer);
@@ -295,10 +353,7 @@ export class ConversationService {
             return bt - at;
           })[0]!;
 
-          const lastMsg = await prisma.message.findFirst({
-            where: { customerId: customer.id, channelType: type },
-            orderBy: { createdAt: "desc" },
-          });
+          const lastMsg = lastNonEmailMsgMap.get(`${customer.id}:${type}`) ?? null;
 
           const windowState = serializeConversationWindow(
             getMessagingWindow(type, latest.lastCustomerMessageAt ?? null, windowOptions),
@@ -324,20 +379,7 @@ export class ConversationService {
         }
 
         // One inbox row per Gmail thread
-        const emailMessages = await prisma.message.findMany({
-          where: { customerId: customer.id, channelType: "email" },
-          orderBy: { createdAt: "desc" },
-          select: {
-            id: true,
-            direction: true,
-            content: true,
-            contentType: true,
-            subject: true,
-            status: true,
-            createdAt: true,
-            externalThreadId: true,
-          },
-        });
+        const emailMessages = emailMsgsByCustomer.get(customer.id) ?? [];
 
         const byThread = new Map<string, typeof emailMessages>();
         for (const msg of emailMessages) {

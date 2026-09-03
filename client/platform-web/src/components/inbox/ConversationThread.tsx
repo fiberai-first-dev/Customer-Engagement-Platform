@@ -394,6 +394,10 @@ export function ConversationThread({
   }, [messages?.length, messages?.[messages.length - 1]?.id]);
 
   const prevMessagesRef = useRef<Message[]>([]);
+  // Reset previous messages snapshot when conversation changes to avoid stale comparisons
+  useEffect(() => {
+    prevMessagesRef.current = [];
+  }, [selectedConversation?.id]);
   useEffect(() => {
     if (messages) {
       if (prevMessagesRef.current.length > 0) {
