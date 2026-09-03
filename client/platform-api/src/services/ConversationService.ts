@@ -48,6 +48,7 @@ type MessageMediaFields = {
   mediaMimeType?: string | null;
   mediaFilename?: string | null;
   mediaItems?: unknown;
+  rawPayload?: unknown;
 };
 
 function shapeMessage(conversationId: string, m: MessageMediaFields) {
@@ -57,6 +58,7 @@ function shapeMessage(conversationId: string, m: MessageMediaFields) {
     mediaFilename: m.mediaFilename,
     contentType: m.contentType,
   });
+  const raw = typeof m.rawPayload === "object" && m.rawPayload ? (m.rawPayload as any) : {};
   return {
     id: m.id,
     conversationId,
@@ -72,6 +74,7 @@ function shapeMessage(conversationId: string, m: MessageMediaFields) {
     mediaFilename: mediaItems[0]?.filename ?? m.mediaFilename ?? null,
     mediaMimeType: mediaItems[0]?.mimeType ?? m.mediaMimeType ?? null,
     mediaItems,
+    errorMessage: raw.errorMessage ?? null,
   };
 }
 
@@ -82,6 +85,7 @@ function fullShapeMessage(conversationId: string, m: MessageMediaFields) {
     mediaFilename: m.mediaFilename,
     contentType: m.contentType,
   });
+  const raw = typeof m.rawPayload === "object" && m.rawPayload ? (m.rawPayload as any) : {};
   return {
     id: m.id,
     conversationId,
@@ -97,6 +101,7 @@ function fullShapeMessage(conversationId: string, m: MessageMediaFields) {
     mediaFilename: mediaItems[0]?.filename ?? m.mediaFilename ?? null,
     mediaMimeType: mediaItems[0]?.mimeType ?? m.mediaMimeType ?? null,
     mediaItems,
+    errorMessage: raw.errorMessage ?? null,
   };
 }
 

@@ -139,6 +139,7 @@ export interface Message {
     filename?: string | null;
     contentType?: string | null;
   }>;
+  errorMessage?: string | null;
 }
 
 export interface WhatsAppTemplate {

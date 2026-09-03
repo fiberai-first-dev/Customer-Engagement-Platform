@@ -923,7 +923,9 @@ export function ConversationThread({
                       </div>
                     </div>
                     {failed && (
-                      <p className="mt-1 text-[11px] text-destructive">Failed to send</p>
+                      <p className="mt-1 text-[11px] text-destructive">
+                        {message.errorMessage ? `Failed: ${message.errorMessage}` : "Failed to send"}
+                      </p>
                     )}
                   </div>
                 </Fragment>

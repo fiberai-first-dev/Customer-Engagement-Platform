@@ -700,16 +700,37 @@ export async function ingestInboundMessages(input: {
 
     if (inboundEvent.type === "status") {
       const newStatus = inboundEvent.status === "read" ? "delivered" : inboundEvent.status;
-      await prisma.message.updateMany({
-        where: {
-          channelType: channelCfg.channelType,
-          externalId: inboundEvent.externalId,
-        },
-        data: {
-          status: newStatus as any,
-          ...(inboundEvent.status === "read" ? { isRead: true } : {}),
-        },
-      });
+      if (inboundEvent.status === "failed" && inboundEvent.error) {
+        // Need to merge into rawPayload, so we have to fetch then update
+        const toUpdate = await prisma.message.findMany({
+          where: {
+            channelType: channelCfg.channelType,
+            externalId: inboundEvent.externalId,
+          },
+          select: { id: true, rawPayload: true },
+        });
+        for (const msg of toUpdate) {
+          const newRaw = typeof msg.rawPayload === "object" && msg.rawPayload ? { ...msg.rawPayload, errorMessage: inboundEvent.error } : { errorMessage: inboundEvent.error };
+          await prisma.message.update({
+            where: { id: msg.id },
+            data: {
+              status: newStatus as any,
+              rawPayload: newRaw as any,
+            },
+          });
+        }
+      } else {
+        await prisma.message.updateMany({
+          where: {
+            channelType: channelCfg.channelType,
+            externalId: inboundEvent.externalId,
+          },
+          data: {
+            status: newStatus as any,
+            ...(inboundEvent.status === "read" ? { isRead: true } : {}),
+          },
+        });
+      }
       continue;
     }
 
