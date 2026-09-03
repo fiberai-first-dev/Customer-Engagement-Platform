@@ -1274,6 +1274,28 @@ export async function sendWhatsAppTemplateMessage(input: {
     };
   }
 
+  // Extract rendered body text from template components so the message bubble
+  // shows the actual text instead of the raw "[WhatsApp Template: name]" placeholder.
+  function resolveTemplateContent(tpl: NonNullable<typeof template>): string {
+    try {
+      const comps = Array.isArray(tpl.components)
+        ? (tpl.components as Array<{ type: string; text?: string }>)
+        : [];
+      const bodyComp = comps.find((c) => c.type === "BODY" && c.text);
+      if (!bodyComp?.text) return `[Template: ${tpl.name}]`;
+      // Replace {{1}}, {{2}}, … with the provided variables in order
+      let text = bodyComp.text;
+      const keys = Object.keys(input.variables).sort((a, b) => parseInt(a) - parseInt(b));
+      for (const key of keys) {
+        text = text.replace(new RegExp(`\\{\\{${key}\\}\\}`, "g"), input.variables[key] ?? "");
+      }
+      return text;
+    } catch {
+      return `[Template: ${tpl.name}]`;
+    }
+  }
+  const renderedContent = resolveTemplateContent(template);
+
   const message = await prisma.message.create({
     data: {
       id: ulid(),
@@ -1281,13 +1303,14 @@ export async function sendWhatsAppTemplateMessage(input: {
       channelId: identity.id,
       customerId: input.customerId,
       direction: "outgoing",
-      content: `[WhatsApp Template: ${template.name}]`,
+      content: renderedContent,
       contentType: "template",
       externalId: result.externalId ?? `local_${ulid()}`,
       status: mapSendStatus(result.status),
       isRead: true,
       rawPayload: {
         to,
+        templateName: template.name,
         template: templatePayload,
         ...(result.raw && typeof result.raw === "object" ? (result.raw as object) : {}),
       } as Prisma.InputJsonValue,

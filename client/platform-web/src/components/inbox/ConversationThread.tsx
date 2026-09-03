@@ -89,6 +89,54 @@ function MessageBody({
 }) {
   const content = message.content;
   const [expanded, setExpanded] = useState(false);
+
+  // ── Template message rendering ────────────────────────────────────────────
+  if (message.contentType === "template") {
+    // Legacy format: [WhatsApp Template: name] — extract name and show badge only
+    const legacyMatch = content.match(/^\[WhatsApp Template:\s*(.+)\]$/i);
+    if (legacyMatch) {
+      const name = legacyMatch[1].replace(/_/g, " ");
+      return (
+        <div className="min-w-0 space-y-1">
+          <div className={cn(
+            "inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wider",
+            incoming ? "bg-primary/10 text-primary" : "bg-white/20 text-white/80",
+          )}>
+            Template
+          </div>
+          <div className="break-words text-sm leading-relaxed [overflow-wrap:anywhere]">{name}</div>
+        </div>
+      );
+    }
+    // New format: actual rendered body text — show body + a small "Template" badge
+    const isLongTpl = content.length > LONG_MESSAGE_CHARS;
+    const visibleTpl = !isLongTpl || expanded ? content : `${content.slice(0, LONG_MESSAGE_CHARS).trimEnd()}…`;
+    return (
+      <div className="min-w-0 space-y-1">
+        <div className={cn(
+          "inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wider",
+          incoming ? "bg-primary/10 text-primary" : "bg-white/20 text-white/80",
+        )}>
+          Template
+        </div>
+        <div className="whitespace-pre-wrap break-words leading-relaxed [overflow-wrap:anywhere]">
+          {visibleTpl}
+        </div>
+        {isLongTpl && (
+          <button
+            type="button"
+            className={cn("mt-1 text-[11px] font-medium underline-offset-2 hover:underline", incoming ? "text-primary" : "text-primary-foreground/90")}
+            onClick={(e) => { e.stopPropagation(); e.preventDefault(); setExpanded((v) => !v); }}
+            onKeyDown={(e) => e.stopPropagation()}
+          >
+            {expanded ? "Show less" : "Read more"}
+          </button>
+        )}
+      </div>
+    );
+  }
+  // ─────────────────────────────────────────────────────────────────────────
+
   const isLong = content.length > LONG_MESSAGE_CHARS;
   const visible = !isLong || expanded ? content : `${content.slice(0, LONG_MESSAGE_CHARS).trimEnd()}…`;
   const isMediaPlaceholder = /^\[(image|audio|video|file|document)\]$/i.test(content.trim());
