@@ -35,9 +35,9 @@ function getBodyText(template: WhatsAppTemplate): string {
   );
 }
 
-function defaultFirstName(contactName?: string): string {
+function defaultFullName(contactName?: string): string {
   if (!contactName?.trim()) return "";
-  return contactName.replace(/^@+/, "").trim().split(/\s+/)[0] || "";
+  return contactName.replace(/^@+/, "").trim();
 }
 
 /** Meta's bundled test template — only works on Meta's public test numbers. */
@@ -47,7 +47,7 @@ function isMetaTestTemplate(template: WhatsAppTemplate): boolean {
 
 function buildDefaultVariables(indices: number[], contactName?: string): Record<string, string> {
   const vars: Record<string, string> = {};
-  if (indices.includes(1) && contactName) vars["1"] = defaultFirstName(contactName);
+  if (indices.includes(1) && contactName) vars["1"] = defaultFullName(contactName);
   return vars;
 }
 
