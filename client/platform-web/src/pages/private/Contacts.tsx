@@ -4,7 +4,7 @@ import { Input } from "../../components/ui/input";
 import { ConfirmDialog } from "../../components/ui/confirm-dialog";
 import { useState, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
-import { Search, MoreHorizontal, Plus, Edit2, Trash2, Loader2, MessageSquare } from "lucide-react";
+import { Search, MoreHorizontal, Plus, Edit2, Trash2, Loader2, MessageSquare, Upload } from "lucide-react";
 import { toast } from "sonner";
 import {
   useAccounts,
@@ -13,6 +13,7 @@ import {
   useEnabledChannelTypes,
 } from "../../api";
 import { ContactModal, type ContactFormData } from "../../components/contacts/ContactModal";
+import { ContactCsvImportModal } from "../../components/contacts/ContactCsvImportModal";
 import { formatWhatsAppDisplay } from "../../components/inbox/utils";
 import { useAppStore } from "../../store";
 
@@ -112,6 +113,7 @@ export function ContactsPage() {
   const [searchQuery, setSearchQuery] = useState("");
   const [openDropdownId, setOpenDropdownId] = useState<string | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [isImportOpen, setIsImportOpen] = useState(false);
   const [editingContact, setEditingContact] = useState<ContactFormData | null>(null);
   const [pendingDelete, setPendingDelete] = useState<{
     id: string;
@@ -220,14 +222,25 @@ export function ContactsPage() {
             <h1 className="text-3xl font-bold tracking-tight">Contacts</h1>
             <p className="mt-1 text-sm text-muted-foreground">People you talk to across channels.</p>
           </div>
-          <Button
-            className="h-10 shrink-0 gap-2"
-            onClick={openCreate}
-            disabled={!accountId || accountsLoading}
-          >
-            <Plus className="h-4 w-4" />
-            Add contact
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button
+              variant="outline"
+              className="h-10 shrink-0 gap-2"
+              onClick={() => setIsImportOpen(true)}
+              disabled={!accountId || accountsLoading}
+            >
+              <Upload className="h-4 w-4" />
+              Import CSV
+            </Button>
+            <Button
+              className="h-10 shrink-0 gap-2"
+              onClick={openCreate}
+              disabled={!accountId || accountsLoading}
+            >
+              <Plus className="h-4 w-4" />
+              Add contact
+            </Button>
+          </div>
         </div>
 
         <div className="relative max-w-md">
@@ -377,6 +390,11 @@ export function ContactsPage() {
         initialData={editingContact}
         accountId={accountId}
         enabledChannels={enabledChannels}
+      />
+
+      <ContactCsvImportModal
+        isOpen={isImportOpen}
+        onClose={() => setIsImportOpen(false)}
       />
     </div>
   );

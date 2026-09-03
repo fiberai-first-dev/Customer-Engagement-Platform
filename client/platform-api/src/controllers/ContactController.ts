@@ -1,6 +1,7 @@
 import type { FastifyRequest, FastifyReply } from "fastify";
 import { prisma } from "../config/db.js";
 import {
+  bulkImportContacts,
   createCustomer,
   deleteCustomer,
   findMatchingCustomers,
@@ -204,6 +205,32 @@ export class ContactController {
       const message = err?.message ?? "Failed to delete contact";
       const code = message === "Customer not found" ? 404 : 400;
       return reply.code(code).send({ error: message });
+    }
+  }
+
+  static async bulkImport(request: FastifyRequest, reply: FastifyReply) {
+    try {
+      const body = request.body as {
+        contacts: Array<{
+          name?: string;
+          whatsapp?: string;
+          email?: string;
+          instagram?: string;
+        }>;
+      };
+
+      if (!Array.isArray(body?.contacts) || body.contacts.length === 0) {
+        return reply.code(400).send({ error: "contacts array is required" });
+      }
+
+      if (body.contacts.length > 1000) {
+        return reply.code(400).send({ error: "Maximum 1,000 contacts per import batch" });
+      }
+
+      const result = await bulkImportContacts(body.contacts);
+      return reply.send(result);
+    } catch (err: any) {
+      return reply.code(500).send({ error: err.message });
     }
   }
 }

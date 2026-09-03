@@ -1,10 +1,12 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect, useRef } from "react";
 import {
   useWhatsAppTemplates,
   useSyncTemplates,
+  useDeleteTemplate,
   type WhatsAppTemplate,
 } from "../../api";
 import { Button } from "../ui/button";
+import { ConfirmDialog } from "../ui/confirm-dialog";
 import {
   Loader2,
   Plus,
@@ -17,6 +19,8 @@ import {
   MinusCircle,
   AlertTriangle,
   Eye,
+  MoreHorizontal,
+  Trash2,
 } from "lucide-react";
 import { toast } from "sonner";
 import { WhatsAppTemplateCreateModal } from "./WhatsAppTemplateCreateModal";
@@ -91,18 +95,6 @@ function getBodyPreview(components: any[]): string {
   return components?.find((c) => c.type === "BODY" || c.type === "body")?.text ?? "";
 }
 
-function ViewTemplateButton({ onView }: { onView: () => void }) {
-  return (
-    <button
-      type="button"
-      onClick={onView}
-      className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-border text-muted-foreground hover:bg-muted hover:text-foreground"
-      aria-label="View template"
-    >
-      <Eye className="h-4 w-4" />
-    </button>
-  );
-}
 
 function SkeletonRow() {
   return (
@@ -157,7 +149,7 @@ function EmptyState({
     </div>
   );
 }
-const TABLE_HEADERS = ["Name", "Internal Category", "Language", "Status", ""];
+const TABLE_HEADERS = ["Name", "Internal Category", "Language", "Status", "Actions"];
 
 const LANGUAGE_LABELS: Record<string, string> = {
   en: "English",
@@ -167,10 +159,46 @@ const LANGUAGE_LABELS: Record<string, string> = {
 export function WhatsAppTemplateManager() {
   const { data: templates = [], isLoading } = useWhatsAppTemplates();
   const { mutate: syncTemplates, isPending: isSyncing } = useSyncTemplates();
+  const { mutate: deleteTemplate, isPending: isDeleting } = useDeleteTemplate();
 
   const [createOpen, setCreateOpen] = useState(false);
   const [selectedTemplateId, setSelectedTemplateId] = useState<string | null>(null);
   const selectedTemplate = useMemo(() => templates.find((t: WhatsAppTemplate) => t.id === selectedTemplateId) || null, [templates, selectedTemplateId]);
+
+  const [templateToDelete, setTemplateToDelete] = useState<WhatsAppTemplate | null>(null);
+  const [activeMenuId, setActiveMenuId] = useState<string | null>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!activeMenuId) return;
+    const onPointerDown = (e: MouseEvent) => {
+      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
+        setActiveMenuId(null);
+      }
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setActiveMenuId(null);
+    };
+    window.addEventListener("pointerdown", onPointerDown);
+    window.addEventListener("keydown", onKey);
+    return () => {
+      window.removeEventListener("pointerdown", onPointerDown);
+      window.removeEventListener("keydown", onKey);
+    };
+  }, [activeMenuId]);
+
+  const handleConfirmDelete = () => {
+    if (!templateToDelete) return;
+    deleteTemplate(templateToDelete.id, {
+      onSuccess: () => {
+        toast.success(`Template "${templateToDelete.name}" deleted from Meta and database`);
+        setTemplateToDelete(null);
+      },
+      onError: (err: any) => {
+        toast.error(err.message || "Failed to delete template from Meta");
+      },
+    });
+  };
 
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("ALL");
@@ -354,7 +382,7 @@ export function WhatsAppTemplateManager() {
                     <th
                       key={h}
                       className={`whitespace-nowrap px-6 py-3.5 text-xs font-semibold uppercase tracking-wider text-muted-foreground ${
-                        h === "" ? "w-12 text-right" : ""
+                        h === "Actions" ? "w-20 text-right pr-6" : ""
                       }`}
                     >
                       {h}
@@ -392,8 +420,50 @@ export function WhatsAppTemplateManager() {
                       <td className="whitespace-nowrap px-6 py-4">
                         <StatusBadge status={template.status} />
                       </td>
-                      <td className="px-4 py-4">
-                        <ViewTemplateButton onView={() => setSelectedTemplateId(template.id)} />
+                      <td className="px-6 py-4 text-right">
+                        <div className="relative inline-flex justify-end">
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setActiveMenuId(activeMenuId === template.id ? null : template.id);
+                            }}
+                            className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-border bg-background text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                            aria-label="Actions"
+                          >
+                            <MoreHorizontal className="h-4 w-4" />
+                          </button>
+                          {activeMenuId === template.id && (
+                            <div
+                              ref={menuRef}
+                              className="absolute right-0 top-full z-50 mt-1.5 w-44 overflow-hidden rounded-xl border border-border bg-card p-1 shadow-xl"
+                              onClick={(e) => e.stopPropagation()}
+                            >
+                              <button
+                                type="button"
+                                className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-xs font-medium text-foreground transition-colors hover:bg-muted"
+                                onClick={() => {
+                                  setActiveMenuId(null);
+                                  setSelectedTemplateId(template.id);
+                                }}
+                              >
+                                <Eye className="h-3.5 w-3.5 text-muted-foreground" />
+                                View
+                              </button>
+                              <button
+                                type="button"
+                                className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-xs font-medium text-destructive transition-colors hover:bg-destructive/10"
+                                onClick={() => {
+                                  setActiveMenuId(null);
+                                  setTemplateToDelete(template);
+                                }}
+                              >
+                                <Trash2 className="h-3.5 w-3.5" />
+                                Delete
+                              </button>
+                            </div>
+                          )}
+                        </div>
                       </td>
                     </motion.tr>
                   ))}
@@ -403,6 +473,25 @@ export function WhatsAppTemplateManager() {
           </div>
         )}
       </div>
+
+      <ConfirmDialog
+        open={Boolean(templateToDelete)}
+        title="Delete WhatsApp Template"
+        description={
+          templateToDelete ? (
+            <span>
+              Are you sure you want to delete template{" "}
+              <strong className="text-foreground font-semibold">{templateToDelete.name}</strong>?
+              This will permanently delete it from Meta Business Manager and your local database.
+            </span>
+          ) : ""
+        }
+        confirmLabel="Delete from Meta"
+        destructive
+        confirming={isDeleting}
+        onConfirm={handleConfirmDelete}
+        onCancel={() => setTemplateToDelete(null)}
+      />
 
       <WhatsAppTemplateCreateModal open={createOpen} onClose={() => setCreateOpen(false)} />
 

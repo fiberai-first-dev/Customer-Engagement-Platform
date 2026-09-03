@@ -22,24 +22,20 @@ export async function suppressInboundIds(input: {
   customerId?: string;
   reason?: string;
 }): Promise<number> {
-  let created = 0;
-  for (const externalId of [...new Set(input.externalIds.filter(Boolean))]) {
-    try {
-      await prisma.suppressedInbound.create({
-        data: {
-          id: ulid(),
-          channelType: input.channelType,
-          externalId,
-          customerId: input.customerId,
-          reason: input.reason ?? "dismissed",
-        },
-      });
-      created++;
-    } catch {
-      // already suppressed
-    }
-  }
-  return created;
+  const uniqueIds = [...new Set(input.externalIds.filter(Boolean))];
+  if (uniqueIds.length === 0) return 0;
+
+  const result = await prisma.suppressedInbound.createMany({
+    data: uniqueIds.map((externalId) => ({
+      id: ulid(),
+      channelType: input.channelType,
+      externalId,
+      customerId: input.customerId,
+      reason: input.reason ?? "dismissed",
+    })),
+    skipDuplicates: true,
+  });
+  return result.count;
 }
 
 /**

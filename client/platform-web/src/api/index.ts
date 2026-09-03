@@ -605,6 +605,28 @@ export const useCreateContact = () => {
   });
 };
 
+export type BulkImportResult = {
+  imported: number;
+  updated: number;
+  failed: number;
+  errors: string[];
+};
+
+export const useImportContacts = () => {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (contacts: Array<{ name?: string; whatsapp?: string; email?: string; instagram?: string }>) =>
+      request<BulkImportResult>("/api/v1/contacts/import", {
+        method: "POST",
+        body: JSON.stringify({ contacts }),
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["contacts"] });
+      queryClient.invalidateQueries({ queryKey: ["conversations"] });
+    },
+  });
+};
+
 export const useUpdateContact = () => {
   const queryClient = useQueryClient();
   return useMutation({

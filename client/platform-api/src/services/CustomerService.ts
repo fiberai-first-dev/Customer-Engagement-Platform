@@ -613,3 +613,69 @@ export async function deleteCustomer(customerId: string): Promise<{
 
   return { ok: true, deletedMessages: deleted.count };
 }
+
+export async function bulkImportContacts(contacts: Array<{
+  name?: string;
+  whatsapp?: string;
+  email?: string;
+  instagram?: string;
+}>): Promise<{ imported: number; updated: number; failed: number; errors: string[] }> {
+  let imported = 0;
+  let updated = 0;
+  let failed = 0;
+  const errors: string[] = [];
+
+  for (let i = 0; i < contacts.length; i++) {
+    const row = contacts[i];
+    const name = row.name?.trim() || null;
+    const whatsappId = row.whatsapp?.trim();
+    const email = row.email?.trim();
+    const instagramId = row.instagram?.trim();
+
+    if (!name && !whatsappId && !email && !instagramId) {
+      continue; // Skip empty rows
+    }
+
+    try {
+      const emails = email ? [email] : [];
+      const whatsappIds = whatsappId ? [whatsappId] : [];
+
+      const matches = await findMatchingCustomers({
+        emails,
+        whatsappIds,
+        instagramId,
+      });
+
+      if (matches.length > 0) {
+        const targetId = matches[0].id;
+        await attachIdentities(targetId, {
+          emails,
+          whatsappIds,
+          instagramId,
+        });
+        if (name && !isUnknownName(name)) {
+          await prisma.customer.update({
+            where: { id: targetId },
+            data: { name },
+          });
+        }
+        await recomputeCustomerResolved(targetId);
+        updated++;
+      } else {
+        await createCustomer({
+          name,
+          emails,
+          whatsappIds,
+          instagramId,
+          force: true,
+        });
+        imported++;
+      }
+    } catch (err: any) {
+      failed++;
+      errors.push(`Row ${i + 1} (${name || email || whatsappId || "Unnamed"}): ${err.message}`);
+    }
+  }
+
+  return { imported, updated, failed, errors };
+}

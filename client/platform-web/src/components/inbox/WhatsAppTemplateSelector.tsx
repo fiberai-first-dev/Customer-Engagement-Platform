@@ -84,10 +84,13 @@ export function WhatsAppTemplateSelector({
         .filter((t) => !isMetaTestTemplate(t))
         .filter((t) => (preferInternalCategory ? t.internalCategory === preferInternalCategory : true))
         .filter((t) => {
-          const q = searchQuery.toLowerCase();
+          const q = searchQuery.toLowerCase().trim();
+          if (!q) return true;
           return (
-            !q ||
             t.name.toLowerCase().includes(q) ||
+            t.internalCategory?.toLowerCase().includes(q) ||
+            t.metaCategory?.toLowerCase().includes(q) ||
+            t.language?.toLowerCase().includes(q) ||
             getBodyText(t).toLowerCase().includes(q)
           );
         }),
@@ -151,7 +154,7 @@ export function WhatsAppTemplateSelector({
         exit={{ opacity: 0, scale: 0.97, y: 8 }}
         transition={{ duration: 0.18, ease: "easeOut" }}
         className="flex w-full max-w-xl flex-col overflow-hidden rounded-2xl border border-border bg-card shadow-2xl"
-        style={{ maxHeight: "80vh" }}
+        style={{ maxHeight: "85vh" }}
       >
         {/* Header */}
         <div className="flex items-center justify-between border-b border-border px-5 py-4">
@@ -172,7 +175,7 @@ export function WhatsAppTemplateSelector({
               <p className="text-xs text-muted-foreground">
                 {selectedTemplate
                   ? "Fill in the required details below"
-                  : `${approvedTemplates.length} approved template${approvedTemplates.length !== 1 ? "s" : ""}`}
+                  : `${approvedTemplates.length} approved template${approvedTemplates.length !== 1 ? "s" : ""}${searchQuery ? ` matching "${searchQuery}"` : ""}`}
               </p>
             </div>
           </div>
@@ -195,7 +198,7 @@ export function WhatsAppTemplateSelector({
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
               transition={{ duration: 0.12 }}
-              className="flex flex-col overflow-hidden"
+              className="flex min-h-0 flex-1 flex-col overflow-hidden"
             >
               {/* Search */}
               <div className="px-4 pt-3 pb-2">
@@ -203,22 +206,32 @@ export function WhatsAppTemplateSelector({
                   <Search className="absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
                   <input
                     type="text"
-                    placeholder="Search templates…"
+                    placeholder="Search by name, message text, category or language…"
                     autoFocus
-                    className="w-full rounded-lg border border-border bg-muted/40 py-2 pl-8 pr-4 text-sm focus:border-primary/40 focus:outline-none focus:ring-1 focus:ring-primary/30"
+                    className="w-full rounded-lg border border-border bg-muted/40 py-2 pl-8 pr-8 text-sm focus:border-primary/40 focus:outline-none focus:ring-1 focus:ring-primary/30"
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
                   />
+                  {searchQuery && (
+                    <button
+                      type="button"
+                      onClick={() => setSearchQuery("")}
+                      className="absolute right-2.5 top-1/2 -translate-y-1/2 rounded-full p-0.5 text-muted-foreground hover:bg-muted hover:text-foreground"
+                      aria-label="Clear search"
+                    >
+                      <X className="h-3.5 w-3.5" />
+                    </button>
+                  )}
                 </div>
               </div>
 
               {/* List */}
-              <div className="flex-1 overflow-y-auto px-4 pb-4">
+              <div className="max-h-[55vh] flex-1 overflow-y-auto px-4 pb-4">
                 {approvedTemplates.length === 0 ? (
                   <div className="flex flex-col items-center justify-center py-12 text-center text-muted-foreground">
                     <p className="text-sm font-medium">No templates found</p>
                     <p className="mt-1 text-xs">
-                      {searchQuery ? "Try a different search term." : "Create and get templates approved on the Templates page."}
+                      {searchQuery ? "Try a different search term or clear the filter." : "Create and get templates approved on the Templates page."}
                     </p>
                   </div>
                 ) : (
