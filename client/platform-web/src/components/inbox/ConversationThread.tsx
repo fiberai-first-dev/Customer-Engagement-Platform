@@ -393,6 +393,21 @@ export function ConversationThread({
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages?.length, messages?.[messages.length - 1]?.id]);
 
+  const prevMessagesRef = useRef<Message[]>([]);
+  useEffect(() => {
+    if (messages) {
+      if (prevMessagesRef.current.length > 0) {
+        for (const msg of messages) {
+          const prev = prevMessagesRef.current.find((m) => m.id === msg.id);
+          if (prev && prev.status !== "failed" && msg.status === "failed") {
+            toast.error(msg.errorMessage ? `Message failed: ${msg.errorMessage}` : "Message failed to send");
+          }
+        }
+      }
+      prevMessagesRef.current = messages;
+    }
+  }, [messages]);
+
   useEffect(() => {
     if (!menuOpen) return;
     const onPointerDown = (e: MouseEvent) => {
@@ -947,7 +962,7 @@ export function ConversationThread({
                           if (onSendTemplate) {
                             const ok = await onSendTemplate(template.id, variables);
                             if (ok) {
-                              toast.success("Template sent successfully");
+                              setTemplateSelectorOpen(false);
                             }
                           } else {
                             toast.error("Template sending not fully wired on this page");

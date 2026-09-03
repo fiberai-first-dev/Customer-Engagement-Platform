@@ -261,7 +261,7 @@ export const whatsappAdapter: ChannelAdapter<WhatsAppChannelConfig> = {
       return {
         ok: true,
         externalId: first?.id ? String(first.id) : undefined,
-        status: "sent",
+        status: "queued",
         raw,
       };
     } catch (err) {
