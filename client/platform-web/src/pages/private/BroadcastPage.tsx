@@ -623,7 +623,7 @@ export function BroadcastPage() {
               {selectedTemplate && templateVars.length > 0 && (
                 <div className="mt-5 space-y-3">
                   <p className="text-sm font-medium text-muted-foreground">Template Variables</p>
-                  <div className="grid gap-3 sm:grid-cols-2">
+                  <div className="grid gap-4 sm:grid-cols-2">
                     {templateVars.map((v) => (
                       <div key={v}>
                         <label className="mb-1.5 block text-xs font-medium text-muted-foreground">{`{{${v}}}`}</label>
@@ -632,6 +632,22 @@ export function BroadcastPage() {
                           value={variables[v] ?? ""}
                           onChange={(e) => setVariables((p) => ({ ...p, [v]: e.target.value }))}
                         />
+                        <div className="mt-2 flex flex-wrap gap-2">
+                          <button
+                            type="button"
+                            onClick={() => setVariables((p) => ({ ...p, [v]: "$CONTACT_NAME" }))}
+                            className="rounded bg-primary/10 px-2 py-1 text-[10px] font-medium text-primary hover:bg-primary/20 transition-colors"
+                          >
+                            + Customer Name
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setVariables((p) => ({ ...p, [v]: "$CONTACT_FIRST_NAME" }))}
+                            className="rounded bg-primary/10 px-2 py-1 text-[10px] font-medium text-primary hover:bg-primary/20 transition-colors"
+                          >
+                            + First Name
+                          </button>
+                        </div>
                       </div>
                     ))}
                   </div>
