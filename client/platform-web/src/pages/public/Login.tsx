@@ -14,18 +14,24 @@ export function LoginPage() {
     onSuccess: async (tokenResponse) => {
       setLoading(true);
       try {
-        // Exchange the access_token for an id_token via Google's userinfo
-        // Then send to backend
-        const userInfoRes = await fetch("https://openidconnect.googleapis.com/v1/userinfo", {
-          headers: { Authorization: `Bearer ${tokenResponse.access_token}` },
-        });
-        if (!userInfoRes.ok) throw new Error("Failed to get user info from Google");
+        let credential = tokenResponse.access_token;
+        if (import.meta.env.VITE_MOCK === "true") {
+          credential = "mock_credential";
+        } else {
+          // Exchange the access_token for an id_token via Google's userinfo
+          // Then send to backend
+          const userInfoRes = await fetch("https://openidconnect.googleapis.com/v1/userinfo", {
+            headers: { Authorization: `Bearer ${tokenResponse.access_token}` },
+          });
+          if (!userInfoRes.ok) throw new Error("Failed to get user info from Google");
+        }
+
         // We use the implicit flow so we get access_token, not id_token.
         // We pass the access_token to our backend which validates via tokeninfo.
         const res = await fetch(`${import.meta.env.VITE_API_BASE_URL ?? ""}/api/v1/auth/google`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ credential: tokenResponse.access_token }),
+          body: JSON.stringify({ credential }),
         });
 
         const data = await res.json();
@@ -69,7 +75,29 @@ export function LoginPage() {
 
           <button
             id="google-signin-btn"
-            onClick={() => googleLogin()}
+            onClick={async () => {
+              if (import.meta.env.VITE_MOCK === "true") {
+                setLoading(true);
+                try {
+                  const res = await fetch(`${import.meta.env.VITE_API_BASE_URL ?? ""}/api/v1/auth/google`, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ credential: "mock_credential" }),
+                  });
+                  const data = await res.json();
+                  if (!res.ok) throw new Error(data.error || "Login failed");
+                  login(data.token, { id: data.id, username: data.username, role: data.role });
+                  toast.success(`Welcome, ${data.username}!`);
+                  navigate("/inbox");
+                } catch (err: any) {
+                  toast.error(err.message || "Mock login failed");
+                } finally {
+                  setLoading(false);
+                }
+              } else {
+                googleLogin();
+              }
+            }}
             disabled={loading}
             className="flex w-full items-center justify-center gap-3 rounded-xl border border-border bg-background px-4 py-3 text-sm font-medium text-foreground transition-all hover:bg-muted active:scale-[0.98] disabled:opacity-60 disabled:cursor-not-allowed"
           >

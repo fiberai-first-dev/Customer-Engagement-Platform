@@ -10,44 +10,50 @@ export class AuthController {
   ) {
     const { credential } = request.body ?? {};
     if (!credential) {
-      return reply.code(400).send({ error: "Google credential required" });
+      if (env.mock) {
+        // Allow empty credential in mock mode to fall through to bypass logic below
+      } else {
+        return reply.code(400).send({ error: "Google credential required" });
+      }
     }
 
     try {
-      // credential can be either an id_token OR an access_token from the implicit flow.
-      // Try id_token verification first (from @react-oauth/google one-tap / auth-code flow).
-      // Fall back to userinfo endpoint for access_token from implicit flow.
       let email: string | undefined;
       let googleId: string | undefined;
 
-      // Try as an access_token via Google's userinfo endpoint
-      try {
-        const userInfoRes = await fetch("https://openidconnect.googleapis.com/v1/userinfo", {
-          headers: { Authorization: `Bearer ${credential}` },
-        });
-        if (userInfoRes.ok) {
-          const info = (await userInfoRes.json()) as { email?: string; sub?: string };
-          email = info.email;
-          googleId = info.sub;
+      if (env.mock && (!credential || credential === "mock_credential")) {
+        email = "mock@fybud.com";
+        googleId = "mock123";
+      } else {
+        // Try as an access_token via Google's userinfo endpoint
+        try {
+          const userInfoRes = await fetch("https://openidconnect.googleapis.com/v1/userinfo", {
+            headers: { Authorization: `Bearer ${credential}` },
+          });
+          if (userInfoRes.ok) {
+            const info = (await userInfoRes.json()) as { email?: string; sub?: string };
+            email = info.email;
+            googleId = info.sub;
+          }
+        } catch {
+          /* not an access_token, try as id_token below */
         }
-      } catch {
-        /* not an access_token, try as id_token below */
-      }
 
-      // Try as an id_token (Google One Tap / auth-code flows)
-      if (!email || !googleId) {
-        const { OAuth2Client } = await import("google-auth-library");
-        const client = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
-        const ticket = await client.verifyIdToken({
-          idToken: credential,
-          audience: process.env.GOOGLE_CLIENT_ID,
-        });
-        const payload = ticket.getPayload();
-        if (!payload?.email || !payload?.sub) {
-          return reply.code(400).send({ error: "Invalid Google token payload" });
+        // Try as an id_token (Google One Tap / auth-code flows)
+        if (!email || !googleId) {
+          const { OAuth2Client } = await import("google-auth-library");
+          const client = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
+          const ticket = await client.verifyIdToken({
+            idToken: credential!,
+            audience: process.env.GOOGLE_CLIENT_ID,
+          });
+          const payload = ticket.getPayload();
+          if (!payload?.email || !payload?.sub) {
+            return reply.code(400).send({ error: "Invalid Google token payload" });
+          }
+          email = payload.email;
+          googleId = payload.sub;
         }
-        email = payload.email;
-        googleId = payload.sub;
       }
 
       if (!email || !googleId) {
@@ -55,6 +61,19 @@ export class AuthController {
       }
 
       const user = await findOrCreateGoogleUser(email, googleId);
+
+      // Force superadmin role in mock mode for review
+      if (env.mock && email === "mock@fybud.com") {
+        if (user.role !== "SUPER_ADMIN" || !user.isActive) {
+          const { prisma } = await import("../config/db.js");
+          await prisma.user.update({
+            where: { id: user.id },
+            data: { role: "SUPER_ADMIN", isActive: true },
+          });
+          user.role = "SUPER_ADMIN";
+          user.isActive = true;
+        }
+      }
 
       if (!user.isActive) {
         return reply.code(403).send({ error: "Account is deactivated" });
