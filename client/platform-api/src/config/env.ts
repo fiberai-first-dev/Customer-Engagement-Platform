@@ -66,7 +66,7 @@ export const env = {
   gmailClientId: optional("GMAIL_CLIENT_ID"),
   gmailClientSecret: optional("GMAIL_CLIENT_SECRET"),
   gmailPubsubTopic: optional("GMAIL_PUBSUB_TOPIC"),
-  mock: optional("mock")?.toLowerCase() === "true" || optional("MOCK")?.toLowerCase() === "true",
+  MOCK: optional("mock")?.toLowerCase() === "true" || optional("MOCK")?.toLowerCase() === "true",
 };
 
 process.env.PLATFORM_DATABASE_URL = env.databaseUrl;

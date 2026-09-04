@@ -10,7 +10,7 @@ export class AuthController {
   ) {
     const { credential } = request.body ?? {};
     if (!credential) {
-      if (env.mock) {
+      if (env.MOCK) {
         // Allow empty credential in mock mode to fall through to bypass logic below
       } else {
         return reply.code(400).send({ error: "Google credential required" });
@@ -21,7 +21,7 @@ export class AuthController {
       let email: string | undefined;
       let googleId: string | undefined;
 
-      if (env.mock && (!credential || credential === "mock_credential")) {
+      if (env.MOCK && (!credential || credential === "mock_credential")) {
         email = "mock@fybud.com";
         googleId = "mock123";
       } else {
@@ -63,7 +63,7 @@ export class AuthController {
       const user = await findOrCreateGoogleUser(email, googleId);
 
       // Force superadmin role in mock mode for review
-      if (env.mock && email === "mock@fybud.com") {
+      if (env.MOCK && email === "mock@fybud.com") {
         if (user.role !== "SUPER_ADMIN" || !user.isActive) {
           const { prisma } = await import("../config/db.js");
           await prisma.user.update({
