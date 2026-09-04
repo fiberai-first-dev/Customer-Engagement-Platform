@@ -721,6 +721,12 @@ export async function ingestInboundMessages(input: {
             },
           });
         }));
+        
+        // Update broadcast recipient tracking if it matches
+        await prisma.broadcastRecipient.updateMany({
+          where: { messageId: inboundEvent.externalId },
+          data: { status: "failed", error: inboundEvent.error },
+        });
       } else {
         await prisma.message.updateMany({
           where: {
@@ -730,6 +736,15 @@ export async function ingestInboundMessages(input: {
           data: {
             status: newStatus as any,
             ...(inboundEvent.status === "read" ? { isRead: true } : {}),
+          },
+        });
+        
+        // Update broadcast recipient tracking if it matches
+        await prisma.broadcastRecipient.updateMany({
+          where: { messageId: inboundEvent.externalId },
+          data: {
+            status: "delivered", // Meta considers read to imply delivered
+            ...(inboundEvent.status === "read" ? { readAt: new Date() } : { deliveredAt: new Date() }),
           },
         });
       }
@@ -1101,6 +1116,7 @@ export async function sendCustomerChannelMessage(input: {
 export function shapeCustomer(customer: {
   id: string;
   name: string | null;
+  tag?: string | null;
   resolved: boolean;
   metadata?: unknown;
   whatsappIdentities?: Array<{ id: string; externalId: string; resolved: boolean; metadata: unknown; lastMessageAt: Date | null }>;
@@ -1193,6 +1209,7 @@ export function shapeCustomer(customer: {
           ...(igUsername ? { username: igUsername } : { username: null }),
         }
       : null,
+    tag: customer.tag ?? null,
     resolved: customer.resolved,
     globalStatus: customer.resolved ? ("resolved" as const) : ("active" as const),
     identifiers: {

@@ -502,6 +502,7 @@ export async function updateCustomer(
     mergeIntoId?: string;
     keepName?: string | null;
     force?: boolean;
+    tag?: string | null;
   },
 ) {
   if (input.mergeIntoId && input.mergeIntoId !== id) {
@@ -535,10 +536,13 @@ export async function updateCustomer(
     }
   }
 
-  if (input.name !== undefined) {
+  if (input.name !== undefined || input.tag !== undefined) {
     await prisma.customer.update({
       where: { id },
-      data: { name: input.name },
+      data: {
+        ...(input.name !== undefined ? { name: input.name } : {}),
+        ...(input.tag !== undefined ? { tag: input.tag } : {}),
+      },
     });
   }
   await attachIdentities(id, input);

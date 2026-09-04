@@ -107,6 +107,7 @@ export class ContactController {
         mergeIntoId?: string;
         keepName?: string;
         force?: boolean;
+        tag?: string | null;
       };
       const existing = await prisma.customer.findUnique({ where: { id: request.params.id } });
       if (!existing) return reply.code(404).send({ error: "not found" });
@@ -143,6 +144,24 @@ export class ContactController {
         }
       }
 
+      // If only tag is being changed, patch it directly and return early
+      if (
+        body.tag !== undefined &&
+        !body.name && !body.email && !body.emails && !body.whatsappId &&
+        !body.whatsappIds && !body.instagramId && !body.mergeIntoId
+      ) {
+        const updated = await prisma.customer.update({
+          where: { id: request.params.id },
+          data: { tag: body.tag ?? null },
+          include: {
+            whatsappIdentities: true,
+            instagramIdentities: true,
+            emailIdentities: true,
+          },
+        });
+        return reply.send(shapeCustomer(updated));
+      }
+
       const result = await updateCustomer(request.params.id, {
         name: body.name,
         emails,
@@ -151,6 +170,7 @@ export class ContactController {
         mergeIntoId: body.mergeIntoId,
         keepName: body.keepName ?? body.name,
         force: Boolean(body.force),
+        tag: body.tag,
       });
 
       if (result && "needsMerge" in result && result.needsMerge) {
@@ -205,6 +225,44 @@ export class ContactController {
       const message = err?.message ?? "Failed to delete contact";
       const code = message === "Customer not found" ? 404 : 400;
       return reply.code(code).send({ error: message });
+    }
+  }
+
+  /** PATCH /api/v1/contacts/:id/tag — set or clear the tag field only */
+  static async setTag(
+    request: FastifyRequest<{ Params: { id: string }; Body: { tag: string | null } }>,
+    reply: FastifyReply,
+  ) {
+    try {
+      const { tag } = request.body;
+      const updated = await prisma.customer.update({
+        where: { id: request.params.id },
+        data: { tag: tag ?? null },
+        include: {
+          whatsappIdentities: true,
+          instagramIdentities: true,
+          emailIdentities: true,
+        },
+      });
+      return reply.send(shapeCustomer(updated));
+    } catch (err: any) {
+      const code = err?.code === "P2025" ? 404 : 400;
+      return reply.code(code).send({ error: err.message });
+    }
+  }
+
+  /** GET /api/v1/contacts/tags — list all distinct tags in use */
+  static async listTags(_request: FastifyRequest, reply: FastifyReply) {
+    try {
+      const rows = await prisma.customer.findMany({
+        where: { tag: { not: null } },
+        select: { tag: true },
+        distinct: ["tag"],
+        orderBy: { tag: "asc" },
+      });
+      return reply.send({ tags: rows.map((r) => r.tag).filter(Boolean) });
+    } catch (err: any) {
+      return reply.code(500).send({ error: err.message });
     }
   }
 

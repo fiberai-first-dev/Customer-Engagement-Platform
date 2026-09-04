@@ -750,7 +750,8 @@ export function App() {
                         { key: "rrweb", description: "Enable RRWeb session recording" },
                         { key: "whatsapp_templates_enabled", description: "Enable WhatsApp Templates management page" },
                         { key: "whatsapp_template_injection_enabled", description: "Show 'Use template' button in WhatsApp chat — lets agents send approved templates during active conversations" },
-                        { key: "instagram_human_agent_enabled", description: "Allow Instagram HUMAN_AGENT replies from CEP after 24h" }
+                        { key: "instagram_human_agent_enabled", description: "Allow Instagram HUMAN_AGENT replies from CEP after 24h" },
+                        { key: "broadcast_enabled", description: "Enable WhatsApp template broadcasting to multiple contacts at once" },
                       ];
                       
                       const allFeatures = [...features];
@@ -769,7 +770,8 @@ export function App() {
                         "rrweb": "Session Replays",
                         "whatsapp_templates_enabled": "WhatsApp Templates",
                         "whatsapp_template_injection_enabled": "Send Template in Chat",
-                        "instagram_human_agent_enabled": "Instagram Human Agent"
+                        "instagram_human_agent_enabled": "Instagram Human Agent",
+                        "broadcast_enabled": "WhatsApp Broadcasting",
                       };
                       
                       const filteredFeatures = allFeatures.filter(f => {

@@ -10,6 +10,7 @@ import { TicketDetailPage } from "../pages/private/TicketDetail";
 import { UsersPage } from "../pages/private/UsersPage";
 import { TeamsPage } from "../pages/private/TeamsPage";
 import { TemplatesPage } from "../pages/private/TemplatesPage";
+import { BroadcastPage } from "../pages/private/BroadcastPage";
 import { LoginPage } from "../pages/public/Login";
 
 export function AppRoutes() {
@@ -28,6 +29,7 @@ export function AppRoutes() {
             <Route path="users" element={<UsersPage />} />
             <Route path="teams" element={<TeamsPage />} />
             <Route path="templates" element={<TemplatesPage />} />
+            <Route path="broadcast" element={<BroadcastPage />} />
             <Route path="settings" element={<SettingsPage />} />
           </Route>
         </Route>

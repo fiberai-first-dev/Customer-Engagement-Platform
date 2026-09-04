@@ -19,7 +19,7 @@ export class ApiError extends Error {
   }
 }
 
-async function request<T>(path: string, init?: RequestInit): Promise<T> {
+export async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const token = useAuthStore.getState().token;
   const hasBody = init?.body != null && init.body !== "";
 
@@ -108,6 +108,8 @@ export interface Contact {
   identifiers?: Record<string, string>;
   identities?: ContactIdentity[];
   resolved?: boolean;
+  /** Free-form label for grouping / broadcast filtering */
+  tag?: string | null;
 }
 
 export interface ContactMatch {
@@ -1245,6 +1247,96 @@ export const useToggleFeatureFlag = () => {
       ) {
         queryClient.invalidateQueries({ queryKey: ["conversations"] });
       }
+    },
+  });
+};
+
+// ─── Broadcast API ────────────────────────────────────────────────────────────
+
+export interface BroadcastRecipient {
+  id: string;
+  jobId: string;
+  customerId: string;
+  customerName: string | null;
+  status: "sent" | "delivered" | "failed";
+  error: string | null;
+  deliveredAt: string | null;
+  readAt: string | null;
+  createdAt: string;
+}
+
+export interface BroadcastJob {
+  id: string;
+  templateId: string;
+  templateName: string;
+  variables: Record<string, string>;
+  status: "pending" | "completed" | "partial" | "failed";
+  total: number;
+  succeeded: number;
+  failed: number;
+  createdAt: string;
+  recipients: BroadcastRecipient[];
+}
+
+export const useBroadcasts = () =>
+  useQuery({
+    queryKey: ["broadcasts"],
+    queryFn: async () => {
+      const data = await request<{ jobs: BroadcastJob[] }>("/api/v1/broadcasts");
+      return data.jobs ?? [];
+    },
+  });
+
+export const useSendBroadcast = () => {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (body: {
+      templateId: string;
+      customerIds: string[];
+      variables: Record<string, string>;
+      tag?: string;
+    }) =>
+      request<{
+        jobId: string;
+        total: number;
+        succeeded: number;
+        failed: number;
+        status: "pending" | "completed" | "partial" | "failed";
+        results: BroadcastRecipient[];
+      }>("/api/v1/broadcasts", {
+        method: "POST",
+        body: JSON.stringify(body),
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["broadcasts"] });
+    },
+  });
+};
+
+// ─── Contact Tag API ───────────────────────────────────────────────────────────
+
+/** Fetch all distinct tags currently in use across contacts */
+export const useContactTags = () =>
+  useQuery({
+    queryKey: ["contact-tags"],
+    queryFn: async () => {
+      const data = await request<{ tags: string[] }>("/api/v1/contacts/tags");
+      return data.tags ?? [];
+    },
+  });
+
+/** Set (or clear) the tag on a single contact */
+export const useSetContactTag = () => {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, tag }: { id: string; tag: string | null }) =>
+      request<Contact>(`/api/v1/contacts/${id}/tag`, {
+        method: "PATCH",
+        body: JSON.stringify({ tag }),
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["contacts"] });
+      queryClient.invalidateQueries({ queryKey: ["contact-tags"] });
     },
   });
 };

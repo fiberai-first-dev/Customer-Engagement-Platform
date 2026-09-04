@@ -13,6 +13,7 @@ import {
   ShieldCheck,
   UserRound,
   LayoutTemplate,
+  Radio,
 } from "lucide-react";
 import { useFeatureFlag, useEnabledChannelTypes } from "../../api";
 import { cn } from "../../utils/utils";
@@ -55,6 +56,7 @@ export function DashboardLayout() {
   ];
 
   const { data: featureFlag } = useFeatureFlag("whatsapp_templates_enabled");
+  const { data: broadcastFlag } = useFeatureFlag("broadcast_enabled");
   const { enabledChannels } = useEnabledChannelTypes();
   const hasWhatsapp = enabledChannels.includes("whatsapp");
 
@@ -62,6 +64,7 @@ export function DashboardLayout() {
     ...(canManageUsers ? [{ to: "/users", icon: ShieldCheck, label: "Users" }] : []),
     ...(canViewTeams ? [{ to: "/teams", icon: Building2, label: "Teams" }] : []),
     ...(featureFlag?.enabled && hasWhatsapp && (user?.role === "ADMIN" || user?.role === "SUPER_ADMIN") ? [{ to: "/templates", icon: LayoutTemplate, label: "Templates" }] : []),
+    ...(broadcastFlag?.enabled && hasWhatsapp ? [{ to: "/broadcast", icon: Radio, label: "Broadcast" }] : []),
   ];
 
   const bottomLinks =

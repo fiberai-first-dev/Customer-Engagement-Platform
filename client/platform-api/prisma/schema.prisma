@@ -94,6 +94,8 @@ model Team {
 model Customer {
   id        String   @id
   name      String?
+  /// Free-form label used to group contacts for broadcasting (e.g. "vip", "newsletter", "promo")
+  tag       String?
   /// True only when EVERY channel identity for this customer is resolved
   resolved  Boolean  @default(false)
   metadata  Json     @default("{}")
@@ -106,6 +108,7 @@ model Customer {
   tickets             Ticket[]
 
   @@index([resolved])
+  @@index([tag])
   @@map("customers")
 }
 
@@ -426,3 +429,35 @@ model WhatsAppTemplate {
   @@map("whatsapp_templates")
 }
 
+model BroadcastJob {
+  id           String               @id @default(cuid())
+  templateId   String               @map("template_id")
+  templateName String               @map("template_name")
+  variables    Json                 @default("{}")
+  status       String               @default("completed")
+  total        Int
+  succeeded    Int                  @default(0)
+  failed       Int                  @default(0)
+  createdAt    DateTime             @default(now()) @map("created_at")
+  recipients   BroadcastRecipient[]
+
+  @@map("broadcast_jobs")
+}
+
+model BroadcastRecipient {
+  id           String       @id @default(cuid())
+  jobId        String       @map("job_id")
+  customerId   String       @map("customer_id")
+  customerName String?      @map("customer_name")
+  status       String
+  error        String?
+  messageId    String?      @map("message_id")
+  deliveredAt  DateTime?    @map("delivered_at")
+  readAt       DateTime?    @map("read_at")
+  createdAt    DateTime     @default(now()) @map("created_at")
+  job          BroadcastJob @relation(fields: [jobId], references: [id], onDelete: Cascade)
+
+  @@index([jobId])
+  @@index([messageId])
+  @@map("broadcast_recipients")
+}

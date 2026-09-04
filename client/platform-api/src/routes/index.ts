@@ -19,6 +19,7 @@ import { mediaRoutes } from "./v1/media.routes.js";
 import { teamRoutes } from "./v1/teams.routes.js";
 import { userRoutes } from "./v1/users.routes.js";
 import { whatsAppTemplateRoutes } from "../controllers/WhatsAppTemplateController.js";
+import { broadcastRoutes } from "../controllers/BroadcastController.js";
 import { requireAuth } from "../middleware/auth.js";
 import { prisma } from "../config/db.js";
 import { ulid } from "ulid";
@@ -105,6 +106,7 @@ export async function registerRoutes(app: FastifyInstance) {
   app.register(teamRoutes, { prefix: "/api/v1/teams" });
   app.register(userRoutes, { prefix: "/api/v1/users" });
   app.register(whatsAppTemplateRoutes, { prefix: "/api/v1/whatsapp-templates" });
+  app.register(broadcastRoutes, { prefix: "/api/v1/broadcasts" });
   
   app.get<{ Querystring: { key: string } }>("/api/v1/features", async (request, reply) => {
     const key = request.query.key;
