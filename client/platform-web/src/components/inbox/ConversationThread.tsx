@@ -78,6 +78,82 @@ function sanitizeEmailHtml(html: string): string {
   return document.body.innerHTML;
 }
 
+/**
+ * Renders an HTML email body inside a sandboxed iframe.
+ * - No scripts (sandbox allows only allow-same-origin so relative links resolve but JS is blocked)
+ * - Auto-sizes height to the email's actual content via ResizeObserver
+ * - The email's own internal layout (column proportions, fonts, colours) is fully preserved
+ */
+function EmailIframe({ html }: { html: string }) {
+  const iframeRef = useRef<HTMLIFrameElement>(null);
+
+  // Inject a tiny style reset so the iframe body has no default margin
+  // and images don't overflow their columns.
+  const srcdoc = `<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+  html, body { margin: 0; padding: 0; background: transparent; }
+  img { max-width: 100%; height: auto; }
+  a { color: inherit; }
+</style>
+</head>
+<body>${html}</body>
+</html>`;
+
+  useEffect(() => {
+    const iframe = iframeRef.current;
+    if (!iframe) return;
+
+    const resize = () => {
+      try {
+        const doc = iframe.contentDocument;
+        if (!doc) return;
+        // Use scrollHeight so we get the full rendered height
+        const h = doc.documentElement.scrollHeight || doc.body.scrollHeight;
+        if (h > 0) iframe.style.height = `${h}px`;
+      } catch {
+        // cross-origin guard — shouldn't happen with allow-same-origin
+      }
+    };
+
+    let ro: ResizeObserver | null = null;
+    const onLoad = () => {
+      resize();
+      try {
+        const doc = iframe.contentDocument;
+        if (doc) {
+          ro = new ResizeObserver(resize);
+          ro.observe(doc.documentElement);
+        }
+      } catch {
+        // ignore
+      }
+    };
+
+    iframe.addEventListener("load", onLoad);
+    return () => {
+      iframe.removeEventListener("load", onLoad);
+      ro?.disconnect();
+    };
+  }, [html]);
+
+  return (
+    <iframe
+      ref={iframeRef}
+      srcDoc={srcdoc}
+      sandbox="allow-same-origin allow-popups"
+      referrerPolicy="no-referrer"
+      title="Email content"
+      // Start at 0; onLoad ResizeObserver sets real height
+      style={{ width: "100%", height: 0, border: "none", display: "block", overflow: "hidden" }}
+      scrolling="no"
+    />
+  );
+}
+
 function MessageBody({
   message,
   showBodyLabel,
@@ -194,10 +270,7 @@ function MessageBody({
             </span>
           )}
           {message.contentType === "html" ? (
-            <div
-              className="email-html-body break-words leading-relaxed [overflow-wrap:anywhere]"
-              dangerouslySetInnerHTML={{ __html: renderedHtml }}
-            />
+            <EmailIframe html={renderedHtml} />
           ) : (
             <div className="whitespace-pre-wrap break-words leading-relaxed [overflow-wrap:anywhere]">
               {visible}

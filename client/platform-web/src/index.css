@@ -163,37 +163,4 @@
     margin: 1.5em 0;
     border-top: 1px solid hsl(var(--border));
   }
-
-  /* Prevent HTML emails from overflowing their bubble */
-  .email-html-body {
-    overflow: hidden;
-    word-break: break-word;
-    overflow-wrap: anywhere;
-  }
-  .email-html-body img {
-    max-width: 100%;
-    height: auto;
-    display: block;
-  }
-  .email-html-body table {
-    max-width: 100%;
-    width: 100% !important;
-    table-layout: fixed;
-    border-collapse: collapse;
-  }
-  .email-html-body td,
-  .email-html-body th {
-    word-break: break-word;
-    overflow-wrap: anywhere;
-    max-width: 0;
-  }
-  .email-html-body pre {
-    white-space: pre-wrap;
-    word-break: break-word;
-    overflow-wrap: anywhere;
-  }
-  .email-html-body * {
-    max-width: 100%;
-    box-sizing: border-box;
-  }
 }
