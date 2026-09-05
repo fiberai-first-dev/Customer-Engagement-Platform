@@ -243,7 +243,19 @@ export const useInboxes = (accountId?: string) =>
     enabled: !!accountId,
   });
 
-/** Enabled channel types from channels_config. Empty array once loaded means none enabled. */
+/** The four per-channel feature flag keys. Default true = visible unless admin turns off. */
+export const CHANNEL_FLAG_KEYS: Record<ChannelType, string> = {
+  whatsapp: "whatsapp_channel",
+  instagram: "instagram_channel",
+  facebook: "facebook_channel",
+  email: "email_channel",
+};
+
+/**
+ * Returns the channels that are both:
+ * 1. Connected (inbox.enabled === true), AND
+ * 2. Allowed by the admin channel feature flag (default: true)
+ */
 export const useEnabledChannelTypes = (): {
   enabledChannels: ChannelType[];
   channelsReady: boolean;
@@ -251,8 +263,25 @@ export const useEnabledChannelTypes = (): {
   const { data: accounts } = useAccounts();
   const accountId = accounts?.[0]?.id;
   const { data: inboxes, isSuccess } = useInboxes(accountId);
+
+  // Fetch the four channel flags in parallel
+  const waFlag = useQuery({ queryKey: ["feature-flag", "whatsapp_channel"], queryFn: () => request<{ enabled: boolean }>(`/api/v1/features?key=whatsapp_channel`) });
+  const igFlag = useQuery({ queryKey: ["feature-flag", "instagram_channel"], queryFn: () => request<{ enabled: boolean }>(`/api/v1/features?key=instagram_channel`) });
+  const fbFlag = useQuery({ queryKey: ["feature-flag", "facebook_channel"], queryFn: () => request<{ enabled: boolean }>(`/api/v1/features?key=facebook_channel`) });
+  const emailFlag = useQuery({ queryKey: ["feature-flag", "email_channel"], queryFn: () => request<{ enabled: boolean }>(`/api/v1/features?key=email_channel`) });
+
+  // Build a set of admin-allowed channels (default to true if flag not yet set in DB)
+  const flagAllowed = new Set<ChannelType>();
+  if (waFlag.data?.enabled !== false) flagAllowed.add("whatsapp");
+  if (igFlag.data?.enabled !== false) flagAllowed.add("instagram");
+  if (fbFlag.data?.enabled !== false) flagAllowed.add("facebook");
+  if (emailFlag.data?.enabled !== false) flagAllowed.add("email");
+
+  const connectedChannels = (inboxes ?? []).filter((i) => i.enabled).map((i) => i.channelType);
+  const enabledChannels = connectedChannels.filter((ch) => flagAllowed.has(ch));
+
   return {
-    enabledChannels: (inboxes ?? []).filter((i) => i.enabled).map((i) => i.channelType),
+    enabledChannels,
     channelsReady: Boolean(accountId && isSuccess),
   };
 };
@@ -1248,6 +1277,12 @@ export const useToggleFeatureFlag = () => {
       request<{ enabled: boolean }>('/api/v1/features', { method: 'POST', body: JSON.stringify({ key, enabled, description }) }),
     onSuccess: (_data, variables) => {
       queryClient.invalidateQueries({ queryKey: ['feature-flag', variables.key] });
+      // Invalidate conversations + inboxes when channel visibility flags change
+      const channelFlags = new Set(["whatsapp_channel", "instagram_channel", "facebook_channel", "email_channel"]);
+      if (channelFlags.has(variables.key)) {
+        queryClient.invalidateQueries({ queryKey: ["conversations"] });
+        queryClient.invalidateQueries({ queryKey: ["inboxes"] });
+      }
       if (
         variables.key === "instagram_human_agent_enabled" ||
         variables.key === "whatsapp_templates_enabled"

@@ -16,6 +16,8 @@ import {
   useUpdateInbox,
   useUpdateShopifyConfig,
   setupGuidePdfUrl,
+  useFeatureFlag,
+  useToggleFeatureFlag,
   type Inbox,
 } from "../../api";
 import { ConfirmDialog } from "../../components/ui/confirm-dialog";
@@ -372,6 +374,19 @@ export function SettingsPage() {
   const { data: shopify, isLoading: shopifyLoading } = useShopifyConfig();
   const { mutateAsync: updateShopifyAsync, isPending: shopifyBusy } = useUpdateShopifyConfig();
 
+  const { mutate: toggleFlag, isPending: togglingFlag } = useToggleFeatureFlag();
+
+  // Per-channel admin flags (default true = channel shown)
+  const { data: waChannelFlag } = useFeatureFlag("whatsapp_channel");
+  const { data: igChannelFlag } = useFeatureFlag("instagram_channel");
+  const { data: fbChannelFlag } = useFeatureFlag("facebook_channel");
+  const { data: emailChannelFlag } = useFeatureFlag("email_channel");
+
+  const showWaRow = waChannelFlag?.enabled !== false;
+  const showIgRow = igChannelFlag?.enabled !== false;
+  const showFbRow = fbChannelFlag?.enabled !== false;
+  const showEmailRow = emailChannelFlag?.enabled !== false;
+
   const [connecting, setConnecting] = useState<"gmail" | "instagram" | "shopify" | null>(null);
   const [modal, setModal] = useState<ModalKey | null>(null);
   const [submitting, setSubmitting] = useState(false);
@@ -658,47 +673,60 @@ export function SettingsPage() {
           </div>
 
           <div className="divide-y divide-border overflow-hidden rounded-xl border border-border bg-card shadow-sm">
-            <ChannelRow
-              name="WhatsApp"
-              linked={isLinkedStatus(waStatus.tone)}
-              busy={
-                (submitting && modal === "whatsapp") ||
-                (disconnectingInbox && disconnectTarget === "whatsapp")
-              }
-              onConnect={() => setModal("whatsapp")}
-              onDisconnect={() => setDisconnectTarget("whatsapp")}
-            />
-            <ChannelRow
-              name="Instagram"
-              linked={isLinkedStatus(igStatus.tone)}
-              busy={
-                connecting === "instagram" ||
-                (submitting && modal === "instagram") ||
-                (disconnectingInbox && disconnectTarget === "instagram")
-              }
-              onConnect={() => setModal("instagram")}
-              onDisconnect={() => setDisconnectTarget("instagram")}
-            />
-            <ChannelRow
-              name="Facebook"
-              linked={isLinkedStatus(fbStatus.tone)}
-              busy={
-                (submitting && modal === "facebook") ||
-                (disconnectingInbox && disconnectTarget === "facebook")
-              }
-              onConnect={() => setModal("facebook")}
-              onDisconnect={() => setDisconnectTarget("facebook")}
-            />
-            <ChannelRow
-              name="Gmail"
-              linked={isLinkedStatus(emailStatus.tone)}
-              busy={
-                connecting === "gmail" ||
-                (disconnectingInbox && disconnectTarget === "email")
-              }
-              onConnect={handleConnectGmail}
-              onDisconnect={() => setDisconnectTarget("email")}
-            />
+            {showWaRow && (
+              <ChannelRow
+                name="WhatsApp"
+                linked={isLinkedStatus(waStatus.tone)}
+                busy={
+                  (submitting && modal === "whatsapp") ||
+                  (disconnectingInbox && disconnectTarget === "whatsapp")
+                }
+                onConnect={() => setModal("whatsapp")}
+                onDisconnect={() => setDisconnectTarget("whatsapp")}
+              />
+            )}
+            {showIgRow && (
+              <ChannelRow
+                name="Instagram"
+                linked={isLinkedStatus(igStatus.tone)}
+                busy={
+                  connecting === "instagram" ||
+                  (submitting && modal === "instagram") ||
+                  (disconnectingInbox && disconnectTarget === "instagram")
+                }
+                onConnect={() => setModal("instagram")}
+                onDisconnect={() => setDisconnectTarget("instagram")}
+              />
+            )}
+            {showFbRow && (
+              <ChannelRow
+                name="Facebook"
+                linked={isLinkedStatus(fbStatus.tone)}
+                busy={
+                  (submitting && modal === "facebook") ||
+                  (disconnectingInbox && disconnectTarget === "facebook")
+                }
+                onConnect={() => setModal("facebook")}
+                onDisconnect={() => setDisconnectTarget("facebook")}
+              />
+            )}
+            {showEmailRow && (
+              <ChannelRow
+                name="Gmail"
+                linked={isLinkedStatus(emailStatus.tone)}
+                busy={
+                  connecting === "gmail" ||
+                  (disconnectingInbox && disconnectTarget === "email")
+                }
+                onConnect={handleConnectGmail}
+                onDisconnect={() => setDisconnectTarget("email")}
+              />
+            )}
+            {!showWaRow && !showIgRow && !showFbRow && !showEmailRow && (
+              <p className="px-4 py-6 text-center text-sm text-muted-foreground">
+                All channels are disabled. Enable them in Channel Visibility below.
+              </p>
+            )}
           </div>
         </section>
 
@@ -721,6 +749,53 @@ export function SettingsPage() {
               onConnect={() => setModal("shopify")}
               onDisconnect={() => setDisconnectTarget("shopify")}
             />
+          </div>
+        </section>
+
+        {/* Channel Visibility — admin controls which channels are shown across the whole app */}
+        <section className="space-y-3">
+          <div>
+            <h2 className="text-base font-semibold leading-none">Channel Visibility</h2>
+            <p className="mt-2 text-sm text-muted-foreground">
+              Enable or disable channels across the entire workspace — inbox, contacts, and settings.
+              Disabling a channel hides it even if it's connected.
+            </p>
+          </div>
+          <div className="divide-y divide-border overflow-hidden rounded-xl border border-border bg-card shadow-sm">
+            {([
+              { key: "whatsapp_channel", label: "WhatsApp", enabled: waChannelFlag?.enabled !== false },
+              { key: "instagram_channel", label: "Instagram", enabled: igChannelFlag?.enabled !== false },
+              { key: "facebook_channel", label: "Facebook", enabled: fbChannelFlag?.enabled !== false },
+              { key: "email_channel", label: "Gmail / Email", enabled: emailChannelFlag?.enabled !== false },
+            ] as const).map(({ key, label, enabled }) => (
+              <div key={key} className="flex min-h-14 items-center justify-between gap-3 px-4 py-2.5">
+                <div className="min-w-0">
+                  <span className="text-sm font-semibold text-foreground">{label}</span>
+                  <p className="text-xs text-muted-foreground mt-0.5">
+                    {enabled ? "Visible in inbox, contacts & settings" : "Hidden across the workspace"}
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  disabled={togglingFlag}
+                  onClick={() => toggleFlag({ key, enabled: !enabled })}
+                  className={[
+                    "relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50",
+                    enabled ? "bg-primary" : "bg-muted-foreground/30",
+                  ].join(" ")}
+                  role="switch"
+                  aria-checked={enabled}
+                  aria-label={`Toggle ${label} channel visibility`}
+                >
+                  <span
+                    className={[
+                      "pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow-lg ring-0 transition duration-200 ease-in-out",
+                      enabled ? "translate-x-5" : "translate-x-0",
+                    ].join(" ")}
+                  />
+                </button>
+              </div>
+            ))}
           </div>
         </section>
       </div>
