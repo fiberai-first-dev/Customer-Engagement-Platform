@@ -1,4 +1,5 @@
 import { ulid } from "ulid";
+import type { ChannelType } from "../generated/client/index.js";
 import { prisma } from "../config/db.js";
 import {
   formatWhatsAppStorage,
@@ -653,7 +654,7 @@ export async function deleteCustomer(customerId: string): Promise<{
     select: { channelType: true, externalId: true },
   });
 
-  const byChannel = new Map<"whatsapp" | "instagram" | "email", string[]>();
+  const byChannel = new Map<ChannelType, string[]>();
   for (const m of messages) {
     if (!m.externalId) continue;
     const list = byChannel.get(m.channelType) ?? [];
@@ -674,7 +675,7 @@ export async function deleteCustomer(customerId: string): Promise<{
     where: { customerId },
     data: { customerId: null },
   });
-  // Cascades whatsapp / instagram / email channel identity rows
+  // Cascades whatsapp / instagram / email / facebook channel identity rows
   await prisma.customer.delete({ where: { id: customerId } });
 
   return { ok: true, deletedMessages: deleted.count };
@@ -685,6 +686,7 @@ export async function bulkImportContacts(contacts: Array<{
   whatsapp?: string;
   email?: string;
   instagram?: string;
+  facebook?: string;
 }>): Promise<{ imported: number; updated: number; failed: number; errors: string[] }> {
   let imported = 0;
   let updated = 0;
@@ -697,8 +699,9 @@ export async function bulkImportContacts(contacts: Array<{
     const whatsappId = row.whatsapp?.trim();
     const email = row.email?.trim();
     const instagramId = row.instagram?.trim();
+    const facebookId = row.facebook?.trim();
 
-    if (!name && !whatsappId && !email && !instagramId) {
+    if (!name && !whatsappId && !email && !instagramId && !facebookId) {
       continue; // Skip empty rows
     }
 
@@ -710,6 +713,7 @@ export async function bulkImportContacts(contacts: Array<{
         emails,
         whatsappIds,
         instagramId,
+        facebookId,
       });
 
       if (matches.length > 0) {
@@ -718,6 +722,7 @@ export async function bulkImportContacts(contacts: Array<{
           emails,
           whatsappIds,
           instagramId,
+          facebookId,
         });
         if (name && !isUnknownName(name)) {
           await prisma.customer.update({
@@ -733,13 +738,14 @@ export async function bulkImportContacts(contacts: Array<{
           emails,
           whatsappIds,
           instagramId,
+          facebookId,
           force: true,
         });
         imported++;
       }
     } catch (err: any) {
       failed++;
-      errors.push(`Row ${i + 1} (${name || email || whatsappId || "Unnamed"}): ${err.message}`);
+      errors.push(`Row ${i + 1} (${name || email || whatsappId || facebookId || "Unnamed"}): ${err.message}`);
     }
   }
 

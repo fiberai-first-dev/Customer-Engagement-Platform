@@ -12,12 +12,13 @@
 import "../config/load-env.js";
 import { prisma } from "../config/db.js";
 
-type ChannelTable = "whatsapp_channel" | "instagram_channel" | "email_channel";
-type ChannelType = "whatsapp" | "instagram" | "email";
+type ChannelTable = "whatsapp_channel" | "instagram_channel" | "facebook_channel" | "email_channel";
+type ChannelType = "whatsapp" | "instagram" | "facebook" | "email";
 
 const CHANNELS: Array<{ table: ChannelTable; type: ChannelType }> = [
   { table: "whatsapp_channel", type: "whatsapp" },
   { table: "instagram_channel", type: "instagram" },
+  { table: "facebook_channel", type: "facebook" },
   { table: "email_channel", type: "email" },
 ];
 

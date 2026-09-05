@@ -12,8 +12,9 @@ export async function conversationRoutes(app: FastifyInstance) {
   app.post("/:id/attachments", MediaController.uploadAttachment);
   app.get("/:id/messages", ConversationController.getMessages);
   app.post("/:id/messages", ConversationController.sendMessage);
-  app.post("/:id/whatsapp/templates/send", ConversationController.sendWhatsAppTemplate);
+  // NOTE: POST /:id/whatsapp/templates/send has been removed (template injection in chat disabled)
 }
+
 
 export async function messageMediaRoutes(app: FastifyInstance) {
   app.get("/:messageId/media", MediaController.streamMessageMedia);

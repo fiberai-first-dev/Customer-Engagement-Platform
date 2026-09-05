@@ -83,3 +83,33 @@ export async function requireSuperAdmin(
     return reply.code(403).send({ error: "forbidden, super admin only" });
   }
 }
+
+/**
+ * Factory that returns a Fastify preHandler enforcing a feature flag.
+ * The check is always done server-side against the DB — frontend flag state
+ * is irrelevant. Returns 403 with a descriptive JSON error when disabled.
+ *
+ * @param flagKey  The feature_flags.key value to check.
+ * @param label    Human-readable name used in the error message (e.g. "Broadcast").
+ * @param defaultValue  What to assume when the flag doesn't exist yet (default: false).
+ */
+export function requireFeatureEnabled(
+  flagKey: string,
+  label: string,
+  defaultValue = false,
+) {
+  return async function featureGateHandler(
+    _request: FastifyRequest,
+    reply: FastifyReply,
+  ): Promise<FastifyReply | void> {
+    const { isFeatureEnabled } = await import("../services/FeatureService.js");
+    const enabled = await isFeatureEnabled(flagKey, defaultValue);
+    if (!enabled) {
+      return reply.code(403).send({
+        error: `Feature '${label}' is not enabled for this workspace`,
+        code: "FEATURE_DISABLED",
+        feature: flagKey,
+      });
+    }
+  };
+}

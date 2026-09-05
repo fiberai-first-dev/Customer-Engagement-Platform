@@ -62,7 +62,7 @@ export function ConversationWindowBanner({
           <span className="inline-block h-2 w-2 shrink-0 rounded-full bg-emerald-500" />
         )}
         <span>
-          {channel === "whatsapp" ? "WhatsApp" : "Instagram"} window active · expires in {remaining}
+          {channel === "whatsapp" ? "WhatsApp" : channel === "facebook" ? "Facebook" : "Instagram"} window active · expires in {remaining}
         </span>
       </div>
     );
@@ -162,6 +162,28 @@ export function WhatsAppTemplateClosedPanel({
 
       <div className="px-5 py-6 bg-background">
         <div className="flex justify-center">{children}</div>
+      </div>
+    </div>
+  );
+}
+
+export function FacebookExternalInboxPanel(_props?: { contact?: Contact | null }) {
+  return (
+    <div className="overflow-hidden rounded-xl border border-border bg-card shadow-sm mx-4 mb-4 flex flex-col sm:flex-row sm:items-center">
+      <div className="flex-1 bg-muted/30 px-4 py-3 sm:px-5 sm:py-4">
+        <p className="text-sm font-semibold text-foreground">Facebook window closed</p>
+        <p className="mt-0.5 text-xs text-muted-foreground leading-relaxed">
+          The 24-hour messaging window has expired. You must wait for the customer to send a message or reply via Meta Business Suite.
+        </p>
+      </div>
+
+      <div className="flex flex-col items-center justify-center gap-2 border-t border-border bg-background px-4 py-3 sm:border-l sm:border-t-0 sm:px-5 sm:py-4 shrink-0">
+        <Button asChild variant="outline" size="sm" className="w-full sm:w-auto gap-1.5">
+          <a href="https://business.facebook.com/latest/inbox" target="_blank" rel="noopener noreferrer">
+            Open Meta Inbox
+            <ExternalLink className="h-3.5 w-3.5 opacity-70" />
+          </a>
+        </Button>
       </div>
     </div>
   );

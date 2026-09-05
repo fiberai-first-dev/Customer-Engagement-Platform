@@ -53,7 +53,7 @@ export function getMessagingWindow(
       canSendNormalMessage: false,
       requiresTemplate: channel === "whatsapp",
       requiresHumanAgentTag: false,
-      requiresExternalInbox: channel === "instagram",
+      requiresExternalInbox: channel === "instagram" || channel === "facebook",
     };
   }
 
@@ -131,6 +131,31 @@ export function getMessagingWindow(
       state: "EXPIRED",
       lastCustomerMessageAt: lastCustomerMessageAt.toISOString(),
       expiresAt: new Date(msgTime + DAYS_7).toISOString(),
+      canSendNormalMessage: false,
+      requiresTemplate: false,
+      requiresHumanAgentTag: false,
+      requiresExternalInbox: true,
+    };
+  }
+
+  if (channel === "facebook") {
+    if (diff <= HOURS_24) {
+      return {
+        channel,
+        state: "ACTIVE",
+        lastCustomerMessageAt: lastCustomerMessageAt.toISOString(),
+        expiresAt: new Date(msgTime + HOURS_24).toISOString(),
+        canSendNormalMessage: true,
+        requiresTemplate: false,
+        requiresHumanAgentTag: false,
+        requiresExternalInbox: false,
+      };
+    }
+    return {
+      channel,
+      state: "EXPIRED",
+      lastCustomerMessageAt: lastCustomerMessageAt.toISOString(),
+      expiresAt: new Date(msgTime + HOURS_24).toISOString(),
       canSendNormalMessage: false,
       requiresTemplate: false,
       requiresHumanAgentTag: false,

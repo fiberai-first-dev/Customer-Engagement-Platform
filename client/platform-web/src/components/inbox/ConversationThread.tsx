@@ -5,7 +5,6 @@ import {
   CheckSquare,
   Loader2,
   MessageSquare,
-  MessageSquareText,
   Mic,
   MoreVertical,
   PanelRight,
@@ -33,6 +32,7 @@ import { useAuthStore } from "../../store/auth";
 import { MessageMedia } from "./MessageMedia";
 import {
   InstagramExternalInboxPanel,
+  FacebookExternalInboxPanel,
   WhatsAppTemplateClosedPanel,
 } from "./ConversationWindowBanner";
 import { WhatsAppTemplateSelector } from "./WhatsAppTemplateSelector";
@@ -372,11 +372,9 @@ export function ConversationThread({
   const [selecting, setSelecting] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [menuOpen, setMenuOpen] = useState(false);
-  const [templateSelectorOpen, setTemplateSelectorOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
 
   const { data: featureFlag } = useFeatureFlag("whatsapp_templates_enabled");
-  const { data: templateInjectionFlag } = useFeatureFlag("whatsapp_template_injection_enabled");
   const { data: instagramHumanAgentFlag } = useFeatureFlag("instagram_human_agent_enabled");
 
   const effectiveWindow = resolveConversationWindow(
@@ -909,6 +907,8 @@ export function ConversationThread({
                 ? "No channels connected"
                 : activeTab === "instagram"
                 ? "Waiting for the customer on Instagram"
+                : activeTab === "facebook"
+                ? "Waiting for the customer on Facebook"
                 : channelIds.length
                   ? `${channelLabel(activeTab)} linked · waiting for first message`
                   : `No ${channelLabel(activeTab)} on this contact`}
@@ -918,6 +918,8 @@ export function ConversationThread({
                 ? "Connect a channel in Settings to start messaging."
                 : activeTab === "instagram"
                 ? "The customer needs to message first on Instagram. Switch tabs for WhatsApp or Email."
+                : activeTab === "facebook"
+                ? "The customer needs to message first on Facebook Messenger. Switch tabs for WhatsApp or Email."
                 : channelIds.length
                   ? canInitiateChannel
                     ? "You can send the first message from here."
@@ -1085,10 +1087,7 @@ export function ConversationThread({
                         contactName={contactName}
                         onSelect={async (template, variables) => {
                           if (onSendTemplate) {
-                            const ok = await onSendTemplate(template.id, variables);
-                            if (ok) {
-                              setTemplateSelectorOpen(false);
-                            }
+                            await onSendTemplate(template.id, variables);
                           } else {
                             toast.error("Template sending not fully wired on this page");
                           }
@@ -1101,9 +1100,13 @@ export function ConversationThread({
                     contact={contact}
                     state={effectiveWindow.state === "EXPIRED" ? "EXPIRED" : "EXTENDED"}
                   />
+                ) : effectiveWindow.requiresExternalInbox && activeTab === "facebook" ? (
+                  <FacebookExternalInboxPanel contact={contact} />
                 ) : composerBlocked ? (
                   activeTab === "instagram" ? (
                     <InstagramExternalInboxPanel contact={contact} state="EXPIRED" />
+                  ) : activeTab === "facebook" ? (
+                    <FacebookExternalInboxPanel contact={contact} />
                   ) : (
                     <WhatsAppTemplateClosedPanel templatesEnabled={false}>
                       <p className="text-center text-sm text-muted-foreground">
@@ -1118,34 +1121,8 @@ export function ConversationThread({
                       needsAttentionHere ? "border-primary/25" : "border-border",
                     )}
                   >
-                  {/* Template quick-send bar – controlled by 'Send Template in Chat' flag in admin */}
-                  {activeTab === "whatsapp" && templateInjectionFlag?.enabled && onSendTemplate && (
-                    <>
-                      {templateSelectorOpen && (
-                        <WhatsAppTemplateSelector
-                          forceOpen
-                          preferInternalCategory="CUSTOMER_REENGAGEMENT"
-                          contactName={contactName}
-                          onClose={() => setTemplateSelectorOpen(false)}
-                          onSelect={async (template, variables) => {
-                            setTemplateSelectorOpen(false);
-                            const ok = await onSendTemplate(template.id, variables);
-                            if (ok) toast.success("Template sent");
-                          }}
-                        />
-                      )}
-                      <button
-                        type="button"
-                        disabled={sending || uploading || isRecording}
-                        onClick={() => setTemplateSelectorOpen(true)}
-                        className="flex items-center gap-1.5 self-start rounded-md border border-border/60 bg-background px-2.5 py-1 text-xs text-muted-foreground transition-colors hover:border-primary/40 hover:text-primary disabled:opacity-40"
-                      >
-                        <MessageSquareText className="h-3 w-3" />
-                        Use template
-                      </button>
-                    </>
-                  )}
-                {activeTab === "email" && (
+                  {/* Email subject line */}
+                 {activeTab === "email" && (
                   <input
                     type="text"
                     placeholder={

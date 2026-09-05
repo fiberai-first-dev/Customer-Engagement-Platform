@@ -24,6 +24,7 @@ export type ContactFormData = {
   emails: string[];
   whatsappIds: string[];
   instagramId: string;
+  facebookId?: string;
 };
 
 type Props = {
@@ -39,6 +40,7 @@ const emptyForm = (): ContactFormData => ({
   emails: [""],
   whatsappIds: [""],
   instagramId: "",
+  facebookId: "",
 });
 
 function isUnknown(name: string | null | undefined) {
@@ -194,10 +196,11 @@ export function ContactModal({
 
   const channels = enabledChannels?.length
     ? enabledChannels
-    : (["whatsapp", "instagram", "email"] as ChannelType[]);
+    : (["whatsapp", "instagram", "facebook", "email"] as ChannelType[]);
   const showEmail = channels.includes("email");
   const showWa = channels.includes("whatsapp");
   const showIg = channels.includes("instagram");
+  const showFb = channels.includes("facebook");
 
   useEffect(() => {
     if (!isOpen) return;
@@ -211,6 +214,7 @@ export function ContactModal({
         emails: initialData.emails?.length ? initialData.emails : [""],
         whatsappIds: initialData.whatsappIds?.length ? initialData.whatsappIds : [""],
         instagramId: initialData.instagramId || "",
+        facebookId: initialData.facebookId || "",
       });
     } else {
       setFormData(emptyForm());
@@ -236,6 +240,7 @@ export function ContactModal({
     const instagramId = showIg
       ? formData.instagramId.trim().replace(/^@+/, "")
       : undefined;
+    const facebookId = showFb ? formData.facebookId?.trim() : undefined;
 
     return {
       name: name || undefined,
@@ -252,8 +257,9 @@ export function ContactModal({
             whatsappId: whatsappIds[0],
           }
         : {}),
-      // Empty string clears Instagram on edit (sync treats defined as authoritative).
+      // Empty string clears Instagram/Facebook on edit (sync treats defined as authoritative).
       ...(showIg ? { instagramId: instagramId ?? "" } : {}),
+      ...(showFb ? { facebookId: facebookId ?? "" } : {}),
     };
   };
 
@@ -291,7 +297,8 @@ export function ContactModal({
     const hasChannel =
       Boolean(body.emails?.length) ||
       Boolean(body.whatsappIds?.length) ||
-      Boolean(body.instagramId);
+      Boolean(body.instagramId) ||
+      Boolean(body.facebookId);
     if (!body.name && !hasChannel) {
       setError("Add a name or at least one channel id.");
       return;
@@ -520,6 +527,17 @@ export function ContactModal({
                     value={formData.instagramId}
                     onChange={(e) => setFormData({ ...formData, instagramId: e.target.value })}
                     placeholder="username"
+                  />
+                </div>
+              )}
+
+              {showFb && (
+                <div className="space-y-2">
+                  <label className="text-sm font-medium">Facebook (User / Page-scoped ID)</label>
+                  <Input
+                    value={formData.facebookId || ""}
+                    onChange={(e) => setFormData({ ...formData, facebookId: e.target.value })}
+                    placeholder="PSID / Facebook User ID"
                   />
                 </div>
               )}

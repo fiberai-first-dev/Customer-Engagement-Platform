@@ -110,6 +110,7 @@ export function ContactsPage() {
   const showEmail = !channelsReady || enabledChannels.includes("email");
   const showWa = !channelsReady || enabledChannels.includes("whatsapp");
   const showIg = !channelsReady || enabledChannels.includes("instagram");
+  const showFb = !channelsReady || enabledChannels.includes("facebook");
   const [searchQuery, setSearchQuery] = useState("");
   const [openDropdownId, setOpenDropdownId] = useState<string | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -121,7 +122,7 @@ export function ContactsPage() {
   } | null>(null);
 
   const isLoading = accountsLoading || (!!accountId && contactsLoading);
-  const colCount = 2 + Number(showEmail) + Number(showWa) + Number(showIg);
+  const colCount = 2 + Number(showEmail) + Number(showWa) + Number(showIg) + Number(showFb);
 
   const filteredContacts = useMemo(() => {
     if (!contacts) return [];
@@ -136,6 +137,8 @@ export function ContactsPage() {
           ...(c.emails ?? []),
           ...(c.whatsappIds ?? []),
           c.identifiers?.instagram,
+          c.identifiers?.facebook,
+          c.facebookId,
           c.identifiers?.whatsapp,
         ],
         searchQuery,
@@ -160,6 +163,7 @@ export function ContactsPage() {
           ? [c.whatsappId || c.identifiers!.whatsapp]
           : [""],
       instagramId: instagramUsernameForEdit(c),
+      facebookId: c.facebookId || c.identifiers?.facebook || "",
     });
     setIsModalOpen(true);
   };
@@ -205,7 +209,7 @@ export function ContactsPage() {
         description={
           <>
             This permanently removes <strong>{pendingDelete?.name}</strong> and all of their
-            WhatsApp, Instagram, and Email conversations. This cannot be undone.
+            WhatsApp, Instagram, Facebook, and Email conversations. This cannot be undone.
           </>
         }
         confirmLabel="Delete contact"
@@ -270,6 +274,9 @@ export function ContactsPage() {
                     {showIg && (
                       <th className="border-b border-border px-5 py-3 font-medium">Instagram</th>
                     )}
+                    {showFb && (
+                      <th className="border-b border-border px-5 py-3 font-medium">Facebook</th>
+                    )}
                     <th className="w-14 border-b border-border px-5 py-3" />
                   </tr>
                 </thead>
@@ -318,6 +325,11 @@ export function ContactsPage() {
                         {showIg && (
                           <td className="px-5 py-3.5 align-middle text-muted-foreground">
                             {instagramUsernameForTable(c)}
+                          </td>
+                        )}
+                        {showFb && (
+                          <td className="px-5 py-3.5 align-middle text-muted-foreground">
+                            {c.facebookDetails?.senderName || c.facebookId || c.identifiers?.facebook || "—"}
                           </td>
                         )}
                         <td className="px-5 py-3.5 align-middle text-right">

@@ -14,6 +14,7 @@ interface ParsedRow {
   whatsapp?: string;
   email?: string;
   instagram?: string;
+  facebook?: string;
 }
 
 function parseCsv(text: string): ParsedRow[] {
@@ -48,6 +49,7 @@ function parseCsv(text: string): ParsedRow[] {
   );
   const emailIdx = headers.findIndex((h) => h.includes("email") || h.includes("mail"));
   const igIdx = headers.findIndex((h) => h.includes("instagram") || h.includes("ig") || h.includes("handle"));
+  const fbIdx = headers.findIndex((h) => h.includes("facebook") || h.includes("fb"));
 
   const rows: ParsedRow[] = [];
   for (let i = 1; i < lines.length; i++) {
@@ -57,8 +59,9 @@ function parseCsv(text: string): ParsedRow[] {
     if (waIdx !== -1 && cols[waIdx]) row.whatsapp = cols[waIdx];
     if (emailIdx !== -1 && cols[emailIdx]) row.email = cols[emailIdx];
     if (igIdx !== -1 && cols[igIdx]) row.instagram = cols[igIdx].replace(/^@+/, "");
+    if (fbIdx !== -1 && cols[fbIdx]) row.facebook = cols[fbIdx];
 
-    if (row.name || row.whatsapp || row.email || row.instagram) {
+    if (row.name || row.whatsapp || row.email || row.instagram || row.facebook) {
       rows.push(row);
     }
   }
@@ -123,10 +126,10 @@ export function ContactCsvImportModal({ isOpen, onClose }: Props) {
   const handleDownloadSample = () => {
     const csvContent =
       "data:text/csv;charset=utf-8," +
-      "name,whatsapp,email,instagram\n" +
-      "John Doe,+14155552671,john.doe@example.com,johndoe\n" +
-      "Moola Jagadeshwar Reddy,+916303481401,moola@example.com,moola_reddy\n" +
-      "Jane Smith,,jane.smith@example.com,janesmith\n";
+      "name,whatsapp,email,instagram,facebook\n" +
+      "John Doe,+14155552671,john.doe@example.com,johndoe,10009283746510\n" +
+      "Moola Jagadeshwar Reddy,+916303481401,moola@example.com,moola_reddy,\n" +
+      "Jane Smith,,jane.smith@example.com,janesmith,\n";
     const encodedUri = encodeURI(csvContent);
     const link = document.createElement("a");
     link.setAttribute("href", encodedUri);
@@ -212,7 +215,7 @@ export function ContactCsvImportModal({ isOpen, onClose }: Props) {
               </div>
 
               <div className="flex items-center justify-between rounded-xl bg-muted/40 p-3 text-xs text-muted-foreground">
-                <span>Supported headers: <code>name</code>, <code>whatsapp</code>, <code>email</code>, <code>instagram</code></span>
+                <span>Supported headers: <code>name</code>, <code>whatsapp</code>, <code>email</code>, <code>instagram</code>, <code>facebook</code></span>
                 <button
                   type="button"
                   onClick={handleDownloadSample}
@@ -249,6 +252,7 @@ export function ContactCsvImportModal({ isOpen, onClose }: Props) {
                         <th className="p-2 font-medium">WhatsApp</th>
                         <th className="p-2 font-medium">Email</th>
                         <th className="p-2 font-medium">Instagram</th>
+                        <th className="p-2 font-medium">Facebook</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-border">
@@ -258,6 +262,7 @@ export function ContactCsvImportModal({ isOpen, onClose }: Props) {
                           <td className="p-2 text-muted-foreground">{r.whatsapp || "—"}</td>
                           <td className="p-2 text-muted-foreground">{r.email || "—"}</td>
                           <td className="p-2 text-muted-foreground">{r.instagram ? `@${r.instagram}` : "—"}</td>
+                          <td className="p-2 text-muted-foreground">{r.facebook || "—"}</td>
                         </tr>
                       ))}
                     </tbody>

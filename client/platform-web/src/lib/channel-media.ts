@@ -5,6 +5,7 @@ import { uploadConversationAttachment as uploadAttachment } from "../api";
 const ATTACHMENT_CHANNELS: ReadonlySet<ChannelType> = new Set([
   "whatsapp",
   "instagram",
+  "facebook",
   "email",
 ]);
 
@@ -32,6 +33,13 @@ export const CHANNEL_MEDIA_LIMITS: Record<
     image: 8 * MB,
     video: 25 * MB,
     audio: 25 * MB,
+  },
+  facebook: {
+    default: 25 * MB,
+    image: 25 * MB,
+    video: 25 * MB,
+    audio: 25 * MB,
+    document: 25 * MB,
   },
   email: {
     default: 25 * MB,

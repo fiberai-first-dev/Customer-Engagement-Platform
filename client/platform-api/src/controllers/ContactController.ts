@@ -19,6 +19,7 @@ export class ContactController {
           whatsappIdentities: true,
           instagramIdentities: true,
           emailIdentities: true,
+          facebookIdentities: true,
         },
         orderBy: { updatedAt: "desc" },
       });
@@ -37,6 +38,7 @@ export class ContactController {
         whatsappId?: string;
         whatsappIds?: string[];
         instagramId?: string;
+        facebookId?: string;
         mergeIntoId?: string;
         keepName?: string;
         force?: boolean;
@@ -58,6 +60,7 @@ export class ContactController {
           emails,
           whatsappIds,
           instagramId: body.instagramId,
+          facebookId: body.facebookId,
         });
         if (matches.length) {
           return reply.code(409).send({
@@ -73,6 +76,7 @@ export class ContactController {
         emails,
         whatsappIds,
         instagramId: body.instagramId,
+        facebookId: body.facebookId,
         mergeIntoId: body.mergeIntoId,
         keepName: body.keepName ?? body.name,
         force: Boolean(body.force),
@@ -104,6 +108,7 @@ export class ContactController {
         whatsappId?: string;
         whatsappIds?: string[];
         instagramId?: string;
+        facebookId?: string;
         mergeIntoId?: string;
         keepName?: string;
         force?: boolean;
@@ -133,6 +138,7 @@ export class ContactController {
           emails: emails ?? [],
           whatsappIds: whatsappIds ?? [],
           instagramId: body.instagramId,
+          facebookId: body.facebookId,
         });
         const others = matches.filter((m) => m.id !== request.params.id);
         if (others.length) {
@@ -148,7 +154,7 @@ export class ContactController {
       if (
         body.tag !== undefined &&
         !body.name && !body.email && !body.emails && !body.whatsappId &&
-        !body.whatsappIds && !body.instagramId && !body.mergeIntoId
+        !body.whatsappIds && !body.instagramId && !body.facebookId && !body.mergeIntoId
       ) {
         const updated = await prisma.customer.update({
           where: { id: request.params.id },
@@ -157,6 +163,7 @@ export class ContactController {
             whatsappIdentities: true,
             instagramIdentities: true,
             emailIdentities: true,
+            facebookIdentities: true,
           },
         });
         return reply.send(shapeCustomer(updated));
@@ -167,6 +174,7 @@ export class ContactController {
         emails,
         whatsappIds,
         instagramId: body.instagramId,
+        facebookId: body.facebookId,
         mergeIntoId: body.mergeIntoId,
         keepName: body.keepName ?? body.name,
         force: Boolean(body.force),
@@ -242,6 +250,7 @@ export class ContactController {
           whatsappIdentities: true,
           instagramIdentities: true,
           emailIdentities: true,
+          facebookIdentities: true,
         },
       });
       return reply.send(shapeCustomer(updated));
@@ -274,6 +283,7 @@ export class ContactController {
           whatsapp?: string;
           email?: string;
           instagram?: string;
+          facebook?: string;
         }>;
       };
 

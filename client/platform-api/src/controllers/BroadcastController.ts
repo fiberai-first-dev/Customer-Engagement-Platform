@@ -1,16 +1,6 @@
 import type { FastifyPluginAsync } from "fastify";
-import { isFeatureEnabled } from "../services/FeatureService.js";
 import { sendWhatsAppTemplateMessage } from "../services/MessagingService.js";
 import { prisma } from "../config/db.js";
-
-async function requireBroadcastEnabled() {
-  const enabled = await isFeatureEnabled("broadcast_enabled", false);
-  if (!enabled) {
-    throw Object.assign(new Error("Broadcast feature is disabled for this workspace"), {
-      statusCode: 403,
-    });
-  }
-}
 
 export const broadcastRoutes: FastifyPluginAsync = async (app) => {
   // POST /api/v1/broadcasts — send a template to multiple contacts
@@ -24,8 +14,6 @@ export const broadcastRoutes: FastifyPluginAsync = async (app) => {
     };
   }>("/", async (req, reply) => {
     try {
-      await requireBroadcastEnabled();
-
       const { templateId, customerIds: rawIds, variables, tag } = req.body;
 
       // If tag is provided, resolve customerIds from the tag (override / intersect with passed ids)
@@ -173,7 +161,6 @@ export const broadcastRoutes: FastifyPluginAsync = async (app) => {
   // GET /api/v1/broadcasts — list past broadcast jobs
   app.get("/", async (req, reply) => {
     try {
-      await requireBroadcastEnabled();
       const jobs = await prisma.broadcastJob.findMany({
         orderBy: { createdAt: "desc" },
         take: 50,

@@ -20,7 +20,7 @@ import { teamRoutes } from "./v1/teams.routes.js";
 import { userRoutes } from "./v1/users.routes.js";
 import { whatsAppTemplateRoutes } from "../controllers/WhatsAppTemplateController.js";
 import { broadcastRoutes } from "../controllers/BroadcastController.js";
-import { requireAuth } from "../middleware/auth.js";
+import { requireAuth, requireFeatureEnabled } from "../middleware/auth.js";
 import { prisma } from "../config/db.js";
 import { ulid } from "ulid";
 import { ingestInboundMessages } from "../services/MessagingService.js";
@@ -97,16 +97,47 @@ export async function registerRoutes(app: FastifyInstance) {
   app.register(conversationRoutes, { prefix: "/api/v1/conversations" });
   app.register(messageMediaRoutes, { prefix: "/api/v1/messages" });
   app.register(contactsRoutes, { prefix: "/api/v1/contacts" });
-  app.register(dashboardRoutes, { prefix: "/api/v1/dashboard" });
-  app.register(orderRoutes, { prefix: "/api/v1/orders" });
+  app.register(
+    async (sub) => {
+      sub.addHook("preHandler", requireFeatureEnabled("dashboard_enabled", "Dashboard", true));
+      sub.register(dashboardRoutes);
+    },
+    { prefix: "/api/v1/dashboard" },
+  );
+  app.register(
+    async (sub) => {
+      sub.addHook("preHandler", requireFeatureEnabled("shopify_enabled", "Shopify Integration"));
+      sub.register(orderRoutes);
+    },
+    { prefix: "/api/v1/orders" },
+  );
   app.register(emailRoutes, { prefix: "/api/v1/email" });
-  app.register(shopifyConfigRoutes, { prefix: "/api/v1/shopify" });
+  app.register(
+    async (sub) => {
+      sub.addHook("preHandler", requireFeatureEnabled("shopify_enabled", "Shopify Integration"));
+      sub.register(shopifyConfigRoutes);
+    },
+    { prefix: "/api/v1/shopify" },
+  );
   app.register(ticketRoutes, { prefix: "/api/v1/tickets" });
   app.register(mediaRoutes, { prefix: "/api/v1/media" });
   app.register(teamRoutes, { prefix: "/api/v1/teams" });
   app.register(userRoutes, { prefix: "/api/v1/users" });
-  app.register(whatsAppTemplateRoutes, { prefix: "/api/v1/whatsapp-templates" });
-  app.register(broadcastRoutes, { prefix: "/api/v1/broadcasts" });
+  // Feature-gated route groups — backend enforces the flag regardless of frontend state
+  app.register(
+    async (sub) => {
+      sub.addHook("preHandler", requireFeatureEnabled("whatsapp_templates_enabled", "WhatsApp Templates"));
+      sub.register(whatsAppTemplateRoutes);
+    },
+    { prefix: "/api/v1/whatsapp-templates" },
+  );
+  app.register(
+    async (sub) => {
+      sub.addHook("preHandler", requireFeatureEnabled("broadcast_enabled", "Broadcast"));
+      sub.register(broadcastRoutes);
+    },
+    { prefix: "/api/v1/broadcasts" },
+  );
   
   app.get<{ Querystring: { key: string } }>("/api/v1/features", async (request, reply) => {
     const key = request.query.key;
@@ -187,6 +218,22 @@ export async function registerRoutes(app: FastifyInstance) {
                   sender: { id: from },
                   timestamp: Date.now(),
                   message: { mid: `mid.sim.${ulid()}`, text: content },
+                },
+              ],
+            },
+          ],
+        };
+      } else if (inbox.channelType === "facebook") {
+        payload = {
+          object: "page",
+          entry: [
+            {
+              messaging: [
+                {
+                  sender: { id: from },
+                  recipient: { id: "page_sim" },
+                  timestamp: Date.now(),
+                  message: { mid: `mid.sim.fb.${ulid()}`, text: content },
                 },
               ],
             },

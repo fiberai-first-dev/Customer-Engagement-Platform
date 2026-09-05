@@ -5,6 +5,7 @@ import { formatWhatsAppDisplay as formatWaDisplay } from "../../utils/phone";
 export const CHANNELS: { id: ChannelType; label: string }[] = [
   { id: "whatsapp", label: "WhatsApp" },
   { id: "instagram", label: "Instagram" },
+  { id: "facebook", label: "Facebook" },
   { id: "email", label: "Email" },
 ];
 
@@ -185,6 +186,14 @@ export function identitiesFor(contact: any, channel: ChannelType): string[] {
       null;
     return typeof igsid === "string" && igsid.trim() ? [igsid.trim()] : [];
   }
+  if (channel === "facebook") {
+    const candidates = [
+      ...fromIdentities,
+      contact.facebookId,
+      contact.identifiers?.facebook,
+    ].filter((v) => typeof v === "string" && v.trim());
+    return [...new Set(candidates)];
+  }
   return [];
 }
 
@@ -299,6 +308,7 @@ export function channelAccent(channel: ChannelType, active: boolean): string {
   if (!active) return "border-transparent text-muted-foreground hover:text-foreground";
   if (channel === "whatsapp") return "border-emerald-600 text-emerald-700";
   if (channel === "instagram") return "border-pink-600 text-pink-700";
+  if (channel === "facebook") return "border-blue-600 text-blue-700";
   return "border-primary text-primary";
 }
 
@@ -309,8 +319,10 @@ export function contactDisplayName(contact: {
   email?: string | null;
   instagramId?: string | null;
   instagramDetails?: { username?: string | null } | null;
+  facebookId?: string | null;
+  facebookDetails?: { senderName?: string | null } | null;
   identifiers?: Record<string, string>;
-  identities?: Array<{ channel?: string; displayId?: string; metadata?: { username?: string } }>;
+  identities?: Array<{ channel?: string; displayId?: string; metadata?: { username?: string; senderName?: string } }>;
 }): string {
   const name = contact.name?.trim();
   if (name && !/^\d{5,}$/.test(name)) {
@@ -339,7 +351,17 @@ export function contactDisplayName(contact: {
       : null);
   if (igUser) return igUser;
 
-  if (name) return name; // last resort: IGSID-as-name
+  const fbIdentity = (contact.identities ?? []).find((i) => i.channel === "facebook");
+  const fbUser =
+    (typeof fbIdentity?.displayId === "string" && fbIdentity.displayId.trim()
+      ? fbIdentity.displayId.trim()
+      : null) ||
+    (typeof contact.facebookDetails?.senderName === "string" && contact.facebookDetails.senderName.trim()
+      ? contact.facebookDetails.senderName.trim()
+      : null);
+  if (fbUser) return fbUser;
+
+  if (name) return name; // last resort: IGSID or PSID-as-name
 
   const whatsapp =
     contact.whatsappId ||
@@ -347,7 +369,7 @@ export function contactDisplayName(contact: {
     contact.whatsappIds?.find((id) => typeof id === "string" && id.trim()) ||
     null;
   if (whatsapp) return formatWhatsAppDisplay(whatsapp);
-  return contact.email || "Unknown";
+  return contact.email || contact.facebookId || "Unknown";
 }
 
 export function initials(name: string): string {

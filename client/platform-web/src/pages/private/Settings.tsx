@@ -29,7 +29,7 @@ import {
   X,
 } from "lucide-react";
 
-type ChannelKey = "whatsapp" | "instagram" | "email" | "shopify";
+type ChannelKey = "whatsapp" | "instagram" | "facebook" | "email" | "shopify";
 type ModalKey = Exclude<ChannelKey, "email">;
 
 type FieldDef = {
@@ -53,6 +53,14 @@ const IG_FIELDS: FieldDef[] = [
   { key: "instagramAppId", label: "Instagram App ID", required: true },
   { key: "instagramAppSecret", label: "Instagram App Secret", secret: true, required: true },
   { key: "verifyToken", label: "Verify Token", secret: true, required: true },
+];
+
+const FB_FIELDS: FieldDef[] = [
+  { key: "pageId", label: "Page ID", required: true },
+  { key: "accessToken", label: "Page Access Token", secret: true, required: true },
+  { key: "verifyToken", label: "Verify Token", secret: true, required: true },
+  { key: "appSecret", label: "App Secret", secret: true, required: true },
+  { key: "pageName", label: "Page Name (optional)" },
 ];
 
 const SHOPIFY_FIELDS: FieldDef[] = [
@@ -409,10 +417,12 @@ export function SettingsPage() {
 
   const waInbox = inboxes?.find((i) => i.channelType === "whatsapp");
   const igInbox = inboxes?.find((i) => i.channelType === "instagram");
+  const fbInbox = inboxes?.find((i) => i.channelType === "facebook");
   const emailInbox = inboxes?.find((i) => i.channelType === "email");
 
   const waStatus = statusFromHealth(waInbox?.health);
   const igStatus = statusFromHealth(igInbox?.health);
+  const fbStatus = statusFromHealth(fbInbox?.health);
   const emailStatus = statusFromHealth(emailInbox?.health);
   const shopifyConnected = Boolean(shopify?.connected ?? shopify?.hasClientSecret);
 
@@ -452,6 +462,15 @@ export function SettingsPage() {
         submitLabel: connecting === "instagram" ? "Connecting…" : "Connect",
       };
     }
+    if (modal === "facebook") {
+      return {
+        title: "Connect Facebook",
+        description: "Enter your Meta Page and app credentials to connect Facebook Messenger.",
+        fields: FB_FIELDS,
+        initialValues: {} as Record<string, string>,
+        submitLabel: "Connect",
+      };
+    }
     return {
       title: "Connect Shopify",
       description: "Enter the store, then approve access in Shopify.",
@@ -466,11 +485,13 @@ export function SettingsPage() {
       ? "WhatsApp"
       : disconnectTarget === "instagram"
         ? "Instagram"
-        : disconnectTarget === "email"
-          ? "Gmail"
-          : disconnectTarget === "shopify"
-            ? "Shopify"
-            : "";
+        : disconnectTarget === "facebook"
+          ? "Facebook"
+          : disconnectTarget === "email"
+            ? "Gmail"
+            : disconnectTarget === "shopify"
+              ? "Shopify"
+              : "";
 
   const handleDisconnectConfirm = async () => {
     if (!disconnectTarget) return;
@@ -483,7 +504,9 @@ export function SettingsPage() {
             ? waInbox
             : disconnectTarget === "instagram"
               ? igInbox
-              : emailInbox;
+              : disconnectTarget === "facebook"
+                ? fbInbox
+                : emailInbox;
         if (!inbox) throw new Error("Channel is not available.");
         await disconnectInboxAsync(inbox.id);
       }
@@ -528,6 +551,17 @@ export function SettingsPage() {
           toast.error(err instanceof Error ? err.message : "Could not start Shopify connection");
           return;
         }
+      }
+
+      if (modal === "facebook") {
+        if (!fbInbox) throw new Error("Facebook channel is not available. Please try again later.");
+        await updateInboxAsync({
+          id: fbInbox.id,
+          body: { channelConfig: values, enabled: true },
+        });
+        toast.success("Facebook connected");
+        setModal(null);
+        return;
       }
 
       const inbox = modal === "whatsapp" ? waInbox : igInbox;
@@ -579,6 +613,10 @@ export function SettingsPage() {
       ],
     },
     {
+      name: "Facebook",
+      urls: [{ label: "Webhook", value: oauthHints?.webhooks.facebook ?? fbInbox?.webhookUrl }],
+    },
+    {
       name: "Gmail",
       urls: [
         { label: "Push URL", value: oauthHints?.webhooks.emailPubSub ?? emailInbox?.webhookUrl },
@@ -598,7 +636,7 @@ export function SettingsPage() {
           <div className="min-w-0">
             <h1 className="text-3xl font-bold tracking-tight">Settings</h1>
             <p className="mt-1 text-sm text-muted-foreground">
-              Connect WhatsApp, Instagram, Gmail, and Shopify.
+              Connect WhatsApp, Instagram, Facebook, Gmail, and Shopify.
             </p>
           </div>
           <Button variant="outline" className="h-10 shrink-0 gap-2" asChild>
@@ -615,7 +653,7 @@ export function SettingsPage() {
           <div>
             <h2 className="text-base font-semibold leading-none">Channels</h2>
             <p className="mt-2 text-sm text-muted-foreground">
-              WhatsApp, Instagram, and Gmail.
+              WhatsApp, Instagram, Facebook, and Gmail.
             </p>
           </div>
 
@@ -640,6 +678,16 @@ export function SettingsPage() {
               }
               onConnect={() => setModal("instagram")}
               onDisconnect={() => setDisconnectTarget("instagram")}
+            />
+            <ChannelRow
+              name="Facebook"
+              linked={isLinkedStatus(fbStatus.tone)}
+              busy={
+                (submitting && modal === "facebook") ||
+                (disconnectingInbox && disconnectTarget === "facebook")
+              }
+              onConnect={() => setModal("facebook")}
+              onDisconnect={() => setDisconnectTarget("facebook")}
             />
             <ChannelRow
               name="Gmail"

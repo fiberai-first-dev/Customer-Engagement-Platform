@@ -143,6 +143,7 @@ export function oauthRedirectHints() {
     webhooks: {
       whatsapp: `${api}/webhooks/whatsapp`,
       instagram: `${api}/webhooks/instagram`,
+      facebook: `${api}/webhooks/facebook`,
       emailPubSub: `${api}/webhooks/email/pubsub`,
     },
   };

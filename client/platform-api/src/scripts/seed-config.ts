@@ -21,6 +21,7 @@ import {
 type SeedFile = {
   whatsapp?: Record<string, string>;
   instagram?: Record<string, string>;
+  facebook?: Record<string, string>;
   email?: Record<string, string>;
   shopify?: {
     shop?: string;
@@ -86,6 +87,12 @@ async function main() {
     delete ig.pageId;
     await upsertChannelConfigSeed("instagram", ig, true);
     console.log(`[seed:config] instagram updated (${Object.keys(ig).join(", ")})`);
+  }
+
+  const fb = pickNonEmpty(data.facebook);
+  if (Object.keys(fb).length) {
+    await upsertChannelConfigSeed("facebook", fb, true);
+    console.log(`[seed:config] facebook updated (${Object.keys(fb).join(", ")})`);
   }
 
   const em = pickNonEmpty(data.email);

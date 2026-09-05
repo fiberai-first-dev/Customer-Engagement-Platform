@@ -54,7 +54,7 @@ export async function request<T>(path: string, init?: RequestInit): Promise<T> {
   return res.json() as Promise<T>;
 }
 
-export type ChannelType = "whatsapp" | "instagram" | "email";
+export type ChannelType = "whatsapp" | "instagram" | "facebook" | "email";
 export type ConversationStatus = "open" | "pending" | "resolved";
 
 export interface Account {
@@ -96,11 +96,14 @@ export interface Contact {
   whatsappIds?: string[];
   whatsappEnabled?: boolean;
   instagramEnabled?: boolean;
+  facebookEnabled?: boolean;
   emailEnabled?: boolean;
   instagramId?: string | null;
   /** Numeric Instagram-scoped user id used for Graph messaging (not for UI). */
   instagramScopedId?: string | null;
   instagramDetails?: { username?: string | null; senderName?: string | null } | null;
+  facebookId?: string | null;
+  facebookDetails?: { senderName?: string | null } | null;
   globalStatus?: "active" | "resolved";
   hasUnread?: boolean;
   unreadByChannel?: Partial<Record<ChannelType, number>>;
@@ -117,6 +120,8 @@ export interface ContactMatch {
   name: string | null;
   emails?: string[];
   whatsappIds?: string[];
+  instagramId?: string | null;
+  facebookId?: string | null;
   identifiers?: Record<string, string>;
   identities?: ContactIdentity[];
 }
@@ -500,6 +505,7 @@ export interface OAuthHints {
   webhooks: {
     whatsapp: string;
     instagram: string;
+    facebook?: string;
     emailPubSub: string;
   };
 }
@@ -586,6 +592,7 @@ type ContactWriteBody = {
   whatsappId?: string;
   whatsappIds?: string[];
   instagramId?: string;
+  facebookId?: string;
   emailId?: string;
   mergeIntoId?: string;
   keepName?: string;
@@ -617,7 +624,7 @@ export type BulkImportResult = {
 export const useImportContacts = () => {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (contacts: Array<{ name?: string; whatsapp?: string; email?: string; instagram?: string }>) =>
+    mutationFn: (contacts: Array<{ name?: string; whatsapp?: string; email?: string; instagram?: string; facebook?: string }>) =>
       request<BulkImportResult>("/api/v1/contacts/import", {
         method: "POST",
         body: JSON.stringify({ contacts }),

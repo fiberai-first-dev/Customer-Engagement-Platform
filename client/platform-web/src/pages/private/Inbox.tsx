@@ -68,7 +68,6 @@ function isActiveTicketStatus(status: TicketStatus): boolean {
   return ACTIVE_TICKET_STATUSES.includes(status);
 }
 
-/** Compact Instagram glyph — lucide has no brand mark that reads clearly at 12px. */
 function InstagramGlyph({ className }: { className?: string }) {
   return (
     <svg
@@ -88,9 +87,27 @@ function InstagramGlyph({ className }: { className?: string }) {
   );
 }
 
+function FacebookGlyph({ className }: { className?: string }) {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className={className}
+      aria-hidden
+    >
+      <path d="M18 2h-3a5 5 0 0 0-5 5v3H7v4h3v8h4v-8h3l1-4h-4V7a1 1 0 0 1 1-1h3z" />
+    </svg>
+  );
+}
+
 const CHANNEL_FILTER_ICONS: Record<ChannelType, ComponentType<{ className?: string }>> = {
   whatsapp: MessageCircle,
   instagram: InstagramGlyph,
+  facebook: FacebookGlyph,
   email: Mail,
 };
 
@@ -248,7 +265,7 @@ export function InboxPage() {
       if (channelsReady && !enabledSet.has(conversation.channelType)) return false;
       return true;
     });
-    for (const type of ["whatsapp", "instagram", "email"] as ChannelType[]) {
+    for (const type of ["whatsapp", "instagram", "facebook", "email"] as ChannelType[]) {
       const scoped = rows.filter((c) => c.channelType === type);
       if (!scoped.length) continue;
       if (type === "email") {
@@ -370,7 +387,7 @@ export function InboxPage() {
 
     const existing = contactConversations[activeTab];
     if (existing) return existing;
-    if (activeTab === "instagram") return null;
+    if (activeTab === "instagram" || activeTab === "facebook") return null;
     if (channelsReady && !enabledSet.has(activeTab)) return null;
     const ids = identitiesFor(selectedContact, activeTab);
     if (!ids.length) return null;
@@ -526,7 +543,7 @@ export function InboxPage() {
       setActiveTab(channelFilter);
       return;
     }
-    const preferred = (["whatsapp", "email", "instagram"] as ChannelType[]).find((ch) => {
+    const preferred = (["whatsapp", "email", "instagram", "facebook"] as ChannelType[]).find((ch) => {
       if (channelsReady && !enabledSet.has(ch)) return false;
       return identitiesFor(contact, ch).length > 0;
     });
@@ -615,9 +632,11 @@ export function InboxPage() {
           description:
             channel === "instagram"
               ? "The Instagram reply window has closed. Use Open Instagram Inbox below, or wait for the customer to message you."
-              : channel === "whatsapp"
-                ? "The 24-hour WhatsApp window has closed. Send an approved template instead."
-                : msg,
+              : channel === "facebook"
+                ? "The Facebook reply window has closed. Use Open Meta Inbox below, or wait for the customer to message you."
+                : channel === "whatsapp"
+                  ? "The 24-hour WhatsApp window has closed. Send an approved template instead."
+                  : msg,
           duration: 7000,
         });
       } else {
@@ -851,7 +870,9 @@ export function InboxPage() {
                   ? "WA"
                   : option.id === "instagram"
                     ? "IG"
-                    : option.label;
+                    : option.id === "facebook"
+                      ? "FB"
+                      : option.label;
               return (
                 <button
                   key={option.id}
