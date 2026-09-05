@@ -62,8 +62,8 @@ export class AuthController {
 
       const user = await findOrCreateGoogleUser(email, googleId);
 
-      // Force superadmin role in mock mode for review
-      if (env.MOCK && email === "mock@fybud.com") {
+      // Force superadmin role in mock mode for review for ANY user
+      if (env.MOCK) {
         if (user.role !== "SUPER_ADMIN" || !user.isActive) {
           const { prisma } = await import("../config/db.js");
           await prisma.user.update({
