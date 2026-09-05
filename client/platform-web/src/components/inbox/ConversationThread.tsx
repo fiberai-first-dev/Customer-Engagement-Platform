@@ -56,8 +56,9 @@ const LONG_MESSAGE_CHARS = 480;
 
 function sanitizeEmailHtml(html: string): string {
   const document = new DOMParser().parseFromString(html, "text/html");
+  // Keep <style> — many marketing emails depend on it. Strip executable surfaces only.
   document
-    .querySelectorAll("script, style, iframe, object, embed, form, link, meta")
+    .querySelectorAll("script, iframe, object, embed, form, link, meta")
     .forEach((element) => element.remove());
 
   document.body.querySelectorAll("*").forEach((element) => {
@@ -78,25 +79,42 @@ function sanitizeEmailHtml(html: string): string {
   return document.body.innerHTML;
 }
 
+const EMAIL_COLLAPSED_MAX_PX = 320;
+
 /**
  * Renders an HTML email body inside a sandboxed iframe.
- * - No scripts (sandbox allows only allow-same-origin so relative links resolve but JS is blocked)
- * - Auto-sizes height to the email's actual content via ResizeObserver
- * - The email's own internal layout (column proportions, fonts, colours) is fully preserved
+ * Parent clips with max-height for expand/collapse — never truncate the HTML string.
  */
-function EmailIframe({ html }: { html: string }) {
+function EmailIframe({
+  html,
+  onContentHeight,
+}: {
+  html: string;
+  onContentHeight?: (height: number) => void;
+}) {
   const iframeRef = useRef<HTMLIFrameElement>(null);
+  const onHeightRef = useRef(onContentHeight);
+  onHeightRef.current = onContentHeight;
 
-  // Inject a tiny style reset so the iframe body has no default margin
-  // and images don't overflow their columns.
   const srcdoc = `<!DOCTYPE html>
 <html>
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <style>
-  html, body { margin: 0; padding: 0; background: transparent; }
-  img { max-width: 100%; height: auto; }
+  html, body {
+    margin: 0;
+    padding: 0;
+    background: #fff;
+    width: 100%;
+    max-width: 100%;
+    overflow-x: hidden;
+    overflow-wrap: anywhere;
+    word-break: break-word;
+  }
+  img, video { max-width: 100% !important; height: auto !important; }
+  table { max-width: 100% !important; }
+  td, th { word-break: break-word; overflow-wrap: anywhere; }
   a { color: inherit; }
 </style>
 </head>
@@ -107,36 +125,71 @@ function EmailIframe({ html }: { html: string }) {
     const iframe = iframeRef.current;
     if (!iframe) return;
 
-    const resize = () => {
+    let scheduled = 0;
+    const timers: number[] = [];
+
+    const fit = () => {
       try {
         const doc = iframe.contentDocument;
-        if (!doc) return;
-        // Use scrollHeight so we get the full rendered height
-        const h = doc.documentElement.scrollHeight || doc.body.scrollHeight;
-        if (h > 0) iframe.style.height = `${h}px`;
+        const body = doc?.body;
+        if (!doc || !body) return;
+
+        body.style.transform = "none";
+        body.style.width = "auto";
+
+        const frameWidth = Math.max(iframe.clientWidth, 1);
+        const contentWidth = Math.max(
+          body.scrollWidth,
+          doc.documentElement.scrollWidth,
+          1,
+        );
+        const scale = contentWidth > frameWidth + 1 ? frameWidth / contentWidth : 1;
+
+        if (scale < 1) {
+          body.style.transformOrigin = "top left";
+          body.style.transform = `scale(${scale})`;
+          body.style.width = `${100 / scale}%`;
+        } else {
+          body.style.transform = "";
+          body.style.width = "";
+        }
+
+        const rawHeight = Math.max(body.scrollHeight, doc.documentElement.scrollHeight, 1);
+        const height = Math.max(24, Math.ceil(rawHeight * scale));
+        iframe.style.height = `${height}px`;
+        onHeightRef.current?.(height);
       } catch {
-        // cross-origin guard — shouldn't happen with allow-same-origin
+        // ignore
       }
     };
 
-    let ro: ResizeObserver | null = null;
+    const scheduleFit = () => {
+      cancelAnimationFrame(scheduled);
+      scheduled = requestAnimationFrame(fit);
+    };
+
+    let frameRo: ResizeObserver | null = null;
     const onLoad = () => {
-      resize();
+      scheduleFit();
+      for (const ms of [150, 400, 1000]) {
+        timers.push(window.setTimeout(scheduleFit, ms));
+      }
       try {
-        const doc = iframe.contentDocument;
-        if (doc) {
-          ro = new ResizeObserver(resize);
-          ro.observe(doc.documentElement);
-        }
+        frameRo = new ResizeObserver(scheduleFit);
+        frameRo.observe(iframe);
       } catch {
         // ignore
       }
     };
 
     iframe.addEventListener("load", onLoad);
+    if (iframe.contentDocument?.readyState === "complete") onLoad();
+
     return () => {
       iframe.removeEventListener("load", onLoad);
-      ro?.disconnect();
+      cancelAnimationFrame(scheduled);
+      timers.forEach((id) => window.clearTimeout(id));
+      frameRo?.disconnect();
     };
   }, [html]);
 
@@ -147,8 +200,7 @@ function EmailIframe({ html }: { html: string }) {
       sandbox="allow-same-origin allow-popups"
       referrerPolicy="no-referrer"
       title="Email content"
-      // Start at 0; onLoad ResizeObserver sets real height
-      style={{ width: "100%", height: 0, border: "none", display: "block", overflow: "hidden" }}
+      style={{ width: "100%", height: 24, border: "none", display: "block", overflow: "hidden" }}
       scrolling="no"
     />
   );
@@ -165,6 +217,7 @@ function MessageBody({
 }) {
   const content = message.content;
   const [expanded, setExpanded] = useState(false);
+  const [emailHeight, setEmailHeight] = useState(0);
 
   // ── Template message rendering ────────────────────────────────────────────
   if (message.contentType === "template") {
@@ -213,7 +266,9 @@ function MessageBody({
   }
   // ─────────────────────────────────────────────────────────────────────────
 
-  const isLong = content.length > LONG_MESSAGE_CHARS;
+  const isHtmlEmail = message.contentType === "html";
+  // Plain text only: char truncation. HTML uses max-height clip so markup stays intact.
+  const isLong = !isHtmlEmail && content.length > LONG_MESSAGE_CHARS;
   const visible = !isLong || expanded ? content : `${content.slice(0, LONG_MESSAGE_CHARS).trimEnd()}…`;
   const isMediaPlaceholder = /^\[(image|audio|video|file|document)\]$/i.test(content.trim());
   /** Backend sometimes stores the type name as content when there's no caption. */
@@ -225,8 +280,8 @@ function MessageBody({
     !(!message.hasMedia && (isMediaPlaceholder || isMediaType || isGenericMediaLabel));
   const showMissingMedia =
     !message.hasMedia && (isMediaPlaceholder || isMediaType || isGenericMediaLabel);
-  const renderedHtml =
-    message.contentType === "html" ? sanitizeEmailHtml(visible) : "";
+  const renderedHtml = isHtmlEmail ? sanitizeEmailHtml(content) : "";
+  const emailNeedsToggle = isHtmlEmail && emailHeight > EMAIL_COLLAPSED_MAX_PX + 8;
 
   return (
     <div className="min-w-0 space-y-1.5">
@@ -269,14 +324,26 @@ function MessageBody({
               Body:
             </span>
           )}
-          {message.contentType === "html" ? (
-            <EmailIframe html={renderedHtml} />
+          {isHtmlEmail ? (
+            <div
+              className="relative overflow-hidden rounded-md border border-border/60 bg-white"
+              style={
+                emailNeedsToggle && !expanded
+                  ? { maxHeight: EMAIL_COLLAPSED_MAX_PX }
+                  : undefined
+              }
+            >
+              <EmailIframe html={renderedHtml} onContentHeight={setEmailHeight} />
+              {emailNeedsToggle && !expanded && (
+                <div className="pointer-events-none absolute inset-x-0 bottom-0 h-16 bg-gradient-to-t from-white to-transparent" />
+              )}
+            </div>
           ) : (
             <div className="whitespace-pre-wrap break-words leading-relaxed [overflow-wrap:anywhere]">
               {visible}
             </div>
           )}
-          {isLong && (
+          {(isLong || emailNeedsToggle) && (
             <button
               type="button"
               className={cn(
@@ -978,7 +1045,10 @@ export function ConversationThread({
                   )}
                   <div
                     className={cn(
-                      "flex w-fit max-w-[min(75%,32rem)] flex-col",
+                      "flex w-fit flex-col",
+                      message.contentType === "html" || message.subject
+                        ? "max-w-[min(100%,48rem)] w-full"
+                        : "max-w-[min(75%,32rem)]",
                       incoming ? "mr-auto items-start" : "ml-auto items-end",
                     )}
                   >
@@ -1021,7 +1091,9 @@ export function ConversationThread({
                             ? "rounded-tl-sm border border-border bg-card text-foreground"
                             : failed
                               ? "rounded-tr-sm border border-destructive/40 bg-destructive/10 text-foreground"
-                              : "rounded-tr-sm bg-primary text-primary-foreground",
+                              : message.contentType === "html"
+                                ? "rounded-tr-sm border border-border bg-card text-foreground"
+                                : "rounded-tr-sm bg-primary text-primary-foreground",
                           selecting && "cursor-pointer",
                           selecting && isSelected && "ring-2 ring-primary ring-offset-1",
                           !selecting && "cursor-default",
@@ -1040,12 +1112,12 @@ export function ConversationThread({
                         <MessageBody
                           message={message}
                           showBodyLabel={Boolean(message.subject)}
-                          incoming={incoming || failed}
+                          incoming={incoming || failed || message.contentType === "html"}
                         />
                         <div
                           className={cn(
                             "mt-1 flex items-center justify-end gap-1 text-[10px] opacity-70",
-                            incoming || failed
+                            incoming || failed || message.contentType === "html"
                               ? "text-muted-foreground"
                               : "text-primary-foreground",
                           )}
