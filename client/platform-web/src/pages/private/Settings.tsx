@@ -11,7 +11,6 @@ import {
   useAccounts,
   useDisconnectInbox,
   useInboxes,
-  useOAuthHints,
   useShopifyConfig,
   useUpdateInbox,
   useUpdateShopifyConfig,
@@ -22,8 +21,6 @@ import {
 } from "../../api";
 import { ConfirmDialog } from "../../components/ui/confirm-dialog";
 import {
-  CheckCircle2,
-  Copy,
   Download,
   Eye,
   EyeOff,
@@ -101,89 +98,7 @@ function isLinkedStatus(tone: "ok" | "warn" | "error" | "idle") {
   return tone === "ok" || tone === "warn";
 }
 
-function CallbackUrlRow({ label, value }: { label: string; value: string }) {
-  const [copied, setCopied] = useState(false);
-  return (
-    <div className="space-y-1.5">
-      <p className="text-sm font-medium">{label}</p>
-      <div className="flex items-center gap-2">
-        <p className="flex h-10 min-w-0 flex-1 items-center overflow-x-auto whitespace-nowrap rounded-md border border-border bg-muted/40 px-3 font-mono text-xs text-foreground">
-          {value}
-        </p>
-        <Button
-          type="button"
-          variant="outline"
-          className="h-10 shrink-0 gap-2 px-3"
-          onClick={async () => {
-            await navigator.clipboard.writeText(value);
-            setCopied(true);
-            window.setTimeout(() => setCopied(false), 1500);
-          }}
-        >
-          {copied ? (
-            <CheckCircle2 className="h-4 w-4 text-emerald-600" />
-          ) : (
-            <Copy className="h-4 w-4" />
-          )}
-          {copied ? "Copied" : "Copy"}
-        </Button>
-      </div>
-    </div>
-  );
-}
 
-function CallbackUrlsCard({
-  channels,
-}: {
-  channels: { name: string; urls: { label: string; value?: string }[] }[];
-}) {
-  const available = channels.filter((c) => c.urls.some((u) => u.value));
-  const [selected, setSelected] = useState(available[0]?.name ?? "");
-
-  useEffect(() => {
-    if (!available.some((c) => c.name === selected) && available[0]) {
-      setSelected(available[0].name);
-    }
-  }, [available, selected]);
-
-  const current = available.find((c) => c.name === selected) ?? available[0];
-  if (!current) return null;
-
-  return (
-    <div className="rounded-xl border border-border bg-card p-5 shadow-sm">
-      <div className="mb-4">
-        <h2 className="text-base font-semibold leading-none">Callback URLs</h2>
-        <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
-          Paste into Meta, Google, or Shopify when you connect a channel.
-        </p>
-      </div>
-      <div className="space-y-4">
-        <div className="space-y-1.5">
-          <label className="text-sm font-medium" htmlFor="callback-url-select">
-            Channel
-          </label>
-          <select
-            id="callback-url-select"
-            value={current.name}
-            onChange={(e) => setSelected(e.target.value)}
-            className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-          >
-            {available.map((channel) => (
-              <option key={channel.name} value={channel.name}>
-                {channel.name}
-              </option>
-            ))}
-          </select>
-        </div>
-        {current.urls
-          .filter((u) => u.value)
-          .map((u) => (
-            <CallbackUrlRow key={u.label} label={u.label} value={u.value!} />
-          ))}
-      </div>
-    </div>
-  );
-}
 
 function ConnectModal({
   title,
@@ -367,7 +282,6 @@ export function SettingsPage() {
   const { data: accounts, isLoading: accountsLoading } = useAccounts();
   const activeAccount = accounts?.[0];
   const { data: inboxes, isLoading: inboxesLoading } = useInboxes(activeAccount?.id);
-  const { data: oauthHints } = useOAuthHints();
   const { mutateAsync: updateInboxAsync } = useUpdateInbox();
   const { mutateAsync: disconnectInboxAsync, isPending: disconnectingInbox } =
     useDisconnectInbox();
@@ -615,34 +529,7 @@ export function SettingsPage() {
     );
   }
 
-  const callbackChannels = [
-    {
-      name: "WhatsApp",
-      urls: [{ label: "Webhook", value: oauthHints?.webhooks.whatsapp ?? waInbox?.webhookUrl }],
-    },
-    {
-      name: "Instagram",
-      urls: [
-        { label: "Webhook", value: oauthHints?.webhooks.instagram ?? igInbox?.webhookUrl },
-        { label: "Login redirect", value: oauthHints?.instagramRedirectUri },
-      ],
-    },
-    {
-      name: "Facebook",
-      urls: [{ label: "Webhook", value: oauthHints?.webhooks.facebook ?? fbInbox?.webhookUrl }],
-    },
-    {
-      name: "Gmail",
-      urls: [
-        { label: "Push URL", value: oauthHints?.webhooks.emailPubSub ?? emailInbox?.webhookUrl },
-        { label: "Login redirect", value: oauthHints?.gmailRedirectUri },
-      ],
-    },
-    {
-      name: "Shopify",
-      urls: [{ label: "Login redirect", value: oauthHints?.shopifyRedirectUri }],
-    },
-  ];
+
 
   return (
     <div className="flex h-full flex-1 flex-col overflow-y-auto bg-background">
@@ -661,8 +548,6 @@ export function SettingsPage() {
             </a>
           </Button>
         </div>
-
-        <CallbackUrlsCard channels={callbackChannels} />
 
         <section className="space-y-3">
           <div>
