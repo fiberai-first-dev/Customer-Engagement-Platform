@@ -277,7 +277,14 @@ export const useEnabledChannelTypes = (): {
   if (fbFlag.data?.enabled === true) flagAllowed.add("facebook");
   if (emailFlag.data?.enabled === true) flagAllowed.add("email");
 
-  const connectedChannels = (inboxes ?? []).filter((i) => i.enabled).map((i) => i.channelType);
+  const connectedChannels = (inboxes ?? []).filter((i) => {
+    if (!i.enabled) return false;
+    // Hide if it's completely unconfigured (never connected)
+    const summary = i.health?.summary;
+    if (summary === "Not configured" || summary === "Not connected") return false;
+    return true;
+  }).map((i) => i.channelType);
+
   const enabledChannels = connectedChannels.filter((ch) => flagAllowed.has(ch));
 
   return {
