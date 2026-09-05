@@ -1,5 +1,6 @@
 import { ulid } from "ulid";
 import { prisma } from "../config/db.js";
+import { env } from "../config/env.js";
 
 export async function findOrCreateGoogleUser(email: string, googleId: string) {
   const adminEmail = process.env.SUPER_ADMIN_EMAIL || "fiberai.akesh@gmail.com";
@@ -8,7 +9,7 @@ export async function findOrCreateGoogleUser(email: string, googleId: string) {
   const role = email === adminEmail ? "SUPER_ADMIN" : "AGENT";
 
   if (!user) {
-    if (email === adminEmail) {
+    if (email === adminEmail || env.MOCK) {
       user = await prisma.user.create({
         data: {
           id: ulid(),
