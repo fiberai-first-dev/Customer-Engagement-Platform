@@ -382,10 +382,10 @@ export function SettingsPage() {
   const { data: fbChannelFlag } = useFeatureFlag("facebook_channel");
   const { data: emailChannelFlag } = useFeatureFlag("email_channel");
 
-  const showWaRow = waChannelFlag?.enabled !== false;
-  const showIgRow = igChannelFlag?.enabled !== false;
-  const showFbRow = fbChannelFlag?.enabled !== false;
-  const showEmailRow = emailChannelFlag?.enabled !== false;
+  const showWaRow = waChannelFlag?.enabled === true;
+  const showIgRow = igChannelFlag?.enabled === true;
+  const showFbRow = fbChannelFlag?.enabled === true;
+  const showEmailRow = emailChannelFlag?.enabled === true;
 
   const [connecting, setConnecting] = useState<"gmail" | "instagram" | "shopify" | null>(null);
   const [modal, setModal] = useState<ModalKey | null>(null);

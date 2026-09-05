@@ -243,7 +243,7 @@ export const useInboxes = (accountId?: string) =>
     enabled: !!accountId,
   });
 
-/** The four per-channel feature flag keys. Default true = visible unless admin turns off. */
+/** The four per-channel feature flag keys. Default false = hidden unless admin enables. */
 export const CHANNEL_FLAG_KEYS: Record<ChannelType, string> = {
   whatsapp: "whatsapp_channel",
   instagram: "instagram_channel",
@@ -270,12 +270,12 @@ export const useEnabledChannelTypes = (): {
   const fbFlag = useQuery({ queryKey: ["feature-flag", "facebook_channel"], queryFn: () => request<{ enabled: boolean }>(`/api/v1/features?key=facebook_channel`) });
   const emailFlag = useQuery({ queryKey: ["feature-flag", "email_channel"], queryFn: () => request<{ enabled: boolean }>(`/api/v1/features?key=email_channel`) });
 
-  // Build a set of admin-allowed channels (default to true if flag not yet set in DB)
+  // Build a set of admin-allowed channels (default false = hidden unless explicitly enabled)
   const flagAllowed = new Set<ChannelType>();
-  if (waFlag.data?.enabled !== false) flagAllowed.add("whatsapp");
-  if (igFlag.data?.enabled !== false) flagAllowed.add("instagram");
-  if (fbFlag.data?.enabled !== false) flagAllowed.add("facebook");
-  if (emailFlag.data?.enabled !== false) flagAllowed.add("email");
+  if (waFlag.data?.enabled === true) flagAllowed.add("whatsapp");
+  if (igFlag.data?.enabled === true) flagAllowed.add("instagram");
+  if (fbFlag.data?.enabled === true) flagAllowed.add("facebook");
+  if (emailFlag.data?.enabled === true) flagAllowed.add("email");
 
   const connectedChannels = (inboxes ?? []).filter((i) => i.enabled).map((i) => i.channelType);
   const enabledChannels = connectedChannels.filter((ch) => flagAllowed.has(ch));
