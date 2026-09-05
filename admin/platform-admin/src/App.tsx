@@ -752,6 +752,10 @@ export function App() {
                         { key: "whatsapp_template_injection_enabled", description: "Show 'Use template' button in WhatsApp chat — lets agents send approved templates during active conversations" },
                         { key: "instagram_human_agent_enabled", description: "Allow Instagram HUMAN_AGENT replies from CEP after 24h" },
                         { key: "broadcast_enabled", description: "Enable WhatsApp template broadcasting to multiple contacts at once" },
+                        { key: "whatsapp_channel", description: "Enable WhatsApp channel" },
+                        { key: "instagram_channel", description: "Enable Instagram channel" },
+                        { key: "facebook_channel", description: "Enable Facebook channel" },
+                        { key: "email_channel", description: "Enable Email channel" },
                       ];
                       
                       const allFeatures = [...features];
@@ -772,6 +776,10 @@ export function App() {
                         "whatsapp_template_injection_enabled": "Send Template in Chat",
                         "instagram_human_agent_enabled": "Instagram Human Agent",
                         "broadcast_enabled": "WhatsApp Broadcasting",
+                        "whatsapp_channel": "WhatsApp Channel",
+                        "instagram_channel": "Instagram Channel",
+                        "facebook_channel": "Facebook Channel",
+                        "email_channel": "Email Channel",
                       };
                       
                       const filteredFeatures = allFeatures.filter(f => {
