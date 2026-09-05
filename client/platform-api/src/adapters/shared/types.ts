@@ -1,4 +1,4 @@
-export type ChannelType = "whatsapp" | "instagram" | "email";
+export type ChannelType = "whatsapp" | "instagram" | "facebook" | "email";
 
 export type MessageContentType = "text" | "html" | "image" | "file" | "audio" | "video" | "template" | "unknown";
 
@@ -25,6 +25,14 @@ export interface InstagramChannelConfig {
   instagramUsername?: string;
 }
 
+export interface FacebookChannelConfig {
+  pageId: string;
+  accessToken: string;
+  verifyToken: string;
+  appSecret?: string;
+  pageName?: string;
+}
+
 /** Email channel = Gmail (vendor assumed). */
 export interface EmailChannelConfig {
   clientId: string;
@@ -41,6 +49,7 @@ export interface EmailChannelConfig {
 export type ChannelConfig =
   | WhatsAppChannelConfig
   | InstagramChannelConfig
+  | FacebookChannelConfig
   | EmailChannelConfig;
 
 export interface OutboundTextMessage {

@@ -8,7 +8,7 @@ import { ingestInboundMessages } from "../services/MessagingService.js";
 import { handlePubSubNotification } from "../services/EmailService.js";
 import type { ChannelType, ChannelConfig as ChannelConfigRow } from "../generated/client/index.js";
 
-const channelTypes = ["whatsapp", "instagram", "email"] as const;
+const channelTypes = ["whatsapp", "instagram", "facebook", "email"] as const;
 
 async function resolveChannelConfigRow(channelType: ChannelType): Promise<ChannelConfigRow | null> {
   const enabled = await prisma.channelConfig.findFirst({

@@ -30,6 +30,7 @@ export async function loadCustomerShaped(id: string) {
     include: {
       whatsappIdentities: true,
       instagramIdentities: true,
+      facebookIdentities: true,
       emailIdentities: true,
     },
   });
@@ -40,6 +41,7 @@ export async function findMatchingCustomers(input: {
   emails?: string[];
   whatsappIds?: string[];
   instagramId?: string | null;
+  facebookId?: string | null;
 }) {
   const emails = (input.emails ?? []).map(normalizeEmail).filter(Boolean) as string[];
   const wa = (input.whatsappIds ?? [])
@@ -91,11 +93,17 @@ export async function findMatchingCustomers(input: {
   }
 
   if (!customerIds.size) return [];
+  if (input.facebookId?.trim()) {
+    const row = await prisma.facebookChannel.findUnique({ where: { externalId: input.facebookId.trim() } });
+    if (row) customerIds.add(row.customerId);
+  }
+
   const customers = await prisma.customer.findMany({
     where: { id: { in: [...customerIds] } },
     include: {
       whatsappIdentities: true,
       instagramIdentities: true,
+      facebookIdentities: true,
       emailIdentities: true,
     },
   });
@@ -108,6 +116,7 @@ async function attachIdentities(
     emails?: string[];
     whatsappIds?: string[];
     instagramId?: string | null;
+    facebookId?: string | null;
   },
 ) {
   for (const raw of input.emails ?? []) {
@@ -181,6 +190,28 @@ async function attachIdentities(
     await prisma.whatsAppChannel.create({
       data: { id: ulid(), customerId, externalId, resolved: true, metadata: {} },
     });
+  }
+
+  const fb = input.facebookId?.trim();
+  if (fb) {
+    const existing = await prisma.facebookChannel.findUnique({ where: { externalId: fb } });
+    if (existing) {
+      if (existing.customerId !== customerId) {
+        await prisma.message.updateMany({
+          where: { channelType: "facebook", channelId: existing.id },
+          data: { customerId },
+        });
+        await prisma.facebookChannel.update({
+          where: { id: existing.id },
+          data: { customerId },
+        });
+        await recomputeCustomerResolved(existing.customerId);
+      }
+    } else {
+      await prisma.facebookChannel.create({
+        data: { id: ulid(), customerId, externalId: fb, resolved: true, metadata: {} },
+      });
+    }
   }
 
   const ig = normalizeIg(input.instagramId);
@@ -265,6 +296,7 @@ async function syncIdentitiesToSubmitted(
     emails?: string[];
     whatsappIds?: string[];
     instagramId?: string | null;
+    facebookId?: string | null;
   },
 ) {
   if (input.emails !== undefined) {
@@ -292,6 +324,16 @@ async function syncIdentitiesToSubmitted(
       const digits = normalizeWhatsAppId(row.externalId);
       if (!digits || !keepDigits.has(digits)) {
         await prisma.whatsAppChannel.delete({ where: { id: row.id } });
+      }
+    }
+  }
+
+  if (input.facebookId !== undefined) {
+    const fb = input.facebookId?.trim();
+    const rows = await prisma.facebookChannel.findMany({ where: { customerId } });
+    for (const row of rows) {
+      if (!fb || row.externalId !== fb) {
+        await prisma.facebookChannel.delete({ where: { id: row.id } });
       }
     }
   }
@@ -328,6 +370,7 @@ async function absorbCustomer(sourceId: string, targetId: string) {
     include: {
       whatsappIdentities: true,
       instagramIdentities: true,
+      facebookIdentities: true,
       emailIdentities: true,
     },
   });
@@ -363,6 +406,23 @@ async function absorbCustomer(sourceId: string, targetId: string) {
     } else {
       await prisma.instagramChannel.update({
         where: { id: ig.id },
+        data: { customerId: targetId },
+      });
+    }
+  }
+  for (const fb of source.facebookIdentities) {
+    const clash = await prisma.facebookChannel.findFirst({
+      where: { customerId: targetId, externalId: fb.externalId },
+    });
+    if (clash) {
+      await prisma.message.updateMany({
+        where: { channelType: "facebook", channelId: fb.id },
+        data: { channelId: clash.id, customerId: targetId },
+      });
+      await prisma.facebookChannel.delete({ where: { id: fb.id } });
+    } else {
+      await prisma.facebookChannel.update({
+        where: { id: fb.id },
         data: { customerId: targetId },
       });
     }
@@ -441,6 +501,7 @@ export async function createCustomer(input: {
   emails?: string[];
   whatsappIds?: string[];
   instagramId?: string | null;
+  facebookId?: string | null;
   mergeIntoId?: string;
   keepName?: string | null;
   force?: boolean;
@@ -499,6 +560,7 @@ export async function updateCustomer(
     emails?: string[];
     whatsappIds?: string[];
     instagramId?: string | null;
+    facebookId?: string | null;
     mergeIntoId?: string;
     keepName?: string | null;
     force?: boolean;

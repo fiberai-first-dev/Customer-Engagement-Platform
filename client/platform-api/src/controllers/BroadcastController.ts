@@ -84,11 +84,15 @@ export const broadcastRoutes: FastifyPluginAsync = async (app) => {
           try {
           // Resolve dynamic variables
           const resolvedVariables: Record<string, string> = {};
+          const agentUsername = (req as any).user?.username ?? "Agent";
+          
           for (const [key, val] of Object.entries(variables as Record<string, string>)) {
             if (val === "$CONTACT_NAME") {
               resolvedVariables[key] = customerName ?? "Customer";
             } else if (val === "$CONTACT_FIRST_NAME") {
               resolvedVariables[key] = customerName ? customerName.split(" ")[0] : "Customer";
+            } else if (val === "$AGENT_USERNAME") {
+              resolvedVariables[key] = agentUsername;
             } else {
               resolvedVariables[key] = val;
             }

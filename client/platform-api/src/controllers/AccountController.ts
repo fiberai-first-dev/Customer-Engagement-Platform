@@ -24,7 +24,7 @@ export class AccountController {
 
   static async updateChannel(
     request: FastifyRequest<{
-      Params: { accountId: string; channel: "whatsapp" | "instagram" | "email" };
+      Params: { accountId: string; channel: "whatsapp" | "instagram" | "facebook" | "email" };
       Body: {
         enabled?: boolean;
         config?: Record<string, unknown>;

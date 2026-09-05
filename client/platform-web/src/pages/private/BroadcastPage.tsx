@@ -647,6 +647,13 @@ export function BroadcastPage() {
                           >
                             + First Name
                           </button>
+                          <button
+                            type="button"
+                            onClick={() => setVariables((p) => ({ ...p, [v]: "$AGENT_USERNAME" }))}
+                            className="rounded bg-primary/10 px-2 py-1 text-[10px] font-medium text-primary hover:bg-primary/20 transition-colors"
+                          >
+                            + Agent Username
+                          </button>
                         </div>
                       </div>
                     ))}

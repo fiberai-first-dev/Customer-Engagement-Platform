@@ -1,7 +1,7 @@
 import { Prisma } from "../generated/client/index.js";
 import { prisma } from "../config/db.js";
 
-type ChannelType = "whatsapp" | "instagram" | "email";
+type ChannelType = "whatsapp" | "instagram" | "facebook" | "email";
 
 function configObject(
   value: Prisma.JsonValue | Prisma.InputJsonValue | null | undefined,
@@ -19,6 +19,7 @@ function hasChannelCreds(channel: ChannelType, config: Record<string, unknown>):
   };
   if (channel === "whatsapp") return s("phoneNumberId") && s("accessToken");
   if (channel === "instagram") return s("accessToken") && s("verifyToken");
+  if (channel === "facebook") return s("pageId") && s("accessToken");
   return (s("refreshToken") || s("accessToken")) && s("clientId");
 }
 
@@ -27,9 +28,15 @@ function hasChannelCreds(channel: ChannelType, config: Record<string, unknown>):
  * Does NOT read .env — credentials come from Settings UI or `npm run seed:config`.
  */
 export async function ensureWorkspace() {
-  for (const channel of ["whatsapp", "instagram", "email"] as ChannelType[]) {
+  for (const channel of ["whatsapp", "instagram", "facebook", "email"] as ChannelType[]) {
     const name =
-      channel === "whatsapp" ? "WhatsApp" : channel === "instagram" ? "Instagram" : "Email";
+      channel === "whatsapp"
+        ? "WhatsApp"
+        : channel === "instagram"
+          ? "Instagram"
+          : channel === "facebook"
+            ? "Facebook"
+            : "Email";
     const preferredId = `channel_${channel}`;
 
     try {
@@ -70,7 +77,13 @@ export async function upsertChannelConfigSeed(
   enabled = true,
 ) {
   const name =
-    channel === "whatsapp" ? "WhatsApp" : channel === "instagram" ? "Instagram" : "Email";
+    channel === "whatsapp"
+      ? "WhatsApp"
+      : channel === "instagram"
+        ? "Instagram"
+        : channel === "facebook"
+          ? "Facebook"
+          : "Email";
   const preferredId = `channel_${channel}`;
   const existing =
     (await prisma.channelConfig.findUnique({ where: { id: preferredId } })) ??

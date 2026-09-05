@@ -231,6 +231,7 @@ export class ConversationService {
       include: {
         whatsappIdentities: true,
         instagramIdentities: true,
+        facebookIdentities: true,
         emailIdentities: true,
       },
       orderBy: { updatedAt: "desc" },
@@ -241,7 +242,7 @@ export class ConversationService {
     // ── Batch fetch latest non-email messages (prevents N+1 per customer) ──────
     const nonEmailGroups = await prisma.message.groupBy({
       by: ["customerId", "channelType"],
-      where: { channelType: { in: ["whatsapp", "instagram"] } },
+      where: { channelType: { in: ["whatsapp", "instagram", "facebook"] } },
       _max: { createdAt: true },
     });
     const latestNonEmailMsgs = nonEmailGroups.length > 0
@@ -301,28 +302,32 @@ export class ConversationService {
       const shaped = shapeCustomer(customer);
       const channelStatuses: Partial<Record<ChannelType, "open" | "resolved">> = {};
 
-      for (const type of ["whatsapp", "instagram", "email"] as ChannelType[]) {
+      for (const type of ["whatsapp", "instagram", "facebook", "email"] as ChannelType[]) {
         if (!enabledTypes.has(type)) continue;
         const identities =
           type === "whatsapp"
             ? customer.whatsappIdentities
             : type === "instagram"
               ? customer.instagramIdentities
-              : customer.emailIdentities;
+              : type === "facebook"
+                ? customer.facebookIdentities
+                : customer.emailIdentities;
         const active = identities.filter((i) => i.lastMessageAt != null);
         if (!active.length) continue;
         const unresolved = active.some((i) => !i.resolved);
         channelStatuses[type] = unresolved ? "open" : "resolved";
       }
 
-      for (const type of ["whatsapp", "instagram", "email"] as ChannelType[]) {
+      for (const type of ["whatsapp", "instagram", "facebook", "email"] as ChannelType[]) {
         if (!enabledTypes.has(type)) continue;
         const identities =
           type === "whatsapp"
             ? customer.whatsappIdentities
             : type === "instagram"
               ? customer.instagramIdentities
-              : customer.emailIdentities;
+              : type === "facebook"
+                ? customer.facebookIdentities
+                : customer.emailIdentities;
         const active = identities.filter((i) => i.lastMessageAt != null);
         if (!active.length) continue;
 
@@ -342,7 +347,14 @@ export class ConversationService {
 
         const inboxMeta = {
           id: `channel_${type}`,
-          name: type === "whatsapp" ? "WhatsApp" : type === "instagram" ? "Instagram" : "Email",
+          name:
+            type === "whatsapp"
+              ? "WhatsApp"
+              : type === "instagram"
+                ? "Instagram"
+                : type === "facebook"
+                  ? "Facebook"
+                  : "Email",
           channelType: type,
         };
 
@@ -575,6 +587,11 @@ export class ConversationService {
         });
       } else if (channelType === "instagram") {
         await prisma.instagramChannel.updateMany({
+          where: { customerId },
+          data: { resolved: false },
+        });
+      } else if (channelType === "facebook") {
+        await prisma.facebookChannel.updateMany({
           where: { customerId },
           data: { resolved: false },
         });

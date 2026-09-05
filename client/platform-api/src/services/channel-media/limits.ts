@@ -19,6 +19,13 @@ export const CHANNEL_MEDIA_LIMITS: Record<
     video: 25 * MB,
     audio: 25 * MB,
   },
+  facebook: {
+    default: 25 * MB,
+    image: 25 * MB,
+    video: 25 * MB,
+    audio: 25 * MB,
+    document: 25 * MB,
+  },
   email: {
     default: 25 * MB,
     image: 25 * MB,

@@ -46,7 +46,7 @@ export function getMessagingWindow(
       canSendNormalMessage: false,
       requiresTemplate: channel === "whatsapp",
       requiresHumanAgentTag: false,
-      requiresExternalInbox: channel === "instagram",
+      requiresExternalInbox: channel === "instagram" || channel === "facebook",
     };
   }
 
@@ -129,6 +129,32 @@ export function getMessagingWindow(
       state: "EXPIRED",
       lastCustomerMessageAt,
       expiresAt: new Date(msgTime + DAYS_7),
+      canSendNormalMessage: false,
+      requiresTemplate: false,
+      requiresHumanAgentTag: false,
+      requiresExternalInbox: true,
+    };
+  }
+
+  if (channel === "facebook") {
+    if (diff <= HOURS_24) {
+      return {
+        channel,
+        state: "ACTIVE",
+        lastCustomerMessageAt,
+        expiresAt: new Date(msgTime + HOURS_24),
+        canSendNormalMessage: true,
+        requiresTemplate: false,
+        requiresHumanAgentTag: false,
+        requiresExternalInbox: false,
+      };
+    }
+
+    return {
+      channel,
+      state: "EXPIRED",
+      lastCustomerMessageAt,
+      expiresAt: new Date(msgTime + HOURS_24),
       canSendNormalMessage: false,
       requiresTemplate: false,
       requiresHumanAgentTag: false,

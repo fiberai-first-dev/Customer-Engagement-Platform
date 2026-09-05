@@ -59,6 +59,17 @@ export function computeChannelHealth(
     return { level: "ok", summary: "Connected", details: [] };
   }
 
+  if (channelType === "facebook") {
+    const details: string[] = [];
+    if (!hasText(cfg, "pageId")) details.push("Facebook Page ID missing");
+    if (!hasText(cfg, "accessToken")) details.push("Page access token missing");
+    if (!hasText(cfg, "verifyToken")) details.push("Verify token missing");
+    if (details.length) {
+      return { level: "error", summary: "Not configured", details };
+    }
+    return { level: "ok", summary: "Connected", details: [] };
+  }
+
   // email / gmail
   const details: string[] = [];
   const hasOAuth = hasText(cfg, "refreshToken") || hasText(cfg, "accessToken");

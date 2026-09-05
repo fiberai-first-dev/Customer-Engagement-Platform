@@ -137,6 +137,9 @@ export async function findIdentityByExternalId(
       },
     });
   }
+  if (channelType === "facebook") {
+    return prisma.facebookChannel.findUnique({ where: { externalId } });
+  }
   const email = normalizeEmail(externalId) ?? externalId;
   return prisma.emailChannel.findUnique({ where: { externalId: email } });
 }
@@ -153,6 +156,12 @@ export async function getMostRecentIdentity(
   }
   if (channelType === "instagram") {
     return prisma.instagramChannel.findFirst({
+      where: { customerId },
+      orderBy: [{ lastMessageAt: "desc" }, { updatedAt: "desc" }],
+    });
+  }
+  if (channelType === "facebook") {
+    return prisma.facebookChannel.findFirst({
       where: { customerId },
       orderBy: [{ lastMessageAt: "desc" }, { updatedAt: "desc" }],
     });
@@ -189,6 +198,17 @@ async function createIdentity(input: {
   }
   if (input.channelType === "instagram") {
     return prisma.instagramChannel.create({
+      data: {
+        id,
+        customerId: input.customerId,
+        externalId: input.externalId,
+        resolved: input.resolved ?? false,
+        metadata,
+      },
+    });
+  }
+  if (input.channelType === "facebook") {
+    return prisma.facebookChannel.create({
       data: {
         id,
         customerId: input.customerId,
@@ -282,7 +302,7 @@ export async function findOrCreateCustomerForInbound(input: {
       : inbound.senderName?.trim() ||
         inbound.senderEmail?.trim() ||
         inbound.senderPhone?.trim() ||
-        null;
+        (channelType === "facebook" ? "Facebook User" : null);
 
   const metadata: Record<string, unknown> = {
     senderName: inbound.senderName ?? null,
@@ -294,6 +314,14 @@ export async function findOrCreateCustomerForInbound(input: {
     } else if (inbound.senderName?.trim()) {
       metadata.senderName = inbound.senderName.trim();
     }
+  } else if (channelType === "facebook") {
+    if (inbound.senderName?.trim()) {
+      metadata.name = inbound.senderName.trim();
+      metadata.senderName = inbound.senderName.trim();
+    }
+    const raw = asMeta(inbound.raw as Prisma.JsonValue);
+    const profile = asMeta(raw._profile as Prisma.JsonValue | undefined);
+    if (profile.profilePic) metadata.profilePic = profile.profilePic;
   }
 
   const existing = await findIdentityByExternalId(channelType, senderKey);
@@ -330,6 +358,11 @@ export async function findOrCreateCustomerForInbound(input: {
           metadata: mergedMeta,
           ...(upgradeExternalId ? { externalId: upgradeExternalId } : {}),
         },
+      });
+    } else if (channelType === "facebook") {
+      await prisma.facebookChannel.update({
+        where: { id: existing.id },
+        data: { resolved: false, metadata: mergedMeta },
       });
     } else {
       await prisma.emailChannel.update({
@@ -544,6 +577,28 @@ async function touchIdentityLastMessageAt(
     }
     return;
   }
+  if (channelType === "facebook") {
+    const row = await prisma.facebookChannel.findUnique({
+      where: { id: identityId },
+      select: { lastMessageAt: true, lastCustomerMessageAt: true },
+    });
+    
+    const updateData: any = {};
+    if (!row?.lastMessageAt || row.lastMessageAt.getTime() < when.getTime()) {
+      updateData.lastMessageAt = when;
+    }
+    if (isIncoming && (!row?.lastCustomerMessageAt || row.lastCustomerMessageAt.getTime() < when.getTime())) {
+      updateData.lastCustomerMessageAt = when;
+    }
+    
+    if (Object.keys(updateData).length > 0) {
+      await prisma.facebookChannel.update({
+        where: { id: identityId },
+        data: updateData,
+      });
+    }
+    return;
+  }
   
   const row = await prisma.emailChannel.findUnique({
     where: { id: identityId },
@@ -602,9 +657,9 @@ async function resolveIdentityForOutgoing(input: {
     };
   }
 
-  if (channelType === "instagram") {
+  if (channelType === "instagram" || channelType === "facebook") {
     console.warn(
-      `[outbound-sync] instagram echo for unknown peer=${peerKey} — skipped (customer must message first)`,
+      `[outbound-sync] ${channelType} echo for unknown peer=${peerKey} — skipped (customer must message first)`,
     );
     return null;
   }
@@ -664,6 +719,17 @@ export async function ingestInboundMessages(input: {
     // Enrich customer profiles for inbound; echoes already use customer IGSID as senderId
     inboundMessages = await enrichInstagramInboundNames(
       config as import("../adapters/shared/types.js").InstagramChannelConfig,
+      inboundMessages,
+    );
+    for (const m of inboundMessages) {
+      if (m.type === "message" && !m.senderName?.trim()) m.senderName = "Unknown";
+    }
+  }
+
+  if (channelCfg.channelType === "facebook" && inboundMessages.length) {
+    const { enrichFacebookInboundNames } = await import("../adapters/facebook/index.js");
+    inboundMessages = await enrichFacebookInboundNames(
+      config as import("../adapters/shared/types.js").FacebookChannelConfig,
       inboundMessages,
     );
     for (const m of inboundMessages) {
@@ -1121,10 +1187,12 @@ export function shapeCustomer(customer: {
   metadata?: unknown;
   whatsappIdentities?: Array<{ id: string; externalId: string; resolved: boolean; metadata: unknown; lastMessageAt: Date | null }>;
   instagramIdentities?: Array<{ id: string; externalId: string; resolved: boolean; metadata: unknown; lastMessageAt: Date | null }>;
+  facebookIdentities?: Array<{ id: string; externalId: string; resolved: boolean; metadata: unknown; lastMessageAt: Date | null }>;
   emailIdentities?: Array<{ id: string; externalId: string; resolved: boolean; metadata: unknown; lastMessageAt: Date | null }>;
 }) {
   const wa = customer.whatsappIdentities ?? [];
   const ig = customer.instagramIdentities ?? [];
+  const fb = customer.facebookIdentities ?? [];
   const em = customer.emailIdentities ?? [];
   const whatsappIds = wa.map((i) => formatWhatsAppStorage(i.externalId) ?? i.externalId);
   const emails = em.map((i) => i.externalId);
@@ -1156,6 +1224,20 @@ export function shapeCustomer(customer: {
         channel: "instagram" as const,
         externalId: i.externalId,
         displayId: username ? `@${username}` : i.externalId,
+        metadata: meta,
+        enabled: true,
+        resolved: i.resolved,
+        lastMessageAt: i.lastMessageAt,
+      };
+    }),
+    ...fb.map((i) => {
+      const meta = asMeta(i.metadata as Prisma.JsonValue);
+      const displayName = typeof meta.name === "string" ? meta.name : typeof meta.senderName === "string" ? meta.senderName : undefined;
+      return {
+        id: i.id,
+        channel: "facebook" as const,
+        externalId: i.externalId,
+        displayId: displayName || i.externalId,
         metadata: meta,
         enabled: true,
         resolved: i.resolved,
@@ -1199,6 +1281,7 @@ export function shapeCustomer(customer: {
     whatsappIds,
     whatsappEnabled: wa.length > 0,
     instagramEnabled: ig.length > 0,
+    facebookEnabled: fb.length > 0,
     emailEnabled: em.length > 0,
     /** Username/handle for UI — never the numeric Instagram-scoped id when username is known. */
     instagramId: igUsername,
@@ -1209,12 +1292,15 @@ export function shapeCustomer(customer: {
           ...(igUsername ? { username: igUsername } : { username: null }),
         }
       : null,
+    facebookId: fb[0]?.externalId ?? null,
+    facebookDetails: fb[0] ? asMeta(fb[0].metadata as Prisma.JsonValue) : null,
     tag: customer.tag ?? null,
     resolved: customer.resolved,
     globalStatus: customer.resolved ? ("resolved" as const) : ("active" as const),
     identifiers: {
       ...(whatsappIds[0] ? { whatsapp: whatsappIds[0] } : {}),
       ...(igUsername ? { instagram: igUsername } : {}),
+      ...(fb[0]?.externalId ? { facebook: fb[0].externalId } : {}),
       ...(emails[0] ? { email: emails[0] } : {}),
     },
     identities,

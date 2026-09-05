@@ -4,6 +4,7 @@ import {
   resolveChannelConfig,
   type EmailChannelConfig,
   type InstagramChannelConfig,
+  type FacebookChannelConfig,
   type WhatsAppChannelConfig,
 } from "../adapters/shared/index.js";
 import { ensureWorkspace } from "./WorkspaceService.js";
@@ -45,7 +46,7 @@ export async function bootstrapRuntime(): Promise<void> {
   }
 
   await migrateInstagramConfigKeys();
-  await Promise.all([prepareWhatsApp(), prepareInstagram(), prepareEmail()]);
+  await Promise.all([prepareWhatsApp(), prepareInstagram(), prepareFacebook(), prepareEmail()]);
 }
 
 /** Persist Instagram key rename: appSecret → instagramAppSecret; drop pageId. */
@@ -161,6 +162,49 @@ async function prepareInstagram() {
     );
   } catch (err) {
     console.warn("[boot:instagram]", err instanceof Error ? err.message : err);
+  }
+}
+
+async function prepareFacebook() {
+  try {
+    const inbox = await prisma.channelConfig.findFirst({
+      where: { channelType: "facebook" },
+      orderBy: [{ enabled: "desc" }, { createdAt: "asc" }],
+    });
+    if (!inbox) {
+      console.warn("[boot:facebook] no channel config");
+      return;
+    }
+    const cfg = resolveChannelConfig("facebook", inbox.channelConfig) as FacebookChannelConfig;
+    if (!cfg.accessToken || !cfg.pageId) {
+      console.warn(
+        "[boot:facebook] incomplete — Settings → Channels or seed:config",
+      );
+      return;
+    }
+
+    if (cfg.verifyToken && !inbox.enabled) {
+      await prisma.channelConfig.update({ where: { id: inbox.id }, data: { enabled: true } });
+    }
+
+    const probe = await fetch(
+      `https://graph.facebook.com/v21.0/${encodeURIComponent(cfg.pageId)}?fields=id,name`,
+      { headers: { Authorization: `Bearer ${cfg.accessToken}` } },
+    );
+    const body = (await probe.json().catch(() => ({}))) as {
+      id?: string;
+      name?: string;
+      error?: { message?: string; code?: number };
+    };
+    if (!probe.ok || body.error) {
+      console.warn(
+        `[boot:facebook] auth check: ${body.error?.message ?? `HTTP ${probe.status}`}`,
+      );
+      return;
+    }
+    console.log(`[boot:facebook] auth ok page=${body.name ?? body.id ?? cfg.pageId}`);
+  } catch (err) {
+    console.warn("[boot:facebook]", err instanceof Error ? err.message : err);
   }
 }
 

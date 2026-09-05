@@ -11,6 +11,7 @@ datasource db {
 enum ChannelType {
   whatsapp
   instagram
+  facebook
   email
 }
 
@@ -104,6 +105,7 @@ model Customer {
 
   whatsappIdentities  WhatsAppChannel[]
   instagramIdentities InstagramChannel[]
+  facebookIdentities  FacebookChannel[]
   emailIdentities     EmailChannel[]
   tickets             Ticket[]
 
@@ -182,6 +184,27 @@ model InstagramChannel {
   @@index([customerId, resolved])
   @@index([lastMessageAt])
   @@map("instagram_channel")
+}
+
+/// One Facebook Page-scoped ID (PSID) for a customer
+model FacebookChannel {
+  id            String    @id
+  customerId    String    @map("customer_id")
+  externalId    String    @map("external_id")
+  resolved      Boolean   @default(false)
+  lastMessageAt DateTime? @map("last_message_at")
+  lastCustomerMessageAt DateTime? @map("last_customer_message_at")
+  metadata      Json      @default("{}")
+  createdAt     DateTime  @default(now()) @map("created_at")
+  updatedAt     DateTime  @updatedAt @map("updated_at")
+
+  customer Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+
+  @@unique([externalId])
+  @@index([customerId])
+  @@index([customerId, resolved])
+  @@index([lastMessageAt])
+  @@map("facebook_channel")
 }
 
 /// One email address for a customer

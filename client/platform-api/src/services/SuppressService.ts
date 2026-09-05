@@ -194,6 +194,11 @@ async function clearChannelActivity(customerId: string, channelType: ChannelType
       where: { customerId },
       data: { lastMessageAt: null, resolved: true },
     });
+  } else if (channelType === "facebook") {
+    await prisma.facebookChannel.updateMany({
+      where: { customerId },
+      data: { lastMessageAt: null, resolved: true },
+    });
   } else {
     await prisma.emailChannel.updateMany({
       where: { customerId },
@@ -214,6 +219,11 @@ async function bumpChannelLastMessageAt(input: {
     });
   } else if (input.channelType === "instagram") {
     await prisma.instagramChannel.updateMany({
+      where: { customerId: input.customerId },
+      data: { lastMessageAt: input.lastMessageAt },
+    });
+  } else if (input.channelType === "facebook") {
+    await prisma.facebookChannel.updateMany({
       where: { customerId: input.customerId },
       data: { lastMessageAt: input.lastMessageAt },
     });

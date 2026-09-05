@@ -1,14 +1,17 @@
 import type { ChannelAdapter, ChannelConfig, ChannelType } from "./types.js";
 import { emailAdapter } from "../email/index.js";
 import { instagramAdapter } from "../instagram/index.js";
+import { facebookAdapter } from "../facebook/index.js";
 import { whatsappAdapter } from "../whatsapp/index.js";
 import { whatsappConfig } from "../whatsapp/config.js";
 import { instagramConfig } from "../instagram/config.js";
+import { facebookConfig } from "../facebook/config.js";
 import { emailConfig } from "../email/config.js";
 
 const adapters: Record<ChannelType, ChannelAdapter> = {
   whatsapp: whatsappAdapter as ChannelAdapter,
   instagram: instagramAdapter as ChannelAdapter,
+  facebook: facebookAdapter as ChannelAdapter,
   email: emailAdapter as ChannelAdapter,
 };
 
@@ -98,6 +101,9 @@ export function resolveChannelConfig(
       migrated,
     ) as unknown as ChannelConfig;
   }
+  if (channelType === "facebook") {
+    return mergeConfig({ ...facebookConfig } as Record<string, unknown>, raw) as unknown as ChannelConfig;
+  }
   return mergeConfig({ ...emailConfig } as Record<string, unknown>, raw) as unknown as ChannelConfig;
 }
 
@@ -121,6 +127,7 @@ export function normalizeInstagramChannelConfigStored(
 export * from "./types.js";
 export { whatsappAdapter } from "../whatsapp/index.js";
 export { instagramAdapter } from "../instagram/index.js";
+export { facebookAdapter } from "../facebook/index.js";
 export {
   emailAdapter,
   getEmailClient,

@@ -29,8 +29,8 @@ export async function findOrCreateGoogleUser(email: string, googleId: string) {
     });
   }
   
-  // Upgrade role if they are the admin email and not already SUPER_ADMIN
-  if (email === adminEmail && user.role !== "SUPER_ADMIN") {
+  // Upgrade role if they are the admin email or in mock mode and not already SUPER_ADMIN
+  if ((email === adminEmail || env.MOCK) && user.role !== "SUPER_ADMIN") {
     user = await prisma.user.update({
       where: { id: user.id },
       data: { role: "SUPER_ADMIN" as any }
