@@ -86,9 +86,22 @@ export function MessageMedia({
   }
 
   const type = mimeType ?? "";
-  const isImage = type.startsWith("image/") || contentType === "image";
-  const isVideo = type.startsWith("video/") || contentType === "video";
-  const isAudio = type.startsWith("audio/") || contentType === "audio";
+  const name = filename ?? "";
+  // Instagram often stores videos as contentType "image" with filename "image.mp4".
+  // Prefer real MIME / extension so we render <video>, not a broken <img>.
+  const isVideo =
+    type.startsWith("video/") ||
+    contentType === "video" ||
+    /\.(mp4|mov|webm|m4v)(\?|$)/i.test(name);
+  const isAudio =
+    !isVideo &&
+    (type.startsWith("audio/") ||
+      contentType === "audio" ||
+      /\.(mp3|ogg|wav|m4a|webm|aac)(\?|$)/i.test(name));
+  const isImage =
+    !isVideo &&
+    !isAudio &&
+    (type.startsWith("image/") || contentType === "image");
   const downloadName = filename && !/^(image|audio|video|file|document)$/i.test(filename)
     ? filename
     : isImage

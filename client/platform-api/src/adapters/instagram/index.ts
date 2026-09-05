@@ -116,10 +116,14 @@ function extractText(messaging: Record<string, unknown>): {
 
   const attachments = Array.isArray(message.attachments) ? message.attachments : [];
   const first = asRecord(attachments[0]);
-  const type = String(first?.type ?? "unknown");
-  if (type === "image") return { content: "[image]", contentType: "image" };
+  const type = String(first?.type ?? "unknown").toLowerCase();
+  if (type === "ig_reel" || type === "video" || type === "share") {
+    return { content: "[video]", contentType: "video" };
+  }
+  if (type === "image" || type === "story_mention") {
+    return { content: "[image]", contentType: "image" };
+  }
   if (type === "audio") return { content: "[audio]", contentType: "audio" };
-  if (type === "video") return { content: "[video]", contentType: "video" };
   if (type === "file") return { content: "[file]", contentType: "file" };
   return { content: `[${type}]`, contentType: "unknown" };
 }

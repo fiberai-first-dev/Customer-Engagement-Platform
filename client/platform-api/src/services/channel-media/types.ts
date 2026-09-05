@@ -103,9 +103,17 @@ export async function resolveInboundMedia(
       parsed,
     });
     if (stored) {
+      const mime = stored.mimeType ?? "";
+      const contentType: ContentType = mime.startsWith("video/")
+        ? "video"
+        : mime.startsWith("image/")
+          ? "image"
+          : mime.startsWith("audio/")
+            ? "audio"
+            : parsed.contentType;
       storedItems.push({
         ...stored,
-        contentType: parsed.contentType,
+        contentType,
       });
     }
   }
@@ -127,9 +135,12 @@ export async function resolveInboundMedia(
     }
   }
 
+  // Prefer MIME-derived type so mislabeled Instagram videos (image.mp4) render as video.
+  const resolvedContentType = firstStored?.contentType ?? primary.contentType;
+
   return {
     content,
-    contentType: primary.contentType,
+    contentType: resolvedContentType,
     mediaKey: firstStored?.mediaKey,
     mediaMimeType: firstStored?.mimeType,
     mediaFilename: firstStored?.filename,

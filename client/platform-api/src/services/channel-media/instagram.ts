@@ -16,10 +16,18 @@ function asRecord(value: unknown): Record<string, unknown> | null {
 function attachmentContentType(
   type: string,
 ): ParsedInboundMedia["contentType"] {
-  if (type === "image" || type === "ig_reel" || type === "story_mention") return "image";
-  if (type === "video") return "video";
+  // Reels / share videos often arrive as ig_reel; Meta may still label some videos as "image".
+  if (type === "ig_reel" || type === "video" || type === "share") return "video";
+  if (type === "image" || type === "story_mention") return "image";
   if (type === "audio") return "audio";
   if (type === "file") return "file";
+  return "file";
+}
+
+function contentTypeFromMime(mimeType: string): ParsedInboundMedia["contentType"] {
+  if (mimeType.startsWith("video/")) return "video";
+  if (mimeType.startsWith("image/")) return "image";
+  if (mimeType.startsWith("audio/")) return "audio";
   return "file";
 }
 
@@ -63,10 +71,10 @@ export const instagramChannelMedia: ChannelMediaHandler = {
       mimeType:
         typeof payload?.mime_type === "string"
           ? payload.mime_type
-          : type === "image"
-            ? "image/jpeg"
-            : type === "video"
-              ? "video/mp4"
+          : type === "ig_reel" || type === "video" || type === "share"
+            ? "video/mp4"
+            : type === "image" || type === "story_mention"
+              ? "image/jpeg"
               : type === "audio"
                 ? "audio/mpeg"
                 : "application/octet-stream",
@@ -78,17 +86,25 @@ export const instagramChannelMedia: ChannelMediaHandler = {
   async persistInbound({ customerId, parsed }) {
     if (!isMediaStorageEnabled() || !parsed.url) return null;
     try {
-      const { buffer, mimeType } = await downloadUrl(parsed.url);
-      const filename = parsed.filename ?? `${parsed.contentType}.${mimeType.split("/")[1] ?? "bin"}`;
+      const { buffer, mimeType: downloadedMime } = await downloadUrl(parsed.url);
+      // Prefer the real Content-Type from Meta CDN over the webhook type guess
+      // (Instagram often labels videos as type "image", producing filenames like image.mp4).
+      const mimeType =
+        downloadedMime && downloadedMime !== "application/octet-stream"
+          ? downloadedMime.split(";")[0]!.trim()
+          : parsed.mimeType ?? downloadedMime;
+      const contentType = contentTypeFromMime(mimeType);
+      const ext = mimeType.split("/")[1]?.split("+")[0] ?? "bin";
+      const filename = parsed.filename ?? `${contentType}.${ext}`;
       const key = channelMediaKey("instagram", customerId, filename);
       await putObject({
         key,
         body: buffer,
-        contentType: parsed.mimeType ?? mimeType,
+        contentType: mimeType,
       });
       return {
         mediaKey: key,
-        mimeType: parsed.mimeType ?? mimeType,
+        mimeType,
         filename,
       };
     } catch (err) {
