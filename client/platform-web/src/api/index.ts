@@ -1334,6 +1334,10 @@ export const useBroadcasts = () =>
       const data = await request<{ jobs: BroadcastJob[] }>("/api/v1/broadcasts");
       return data.jobs ?? [];
     },
+    refetchInterval: (query) => {
+      const jobs = query.state.data;
+      return jobs?.some((j) => j.status === "pending") ? 3000 : false;
+    },
   });
 
 export const useSendBroadcast = () => {

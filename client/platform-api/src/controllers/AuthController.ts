@@ -9,51 +9,43 @@ export class AuthController {
     reply: FastifyReply,
   ) {
     const { credential } = request.body ?? {};
+
+    // Always require a real Google token. MOCK only auto-provisions new users as SUPER_ADMIN.
     if (!credential) {
-      if (env.MOCK) {
-        // Allow empty credential in mock mode to fall through to bypass logic below
-      } else {
-        return reply.code(400).send({ error: "Google credential required" });
-      }
+      return reply.code(400).send({ error: "Google credential required" });
     }
 
     try {
       let email: string | undefined;
       let googleId: string | undefined;
 
-      if (env.MOCK && (!credential || credential === "mock_credential")) {
-        email = "mock@fybud.com";
-        googleId = "mock123";
-      } else {
-        // Try as an access_token via Google's userinfo endpoint
-        try {
-          const userInfoRes = await fetch("https://openidconnect.googleapis.com/v1/userinfo", {
-            headers: { Authorization: `Bearer ${credential}` },
-          });
-          if (userInfoRes.ok) {
-            const info = (await userInfoRes.json()) as { email?: string; sub?: string };
-            email = info.email;
-            googleId = info.sub;
-          }
-        } catch {
-          /* not an access_token, try as id_token below */
+      // access_token via userinfo
+      try {
+        const userInfoRes = await fetch("https://openidconnect.googleapis.com/v1/userinfo", {
+          headers: { Authorization: `Bearer ${credential}` },
+        });
+        if (userInfoRes.ok) {
+          const info = (await userInfoRes.json()) as { email?: string; sub?: string };
+          email = info.email;
+          googleId = info.sub;
         }
+      } catch {
+        /* try id_token below */
+      }
 
-        // Try as an id_token (Google One Tap / auth-code flows)
-        if (!email || !googleId) {
-          const { OAuth2Client } = await import("google-auth-library");
-          const client = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
-          const ticket = await client.verifyIdToken({
-            idToken: credential!,
-            audience: process.env.GOOGLE_CLIENT_ID,
-          });
-          const payload = ticket.getPayload();
-          if (!payload?.email || !payload?.sub) {
-            return reply.code(400).send({ error: "Invalid Google token payload" });
-          }
-          email = payload.email;
-          googleId = payload.sub;
+      if (!email || !googleId) {
+        const { OAuth2Client } = await import("google-auth-library");
+        const client = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
+        const ticket = await client.verifyIdToken({
+          idToken: credential,
+          audience: process.env.GOOGLE_CLIENT_ID,
+        });
+        const payload = ticket.getPayload();
+        if (!payload?.email || !payload?.sub) {
+          return reply.code(400).send({ error: "Invalid Google token payload" });
         }
+        email = payload.email;
+        googleId = payload.sub;
       }
 
       if (!email || !googleId) {
@@ -61,19 +53,6 @@ export class AuthController {
       }
 
       const user = await findOrCreateGoogleUser(email, googleId);
-
-      // Force superadmin role in mock mode for review for ANY user
-      if (env.MOCK) {
-        if (user.role !== "SUPER_ADMIN" || !user.isActive) {
-          const { prisma } = await import("../config/db.js");
-          await prisma.user.update({
-            where: { id: user.id },
-            data: { role: "SUPER_ADMIN", isActive: true },
-          });
-          user.role = "SUPER_ADMIN";
-          user.isActive = true;
-        }
-      }
 
       if (!user.isActive) {
         return reply.code(403).send({ error: "Account is deactivated" });
@@ -93,7 +72,9 @@ export class AuthController {
         username: user.username,
       });
     } catch (err: any) {
-      return reply.code(401).send({ error: err.message || "Google authentication failed" });
+      const message = err.message || "Google authentication failed";
+      const status = /not found|not invited/i.test(message) ? 403 : 401;
+      return reply.code(status).send({ error: message });
     }
   }
 

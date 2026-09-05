@@ -41,6 +41,38 @@ function textFromMessage(msg: Record<string, unknown>): {
       contentType: "file",
     };
   }
+  // Meta sends type "unsupported" when Cloud API cannot deliver the original
+  // (e.g. view-once media, some stickers/polls, or types not enabled for the number).
+  if (type === "unsupported") {
+    return {
+      content: "Unsupported message type (WhatsApp could not deliver this content to the API)",
+      contentType: "unknown",
+    };
+  }
+  if (type === "sticker") return { content: "[sticker]", contentType: "unknown" };
+  if (type === "location") return { content: "[location]", contentType: "unknown" };
+  if (type === "contacts") return { content: "[contact card]", contentType: "unknown" };
+  if (type === "reaction") {
+    const reaction = asRecord(msg.reaction);
+    const emoji = typeof reaction?.emoji === "string" ? reaction.emoji : "";
+    return { content: emoji ? `Reacted ${emoji}` : "[reaction]", contentType: "text" };
+  }
+  if (type === "button" || type === "interactive") {
+    const button = asRecord(msg.button);
+    const interactive = asRecord(msg.interactive);
+    const buttonText =
+      (typeof button?.text === "string" && button.text) ||
+      (typeof asRecord(interactive?.button_reply)?.title === "string"
+        ? String(asRecord(interactive?.button_reply)?.title)
+        : "") ||
+      (typeof asRecord(interactive?.list_reply)?.title === "string"
+        ? String(asRecord(interactive?.list_reply)?.title)
+        : "");
+    return {
+      content: buttonText || "[button reply]",
+      contentType: "text",
+    };
+  }
   return { content: `[${type}]`, contentType: "unknown" };
 }
 
