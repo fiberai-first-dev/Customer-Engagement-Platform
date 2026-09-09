@@ -104,21 +104,10 @@ export async function registerRoutes(app: FastifyInstance) {
     },
     { prefix: "/api/v1/dashboard" },
   );
-  app.register(
-    async (sub) => {
-      sub.addHook("preHandler", requireFeatureEnabled("shopify_enabled", "Shopify Integration"));
-      sub.register(orderRoutes);
-    },
-    { prefix: "/api/v1/orders" },
-  );
+  // Shopify is always available when shopify_config has credentials — no feature flag.
+  app.register(orderRoutes, { prefix: "/api/v1/orders" });
   app.register(emailRoutes, { prefix: "/api/v1/email" });
-  app.register(
-    async (sub) => {
-      sub.addHook("preHandler", requireFeatureEnabled("shopify_enabled", "Shopify Integration"));
-      sub.register(shopifyConfigRoutes);
-    },
-    { prefix: "/api/v1/shopify" },
-  );
+  app.register(shopifyConfigRoutes, { prefix: "/api/v1/shopify" });
   app.register(ticketRoutes, { prefix: "/api/v1/tickets" });
   app.register(mediaRoutes, { prefix: "/api/v1/media" });
   app.register(teamRoutes, { prefix: "/api/v1/teams" });
