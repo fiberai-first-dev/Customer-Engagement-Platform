@@ -7,6 +7,7 @@ import { bootstrapRuntime } from "./services/StartupService.js";
 import { startGmailWatchScheduler } from "./services/EmailService.js";
 import { startInstagramTokenScheduler } from "./services/OAuthService.js";
 import { startTelemetryCleanupScheduler } from "./services/TelemetryCleanupService.js";
+import { startBroadcastScheduler } from "./services/BroadcastScheduler.js";
 
 async function main() {
   // Schema first — creates tables when missing; no-op when current
@@ -26,6 +27,7 @@ async function main() {
     startGmailWatchScheduler();
     startInstagramTokenScheduler();
     startTelemetryCleanupScheduler();
+    startBroadcastScheduler();
   } catch (err) {
     app.log.error(err);
     await prisma.$disconnect();

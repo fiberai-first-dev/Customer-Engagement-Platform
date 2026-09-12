@@ -54,7 +54,7 @@ export async function request<T>(path: string, init?: RequestInit): Promise<T> {
   return res.json() as Promise<T>;
 }
 
-export type ChannelType = "whatsapp" | "instagram" | "facebook" | "email";
+export type ChannelType = "whatsapp" | "instagram" | "facebook" | "email" | "web_chat";
 export type ConversationStatus = "open" | "pending" | "resolved";
 
 export interface Account {
@@ -249,6 +249,7 @@ export const CHANNEL_FLAG_KEYS: Record<ChannelType, string> = {
   instagram: "instagram_channel",
   facebook: "facebook_channel",
   email: "email_channel",
+  web_chat: "web_chat_channel",
 };
 
 /**
@@ -1044,6 +1045,7 @@ export interface DashboardMetrics {
     initials: string;
     preview: string;
     timestamp: string;
+    channelType?: string;
   }[];
   channelDistribution: Record<string, number>;
 }
@@ -1391,5 +1393,172 @@ export const useSetContactTag = () => {
       queryClient.invalidateQueries({ queryKey: ["contacts"] });
       queryClient.invalidateQueries({ queryKey: ["contact-tags"] });
     },
+  });
+};
+
+
+// --- SUBAGENT DECLARATION MERGES ---
+export interface DashboardMetrics {
+  ticketsByStatus?: Record<string, number>;
+  openConversations?: number;
+  pendingConversations?: number;
+  unassignedTickets?: number;
+  agingConversations?: { total: number; over24h: number; over48h: number; sample: any[]; };
+  ticketsByTeam?: Record<string, number>;
+}
+
+export interface BroadcastJob {
+  scheduledAt?: string;
+  pausedAt?: string;
+  cancelledAt?: string;
+}
+
+export interface Message {
+  pinned?: boolean;
+}
+
+export interface TimelineEvent {
+  status?: string;
+  error?: string;
+  channelType?: string;
+  timestamp?: string;
+  data?: any;
+  id?: string;
+  type?: string;
+  direction?: string;
+  ticketNumber?: string;
+  subject?: string;
+  templateName?: string;
+  content?: string;
+  body?: string;
+}
+
+// --- SUBAGENT HOOKS ---
+export const useSearchMessages = (query: string) => {
+  return useQuery({
+    queryKey: ["messages", "search", query],
+    queryFn: () => request<any>(`/api/v1/conversations/search?q=${encodeURIComponent(query)}`),
+    enabled: query.length > 1,
+  });
+};
+
+export const useCannedReplies = () => {
+  return useQuery({
+    queryKey: ["cannedReplies"],
+    queryFn: () => request<any[]>(`/api/v1/canned-replies`)
+  });
+};
+
+export const useHandoverNotes = (contactId: string) => {
+  return useQuery({
+    queryKey: ["handoverNotes", contactId],
+    queryFn: () => request<any[]>(`/api/v1/handover/${contactId}`),
+    enabled: !!contactId
+  });
+};
+
+export const useAddHandoverNote = () => {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (data: {contactId: string, content: string}) => request(`/api/v1/handover/${data.contactId}`, { method: 'POST', body: JSON.stringify(data) }),
+    onSuccess: (_, v) => queryClient.invalidateQueries({ queryKey: ["handoverNotes", v.contactId] })
+  });
+};
+
+export const useDeleteHandoverNote = () => {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => request(`/api/v1/handover/${id}`, { method: 'DELETE' }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["handoverNotes"] })
+  });
+};
+
+export const useMediaAssets = () => {
+  return useQuery({
+    queryKey: ["mediaAssets"],
+    queryFn: () => request<any[]>(`/api/v1/media-assets`),
+  });
+};
+
+export const useUploadMediaAsset = () => {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (data: FormData) => request(`/api/v1/media-assets`, { method: 'POST', body: data as any }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["mediaAssets"] })
+  });
+};
+
+export const useDeleteMediaAsset = () => {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => request(`/api/v1/media-assets/${id}`, { method: 'DELETE' }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["mediaAssets"] })
+  });
+};
+
+export const usePauseBroadcast = () => {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => request(`/api/v1/broadcasts/${id}/pause`, { method: 'POST' }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["broadcasts"] })
+  });
+};
+
+export const useCancelBroadcast = () => {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => request(`/api/v1/broadcasts/${id}/cancel`, { method: 'POST' }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["broadcasts"] })
+  });
+};
+
+export const useBroadcastNoReply = (id: string) => {
+  return useQuery({
+    queryKey: ["broadcastNoReply", id],
+    queryFn: () => request<any>(`/api/v1/broadcasts/${id}/no-reply`),
+    enabled: !!id
+  });
+};
+
+export const useReactToMessage = () => {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (data: any) => request('/api/v1/conversations/messages/react', { method: 'POST', body: JSON.stringify(data) }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["messages"] })
+  });
+};
+
+export const useTogglePin = () => {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => request(`/api/v1/conversations/messages/${id}/pin`, { method: 'POST' }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["messages"] })
+  });
+};
+
+export const useToggleStar = () => {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => request(`/api/v1/conversations/messages/${id}/star`, { method: 'POST' }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["messages"] })
+  });
+};
+
+export const downloadTranscript = async (_conversationId: string) => {
+  // dummy
+};
+
+export const useContactTimeline = (contactId: string) => {
+  return useQuery({
+    queryKey: ["timeline", contactId],
+    queryFn: () => request<TimelineEvent[]>(`/api/v1/contacts/${contactId}/timeline`),
+    enabled: !!contactId
+  });
+};
+export const useUpdateContactCustomFields = () => {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, fields }: { id: string; fields: any }) => request(`/api/v1/contacts/${id}/custom-fields`, { method: 'PATCH', body: JSON.stringify(fields) }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["contacts"] })
   });
 };

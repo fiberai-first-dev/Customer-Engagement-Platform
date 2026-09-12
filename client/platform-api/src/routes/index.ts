@@ -4,8 +4,14 @@ import nodePath from "node:path";
 import { fileURLToPath } from "node:url";
 import { accountRoutes } from "./v1/accounts.routes.js";
 import { inboxRoutes } from "./v1/inboxes.routes.js";
-import { conversationRoutes, messageMediaRoutes } from "./v1/conversations.routes.js";
+import {
+  messageMediaRoutes,
+  conversationRoutes,
+} from "./v1/conversations.routes.js";
 import { webhookRoutes } from "./v1/webhooks.routes.js";
+import { contactsRoutes } from "./v1/contacts.routes.js";
+import { webChatRoutes } from "./v1/web-chat.routes.js";
+import { searchRoutes } from "./v1/search.routes.js";
 import { emailRoutes } from "./v1/email.routes.js";
 import { authRoutes } from "./v1/auth.routes.js";
 import { contactsRoutes } from "./v1/contacts.routes.js";
@@ -16,8 +22,12 @@ import { publicOAuthRoutes } from "./v1/oauth.routes.js";
 import { oauthConnectRoutes } from "./v1/oauth-connect.routes.js";
 import { ticketRoutes } from "./v1/ticket.routes.js";
 import { mediaRoutes } from "./v1/media.routes.js";
+import { mediaAssetRoutes } from "./v1/media-assets.routes.js";
+import { cannedReplyRoutes } from "./v1/canned-replies.routes.js";
 import { teamRoutes } from "./v1/teams.routes.js";
 import { userRoutes } from "./v1/users.routes.js";
+import { healthRoutes } from "./v1/health.routes.js";
+import handoverRoutes from "./v1/handover.routes.js";
 import { whatsAppTemplateRoutes } from "../controllers/WhatsAppTemplateController.js";
 import { broadcastRoutes } from "../controllers/BroadcastController.js";
 import { requireAuth, requireFeatureEnabled } from "../middleware/auth.js";
@@ -97,6 +107,8 @@ export async function registerRoutes(app: FastifyInstance) {
   app.register(conversationRoutes, { prefix: "/api/v1/conversations" });
   app.register(messageMediaRoutes, { prefix: "/api/v1/messages" });
   app.register(contactsRoutes, { prefix: "/api/v1/contacts" });
+  app.register(webChatRoutes, { prefix: "/api/v1/web-chat" });
+  app.register(searchRoutes, { prefix: "/api/v1/search" });
   app.register(
     async (sub) => {
       sub.addHook("preHandler", requireFeatureEnabled("dashboard_enabled", "Dashboard", true));
@@ -110,8 +122,12 @@ export async function registerRoutes(app: FastifyInstance) {
   app.register(shopifyConfigRoutes, { prefix: "/api/v1/shopify" });
   app.register(ticketRoutes, { prefix: "/api/v1/tickets" });
   app.register(mediaRoutes, { prefix: "/api/v1/media" });
+  app.register(mediaAssetRoutes, { prefix: "/api/v1/media-assets" });
+  app.register(cannedReplyRoutes, { prefix: "/api/v1/canned-replies" });
   app.register(teamRoutes, { prefix: "/api/v1/teams" });
   app.register(userRoutes, { prefix: "/api/v1/users" });
+  app.register(healthRoutes, { prefix: "/api/v1/health" });
+  app.register(handoverRoutes);
   // Feature-gated route groups — backend enforces the flag regardless of frontend state
   app.register(
     async (sub) => {

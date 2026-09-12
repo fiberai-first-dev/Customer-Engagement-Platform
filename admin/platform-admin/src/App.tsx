@@ -255,7 +255,7 @@ export function App() {
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <title>Fybud Session Replay - ${sessionId}</title>
+  <title>FiberAI Session Replay - ${sessionId}</title>
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/rrweb-player@2.1.1/dist/style.css" />
   <script src="https://cdn.jsdelivr.net/npm/rrweb-player@2.1.1/dist/index.js"></script>
   <style>
@@ -275,7 +275,7 @@ export function App() {
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
         <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/>
       </svg>
-      Fybud Session Replay
+      FiberAI Session Replay
     </div>
     <div class="badge">ID: ${sessionId}</div>
   </div>
@@ -428,7 +428,7 @@ export function App() {
 
         <div className="relative z-10 w-full max-w-sm mx-4">
           <div className="mb-8 text-center">
-            <h1 className="text-3xl font-bold text-foreground tracking-tight">Fybud Admin</h1>
+            <h1 className="text-3xl font-bold text-foreground tracking-tight">FiberAI Admin</h1>
           </div>
 
           <div className="rounded-2xl border border-border bg-card p-8 shadow-2xl">
@@ -475,7 +475,7 @@ export function App() {
       <aside className="z-10 flex w-[4.75rem] shrink-0 flex-col border-r border-border bg-card">
         <div className="flex flex-col items-center gap-2 border-b border-border px-2 py-4">
           <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-primary text-primary-foreground shadow-sm">
-            <img src="/favicon.png" alt="Fybud" className="w-6 h-6 object-contain invert brightness-0" />
+            <img src="/favicon.png" alt="FiberAI" className="w-6 h-6 object-contain invert brightness-0" />
           </div>
           <span
             className="max-w-full truncate rounded-md bg-muted px-1.5 py-0.5 text-[9px] font-semibold text-foreground"

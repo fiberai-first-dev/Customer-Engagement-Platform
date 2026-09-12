@@ -278,6 +278,7 @@ export function SettingsPage() {
   const queryClient = useQueryClient();
   const user = useAuthStore((s) => s.user);
 
+
   const { data: accounts, isLoading: accountsLoading } = useAccounts();
   const activeAccount = accounts?.[0];
   const { data: inboxes, isLoading: inboxesLoading } = useInboxes(activeAccount?.id);
@@ -634,6 +635,9 @@ export function SettingsPage() {
             />
           </div>
         </section>
+
+        
+
       </div>
 
       {modal && modalConfig && (

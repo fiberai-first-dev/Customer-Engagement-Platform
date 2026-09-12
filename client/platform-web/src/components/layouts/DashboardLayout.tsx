@@ -14,9 +14,11 @@ import {
   UserRound,
   LayoutTemplate,
   Radio,
+  LayoutDashboard,
 } from "lucide-react";
 import { useFeatureFlag, useEnabledChannelTypes } from "../../api";
 import { cn } from "../../utils/utils";
+import { ChannelHealthBanner } from "../ui/ChannelHealthBanner";
 
 function roleShort(role?: string) {
   switch (role) {
@@ -50,6 +52,7 @@ export function DashboardLayout() {
     user?.role === "SUPER_ADMIN" || user?.role === "ADMIN" || user?.role === "MANAGER";
 
   const mainLinks = [
+    { to: "/dashboard", icon: LayoutDashboard, label: "Dashboard" },
     { to: "/inbox", icon: MessageSquare, label: "Inbox" },
     { to: "/contacts", icon: Users, label: "Contacts" },
     { to: "/tickets", icon: TicketIcon, label: "Tickets" },
@@ -156,7 +159,12 @@ export function DashboardLayout() {
       </aside>
 
       <main className="relative flex min-w-0 flex-1 flex-col overflow-hidden bg-background">
-        <Outlet />
+        <div className="flex flex-1 flex-col min-h-0 overflow-hidden">
+          <ChannelHealthBanner />
+          <div className="flex flex-col flex-1 min-h-0 overflow-hidden w-full">
+            <Outlet />
+          </div>
+        </div>
       </main>
     </div>
   );

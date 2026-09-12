@@ -5,6 +5,9 @@ import {
   useAccounts,
   useBroadcasts,
   useSendBroadcast,
+  usePauseBroadcast,
+  useCancelBroadcast,
+  useBroadcastNoReply,
   useFeatureFlag,
   useEnabledChannelTypes,
   useContactTags,
@@ -31,6 +34,10 @@ import {
   FileText,
   Eye,
   Clock,
+  Pause,
+  X as XIcon,
+  MessageSquareOff,
+  CalendarClock,
 } from "lucide-react";
 import { toast } from "sonner";
 import { motion, AnimatePresence } from "framer-motion";
@@ -142,10 +149,19 @@ function WhatsAppBubblePreview({
 
 function HistoryJobRow({ job }: { job: BroadcastJob }) {
   const [expanded, setExpanded] = useState(false);
+  const [noReplyJobId, setNoReplyJobId] = useState<string | null>(null);
   const deliveredCount = job.recipients.filter(
     (r) => r.status === "delivered" || r.deliveredAt || r.readAt,
   ).length;
   const readCount = job.recipients.filter((r) => r.readAt).length;
+
+  const pauseBroadcast = usePauseBroadcast();
+  const cancelBroadcast = useCancelBroadcast();
+  const { data: noReplyData, isLoading: noReplyLoading } = useBroadcastNoReply(noReplyJobId as string);
+
+  const isScheduled = job.scheduledAt && new Date(job.scheduledAt) > new Date();
+  const isPaused = Boolean(job.pausedAt);
+  const isCancelled = Boolean(job.cancelledAt);
 
   return (
     <div className="overflow-hidden rounded-xl border border-border bg-card">
@@ -156,7 +172,7 @@ function HistoryJobRow({ job }: { job: BroadcastJob }) {
       >
         <div className="flex min-w-0 items-center gap-4">
           <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-primary/10">
-            {job.status === "pending" ? (
+            {job.status === "pending" && !isPaused ? (
               <Loader2 className="h-4 w-4 animate-spin text-primary" />
             ) : (
               <Radio className="h-4 w-4 text-primary" />
@@ -165,30 +181,40 @@ function HistoryJobRow({ job }: { job: BroadcastJob }) {
           <div className="min-w-0">
             <p className="truncate font-medium text-foreground">{job.templateName}</p>
             <p className="text-xs text-muted-foreground">
-              {new Date(job.createdAt).toLocaleString()} · {job.total} recipient
-              {job.total !== 1 ? "s" : ""}
+              {isScheduled ? (
+                <span className="flex items-center gap-1 text-amber-600">
+                  <CalendarClock className="h-3 w-3" />
+                  Scheduled for {new Date(job.scheduledAt!).toLocaleString()}
+                </span>
+              ) : (
+                <>{new Date(job.createdAt).toLocaleString()} · {job.total} recipient{job.total !== 1 ? "s" : ""}</>
+              )}
             </p>
           </div>
         </div>
-        <div className="flex shrink-0 items-center gap-4 sm:gap-6">
-          {statusBadge(job.status)}
-          <div className="hidden items-center gap-4 border-l border-border pl-4 sm:flex">
+        <div className="flex shrink-0 items-center gap-3 sm:gap-4">
+          {isPaused && (
+            <span className="inline-flex items-center gap-1 rounded-full border border-amber-300 bg-amber-50 dark:bg-amber-900/20 px-2 py-0.5 text-xs font-medium text-amber-700 dark:text-amber-400">
+              <Pause className="h-3 w-3" /> Paused
+            </span>
+          )}
+          {isCancelled && (
+            <span className="inline-flex items-center gap-1 rounded-full border border-red-300 bg-red-50 dark:bg-red-900/20 px-2 py-0.5 text-xs font-medium text-red-700 dark:text-red-400">
+              <XIcon className="h-3 w-3" /> Cancelled
+            </span>
+          )}
+          {!isPaused && !isCancelled && statusBadge(job.status)}
+          <div className="hidden items-center gap-3 border-l border-border pl-3 sm:flex">
             <div className="flex flex-col items-center">
-              <span className="text-xs font-semibold text-emerald-600 dark:text-emerald-400">
-                {job.succeeded}
-              </span>
+              <span className="text-xs font-semibold text-emerald-600 dark:text-emerald-400">{job.succeeded}</span>
               <span className="text-[10px] uppercase tracking-wider text-muted-foreground">Sent</span>
             </div>
             <div className="flex flex-col items-center">
-              <span className="text-xs font-semibold text-blue-600 dark:text-blue-400">
-                {deliveredCount}
-              </span>
+              <span className="text-xs font-semibold text-blue-600 dark:text-blue-400">{deliveredCount}</span>
               <span className="text-[10px] uppercase tracking-wider text-muted-foreground">Dlvrd</span>
             </div>
             <div className="flex flex-col items-center">
-              <span className="text-xs font-semibold text-violet-600 dark:text-violet-400">
-                {readCount}
-              </span>
+              <span className="text-xs font-semibold text-violet-600 dark:text-violet-400">{readCount}</span>
               <span className="text-[10px] uppercase tracking-wider text-muted-foreground">Read</span>
             </div>
             <div className="flex flex-col items-center">
@@ -196,55 +222,123 @@ function HistoryJobRow({ job }: { job: BroadcastJob }) {
               <span className="text-[10px] uppercase tracking-wider text-muted-foreground">Fail</span>
             </div>
           </div>
-          {expanded ? (
-            <ChevronUp className="h-4 w-4 text-muted-foreground" />
-          ) : (
-            <ChevronDown className="h-4 w-4 text-muted-foreground" />
-          )}
+          {expanded ? <ChevronUp className="h-4 w-4 text-muted-foreground" /> : <ChevronDown className="h-4 w-4 text-muted-foreground" />}
         </div>
       </button>
+
       {expanded && (
-        <div className="max-h-64 divide-y divide-border overflow-y-auto border-t border-border">
-          {job.recipients.length === 0 ? (
-            <p className="px-5 py-4 text-sm text-muted-foreground">
-              {job.status === "pending" ? "Recipients updating as messages send…" : "No recipient details"}
-            </p>
-          ) : (
-            job.recipients.map((r) => {
-              const isDelivered = r.status === "delivered" || !!r.deliveredAt;
-              const isRead = !!r.readAt;
-              return (
-                <div key={r.id} className="flex items-center gap-3 px-5 py-2.5">
-                  <div
-                    className={`h-2 w-2 shrink-0 rounded-full ${
-                      r.status === "failed"
-                        ? "bg-red-500"
-                        : isRead
-                          ? "bg-violet-500"
-                          : isDelivered
-                            ? "bg-blue-500"
-                            : "bg-emerald-500"
-                    }`}
-                  />
-                  <span className="min-w-0 flex-1 truncate text-sm">{r.customerName || r.customerId}</span>
-                  {r.error && (
-                    <span className="max-w-[180px] truncate text-xs text-red-500" title={r.error}>
-                      {r.error}
-                    </span>
-                  )}
-                  <span className="shrink-0 text-xs font-medium text-muted-foreground">
-                    {r.status === "failed"
-                      ? "Failed"
-                      : isRead
-                        ? "Read"
-                        : isDelivered
-                          ? "Delivered"
-                          : "Sent"}
-                  </span>
-                </div>
-              );
-            })
+        <div className="border-t border-border">
+          {/* Actions */}
+          {(job.status === "pending" && !isPaused && !isCancelled) && (
+            <div className="flex items-center gap-2 px-5 py-3 bg-muted/30">
+              <button
+                type="button"
+                onClick={() => void pauseBroadcast.mutateAsync(job.id).catch((e: any) => toast.error(e.message ?? "Pause failed"))}
+                disabled={pauseBroadcast.isPending}
+                className="inline-flex items-center gap-1.5 rounded-lg border border-amber-300 bg-amber-50 dark:bg-amber-900/20 px-3 py-1.5 text-xs font-medium text-amber-700 dark:text-amber-400 hover:bg-amber-100 transition-colors disabled:opacity-50"
+              >
+                <Pause className="h-3 w-3" /> Pause
+              </button>
+              <button
+                type="button"
+                onClick={() => void cancelBroadcast.mutateAsync(job.id).catch((e: any) => toast.error(e.message ?? "Cancel failed"))}
+                disabled={cancelBroadcast.isPending}
+                className="inline-flex items-center gap-1.5 rounded-lg border border-red-300 bg-red-50 dark:bg-red-900/20 px-3 py-1.5 text-xs font-medium text-red-700 dark:text-red-400 hover:bg-red-100 transition-colors disabled:opacity-50"
+              >
+                <XIcon className="h-3 w-3" /> Cancel
+              </button>
+            </div>
           )}
+
+          {/* No-reply section */}
+          {(job.status === "completed" || job.status === "partial") && (
+            <div className="px-5 py-3 bg-muted/20">
+              {noReplyJobId !== job.id ? (
+                <button
+                  type="button"
+                  onClick={() => setNoReplyJobId(job.id)}
+                  className="inline-flex items-center gap-1.5 text-xs font-medium text-muted-foreground hover:text-foreground transition-colors"
+                >
+                  <MessageSquareOff className="h-3.5 w-3.5" />
+                  View "Didn't Reply" list
+                </button>
+              ) : (
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <p className="text-xs font-semibold text-foreground flex items-center gap-1.5">
+                      <MessageSquareOff className="h-3.5 w-3.5 text-muted-foreground" />
+                      Didn't Reply
+                      {noReplyData && (
+                        <span className="ml-1 rounded-full bg-muted px-1.5 py-0.5 text-[10px] font-semibold">{noReplyData.total}</span>
+                      )}
+                    </p>
+                    <button type="button" onClick={() => setNoReplyJobId(null)} className="text-xs text-muted-foreground hover:text-foreground">
+                      Close
+                    </button>
+                  </div>
+                  {noReplyLoading ? (
+                    <div className="flex items-center gap-2 py-2 text-xs text-muted-foreground"><Loader2 className="h-3 w-3 animate-spin" /> Loading…</div>
+                  ) : noReplyData?.contacts.length === 0 ? (
+                    <p className="text-xs text-emerald-600 py-1">All recipients have replied ✓</p>
+                  ) : (
+                    <div className="max-h-48 overflow-y-auto divide-y divide-border rounded-lg border border-border">
+                      {noReplyData?.contacts.map((c: any) => (
+                        <div key={c.recipientId} className="flex items-center justify-between gap-3 px-3 py-2">
+                          <span className="text-xs truncate text-foreground">{c.customerName || c.customerId}</span>
+                          {c.conversationId && (
+                            <a
+                              href="/inbox"
+                              className="text-[10px] text-primary hover:underline shrink-0"
+                            >
+                              Open Conversation
+                            </a>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Recipient details */}
+          <div className="max-h-64 divide-y divide-border overflow-y-auto">
+            {job.recipients.length === 0 ? (
+              <p className="px-5 py-4 text-sm text-muted-foreground">
+                {job.status === "pending" ? "Recipients updating as messages send…" : "No recipient details"}
+              </p>
+            ) : (
+              job.recipients.map((r) => {
+                const isDelivered = r.status === "delivered" || !!r.deliveredAt;
+                const isRead = !!r.readAt;
+                return (
+                  <div key={r.id} className="flex items-center gap-3 px-5 py-2.5">
+                    <div
+                      className={`h-2 w-2 shrink-0 rounded-full ${
+                        r.status === "failed"
+                          ? "bg-red-500"
+                          : isRead
+                            ? "bg-violet-500"
+                            : isDelivered
+                              ? "bg-blue-500"
+                              : "bg-emerald-500"
+                      }`}
+                    />
+                    <span className="min-w-0 flex-1 truncate text-sm">{r.customerName || r.customerId}</span>
+                    {r.error && (
+                      <span className="max-w-[180px] truncate text-xs text-red-500" title={r.error}>
+                        {r.error}
+                      </span>
+                    )}
+                    <span className="shrink-0 text-xs font-medium text-muted-foreground">
+                      {r.status === "failed" ? "Failed" : isRead ? "Read" : isDelivered ? "Delivered" : "Sent"}
+                    </span>
+                  </div>
+                );
+              })
+            )}
+          </div>
         </div>
       )}
     </div>
@@ -280,10 +374,20 @@ export function BroadcastPage() {
   const templateDropRef = useRef<HTMLDivElement>(null);
 
   const [variables, setVariables] = useState<Record<string, string>>({});
+  // Multi-tag include/exclude
+  const [includeTags, setIncludeTags] = useState<string[]>([]);
+  const [excludeTags, setExcludeTags] = useState<string[]>([]);
+  // Legacy single tag filter (for contact list UI search)
   const [tagFilter, setTagFilter] = useState("");
   const [contactSearch, setContactSearch] = useState("");
   const [selectedContactIds, setSelectedContactIds] = useState<Set<string>>(new Set());
   const [confirmOpen, setConfirmOpen] = useState(false);
+  // Scheduled send
+  const [useSchedule, setUseSchedule] = useState(false);
+  const [scheduledAt, setScheduledAt] = useState("");
+  // Recurring
+  const [recurrence, setRecurrence] = useState<"none" | "weekly" | "monthly">("none");
+  const [suppressionDays, setSuppressionDays] = useState<number | "">("");
 
   const [historySearch, setHistorySearch] = useState("");
   const [historyStatus, setHistoryStatus] = useState<string>("ALL");
@@ -320,28 +424,28 @@ export function BroadcastPage() {
   const waContacts = useMemo(
     () =>
       contacts.filter(
-        (c) => (c.whatsappId || (c.whatsappIds?.length ?? 0) > 0) && c.whatsappEnabled !== false,
+        (c: any) => (c.whatsappId || (c.whatsappIds?.length ?? 0) > 0) && c.whatsappEnabled !== false,
       ),
     [contacts],
   );
 
   const filteredContacts = useMemo(() => {
     let list = waContacts;
-    if (tagFilter) list = list.filter((c) => c.tag === tagFilter);
+    if (tagFilter) list = list.filter((c: any) => c.tag === tagFilter);
     if (contactSearch) {
       const q = contactSearch.toLowerCase();
       list = list.filter(
-        (c) =>
+        (c: any) =>
           (c.name ?? "").toLowerCase().includes(q) ||
           (c.whatsappId ?? "").includes(q) ||
-          (c.whatsappIds ?? []).some((id) => id.includes(q)),
+          (c.whatsappIds ?? []).some((id: any) => id.includes(q)),
       );
     }
     return list;
   }, [waContacts, tagFilter, contactSearch]);
 
   const allVisible =
-    filteredContacts.length > 0 && filteredContacts.every((c) => selectedContactIds.has(c.id));
+    filteredContacts.length > 0 && filteredContacts.every((c: any) => selectedContactIds.has(c.id));
 
   const varsReady = templateVars.every((v) => Boolean(variables[v]?.trim()));
   const canGoRecipients = Boolean(selectedTemplateId) && varsReady;
@@ -377,8 +481,8 @@ export function BroadcastPage() {
   const toggleAll = () => {
     setSelectedContactIds((prev) => {
       const next = new Set(prev);
-      if (allVisible) filteredContacts.forEach((c) => next.delete(c.id));
-      else filteredContacts.forEach((c) => next.add(c.id));
+      if (allVisible) filteredContacts.forEach((c: any) => next.delete(c.id));
+      else filteredContacts.forEach((c: any) => next.add(c.id));
       return next;
     });
   };
@@ -401,14 +505,26 @@ export function BroadcastPage() {
         templateId: selectedTemplateId,
         customerIds: [...selectedContactIds],
         variables,
-        ...(tagFilter ? { tag: tagFilter } : {}),
+        ...(includeTags.length > 0 ? { includeTags } : {}),
+        ...(excludeTags.length > 0 ? { excludeTags } : {}),
+        ...(useSchedule && scheduledAt ? { scheduledAt: new Date(scheduledAt).toISOString() } : {}),
+        ...(recurrence !== "none" ? { recurrence } : {}),
+        ...(suppressionDays !== "" ? { suppressionDays: Number(suppressionDays) } : {}),
       });
       setConfirmOpen(false);
       setSelectedContactIds(new Set());
+      setIncludeTags([]);
+      setExcludeTags([]);
+      setUseSchedule(false);
+      setScheduledAt("");
+      setRecurrence("none");
+      setSuppressionDays("");
       setStep(1);
       setActiveTab("history");
       toast.success(
-        res.status === "pending"
+        useSchedule && scheduledAt
+          ? `Broadcast scheduled for ${new Date(scheduledAt).toLocaleString()}`
+          : res.status === "pending"
           ? `Broadcast queued for ${res.total} contacts`
           : `Broadcast finished: ${res.succeeded}/${res.total} sent`,
       );
@@ -416,6 +532,7 @@ export function BroadcastPage() {
       toast.error(err.message || "Broadcast failed");
     }
   };
+
 
   const resetForm = () => {
     setSelectedTemplateId("");
@@ -441,10 +558,9 @@ export function BroadcastPage() {
         <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-muted">
           <Lock className="h-8 w-8 text-muted-foreground" />
         </div>
-        <h2 className="text-xl font-semibold">Broadcasting is disabled</h2>
+        <h2 className="text-xl font-semibold">Broadcasts are currently disabled for this workspace</h2>
         <p className="max-w-sm text-center text-sm text-muted-foreground">
-          Ask an admin to enable <code className="rounded bg-muted px-1.5 py-0.5 text-xs">broadcast_enabled</code>{" "}
-          in the admin panel.
+          Ask an admin to enable broadcasts in the admin panel.
         </p>
       </div>
     );
@@ -484,9 +600,9 @@ export function BroadcastPage() {
 
       <div className="mx-auto flex w-full max-w-6xl flex-1 flex-col overflow-hidden px-6 pt-8 sm:px-8">
         <div className="flex flex-wrap items-start justify-between gap-4 shrink-0">
-          <div className="min-w-0">
-            <h1 className="text-3xl font-bold tracking-tight">Broadcast</h1>
-            <p className="mt-1 text-sm text-muted-foreground">
+          <div>
+            <h1 className="text-lg font-semibold text-foreground leading-tight">Broadcast</h1>
+            <p className="text-xs text-muted-foreground">
               Send an approved WhatsApp template to many contacts at once.
             </p>
           </div>
@@ -739,42 +855,85 @@ export function BroadcastPage() {
                       ) : (
                         <>
                           {allTags.length > 0 && (
-                            <div className="mb-3 flex flex-wrap gap-2">
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  setTagFilter("");
-                                  setSelectedContactIds(new Set());
-                                }}
-                                className={`rounded-full border px-3 py-1 text-xs font-medium ${
-                                  !tagFilter
-                                    ? "border-primary bg-primary/10 text-primary"
-                                    : "border-border text-muted-foreground hover:text-foreground"
-                                }`}
-                              >
-                                All ({waContacts.length})
-                              </button>
-                              {allTags.map((t) => {
-                                const count = waContacts.filter((c) => c.tag === t).length;
-                                return (
-                                  <button
-                                    key={t}
-                                    type="button"
-                                    onClick={() => {
-                                      setTagFilter(t === tagFilter ? "" : t);
-                                      setSelectedContactIds(new Set());
-                                    }}
-                                    className={`inline-flex items-center gap-1 rounded-full border px-3 py-1 text-xs font-medium ${
-                                      tagFilter === t
-                                        ? "border-primary bg-primary/10 text-primary"
-                                        : "border-border text-muted-foreground hover:text-foreground"
-                                    }`}
-                                  >
-                                    <Tag className="h-2.5 w-2.5" />
-                                    {t} ({count})
-                                  </button>
-                                );
-                              })}
+                            <div className="mb-4 space-y-3">
+                              {/* Include tags */}
+                              <div>
+                                <p className="text-xs font-semibold text-foreground mb-1.5 flex items-center gap-1.5">
+                                  <Tag className="h-3 w-3 text-primary" />
+                                  Include contacts with tags
+                                  <span className="font-normal text-muted-foreground">(any match)</span>
+                                </p>
+                                <div className="flex flex-wrap gap-1.5">
+                                  {allTags.map((t) => {
+                                    const active = includeTags.includes(t);
+                                    return (
+                                      <button
+                                        key={t}
+                                        type="button"
+                                        onClick={() => {
+                                          setIncludeTags((prev) =>
+                                            active ? prev.filter((x) => x !== t) : [...prev, t],
+                                          );
+                                          setSelectedContactIds(new Set());
+                                        }}
+                                        className={`inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-xs font-medium transition-colors ${
+                                          active
+                                            ? "border-primary bg-primary/10 text-primary"
+                                            : "border-border text-muted-foreground hover:text-foreground"
+                                        }`}
+                                      >
+                                        <Tag className="h-2.5 w-2.5" />
+                                        {t}
+                                      </button>
+                                    );
+                                  })}
+                                </div>
+                              </div>
+                              {/* Exclude tags */}
+                              <div>
+                                <p className="text-xs font-semibold text-foreground mb-1.5 flex items-center gap-1.5">
+                                  <XIcon className="h-3 w-3 text-red-500" />
+                                  Exclude contacts with tags
+                                </p>
+                                <div className="flex flex-wrap gap-1.5">
+                                  {allTags.map((t) => {
+                                    const active = excludeTags.includes(t);
+                                    return (
+                                      <button
+                                        key={t}
+                                        type="button"
+                                        onClick={() => {
+                                          setExcludeTags((prev) =>
+                                            active ? prev.filter((x) => x !== t) : [...prev, t],
+                                          );
+                                          setSelectedContactIds(new Set());
+                                        }}
+                                        className={`inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-xs font-medium transition-colors ${
+                                          active
+                                            ? "border-red-400 bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400"
+                                            : "border-border text-muted-foreground hover:text-foreground"
+                                        }`}
+                                      >
+                                        <XIcon className="h-2.5 w-2.5" />
+                                        {t}
+                                      </button>
+                                    );
+                                  })}
+                                </div>
+                              </div>
+                              {(includeTags.length > 0 || excludeTags.length > 0) && (
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setIncludeTags([]);
+                                    setExcludeTags([]);
+                                    setSelectedContactIds(new Set());
+                                  }}
+                                  className="text-xs text-muted-foreground hover:text-foreground"
+                                >
+                                  Clear tag filters
+                                </button>
+                              )}
                             </div>
                           )}
 
@@ -799,7 +958,7 @@ export function BroadcastPage() {
                                 No contacts match
                               </p>
                             ) : (
-                              filteredContacts.map((c) => {
+                              filteredContacts.map((c: any) => {
                                 const selected = selectedContactIds.has(c.id);
                                 const wa = c.whatsappIds?.[0] ?? c.whatsappId ?? "";
                                 return (
@@ -819,7 +978,7 @@ export function BroadcastPage() {
                                       {c.name
                                         ? c.name
                                             .split(" ")
-                                            .map((n) => n[0])
+                                            .map((n: any) => n[0])
                                             .join("")
                                             .slice(0, 2)
                                             .toUpperCase()
@@ -905,7 +1064,97 @@ export function BroadcastPage() {
                             </dd>
                           </div>
                         )}
+                        {(includeTags.length > 0 || excludeTags.length > 0) && (
+                          <div className="border-t border-border pt-3 space-y-1.5">
+                            {includeTags.length > 0 && (
+                              <div className="flex justify-between gap-4">
+                                <dt className="text-muted-foreground">Include tags</dt>
+                                <dd className="font-medium text-right">{includeTags.join(", ")}</dd>
+                              </div>
+                            )}
+                            {excludeTags.length > 0 && (
+                              <div className="flex justify-between gap-4">
+                                <dt className="text-muted-foreground">Exclude tags</dt>
+                                <dd className="font-medium text-right text-red-600">{excludeTags.join(", ")}</dd>
+                              </div>
+                            )}
+                          </div>
+                        )}
                       </dl>
+
+                      {/* Scheduled send toggle */}
+                      <div className="mt-4 rounded-xl border border-border bg-muted/20 p-4 space-y-3">
+                        <label className="flex items-center justify-between cursor-pointer">
+                          <span className="flex items-center gap-2 text-sm font-medium">
+                            <CalendarClock className="h-4 w-4 text-amber-600" />
+                            Schedule for later
+                          </span>
+                          <button
+                            type="button"
+                            role="switch"
+                            aria-checked={useSchedule}
+                            onClick={() => setUseSchedule((p) => !p)}
+                            className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors ${
+                              useSchedule ? "bg-primary" : "bg-muted-foreground/30"
+                            }`}
+                          >
+                            <span
+                              className={`inline-block h-4 w-4 rounded-full bg-white shadow transition-transform ${
+                                useSchedule ? "translate-x-4" : "translate-x-0.5"
+                              }`}
+                            />
+                          </button>
+                        </label>
+                        {useSchedule && (
+                          <div>
+                            <input
+                              type="datetime-local"
+                              value={scheduledAt}
+                              min={new Date(Date.now() + 60_000).toISOString().slice(0, 16)}
+                              onChange={(e) => setScheduledAt(e.target.value)}
+                              className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/20"
+                            />
+                            {scheduledAt && (
+                              <p className="mt-1.5 text-xs text-amber-600">
+                                Will send on {new Date(scheduledAt).toLocaleString()} (server time)
+                              </p>
+                            )}
+
+                            {/* Recurring options (only visible if scheduled) */}
+                            <div className="mt-4 border-t border-border/50 pt-4 space-y-4">
+                              <div className="space-y-1.5">
+                                <label className="text-sm font-medium">Recurrence</label>
+                                <select
+                                  value={recurrence}
+                                  onChange={(e) => setRecurrence(e.target.value as any)}
+                                  className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/20"
+                                >
+                                  <option value="none">Does not repeat</option>
+                                  <option value="weekly">Weekly</option>
+                                  <option value="monthly">Monthly</option>
+                                </select>
+                              </div>
+
+                              {recurrence !== "none" && (
+                                <div className="space-y-1.5">
+                                  <label className="text-sm font-medium">Suppression window (days)</label>
+                                  <input
+                                    type="number"
+                                    min="0"
+                                    placeholder="e.g. 14 (Skip if contacted recently)"
+                                    value={suppressionDays}
+                                    onChange={(e) => setSuppressionDays(e.target.value ? Number(e.target.value) : "")}
+                                    className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/20"
+                                  />
+                                  <p className="text-xs text-muted-foreground">
+                                    If a contact received this broadcast within the last N days, they will be skipped.
+                                  </p>
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        )}
+                      </div>
 
                       <div className="mt-6 flex flex-wrap justify-between gap-2">
                         <div className="flex gap-2">
@@ -918,16 +1167,17 @@ export function BroadcastPage() {
                         </div>
                         <Button
                           className="gap-2"
-                          disabled={!canSend}
+                          disabled={!canSend || (useSchedule && !scheduledAt)}
                           onClick={() => setConfirmOpen(true)}
                         >
-                          <Send className="h-4 w-4" />
-                          Send to {selectedContactIds.size} contact
+                          {useSchedule ? <CalendarClock className="h-4 w-4" /> : <Send className="h-4 w-4" />}
+                          {useSchedule ? "Schedule" : "Send"} to {selectedContactIds.size} contact
                           {selectedContactIds.size !== 1 ? "s" : ""}
                         </Button>
                       </div>
                     </section>
                   )}
+
                 </div>
 
                 {/* Sticky preview */}

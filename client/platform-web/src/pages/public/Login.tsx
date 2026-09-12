@@ -66,7 +66,7 @@ export function LoginPage() {
 
       <div className="relative z-10 mx-4 w-full max-w-sm">
         <div className="mb-8 text-center">
-          <h1 className="text-3xl font-bold tracking-tight text-foreground">Fybud</h1>
+          <h1 className="text-3xl font-bold tracking-tight text-foreground">FiberAI</h1>
         </div>
 
         <div className="rounded-2xl border border-border bg-card p-8 shadow-2xl">

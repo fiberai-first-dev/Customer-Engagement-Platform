@@ -222,9 +222,11 @@ export function ContactsPage() {
 
       <div className="border-b border-border bg-card/50 px-6 py-6 sm:px-8">
         <div className="mb-5 flex flex-wrap items-center justify-between gap-4">
-          <div className="min-w-0">
-            <h1 className="text-3xl font-bold tracking-tight">Contacts</h1>
-            <p className="mt-1 text-sm text-muted-foreground">People you talk to across channels.</p>
+          <div>
+            <h1 className="text-lg font-semibold text-foreground leading-tight">Contacts</h1>
+            <p className="text-xs text-muted-foreground">
+              People you talk to across channels.
+            </p>
           </div>
           <div className="flex items-center gap-2">
             <Button
@@ -291,13 +293,17 @@ export function ContactsPage() {
                   {!isLoading && filteredContacts.length === 0 && (
                     <tr>
                       <td colSpan={colCount} className="px-5 py-10 text-center text-muted-foreground">
-                        No contacts yet
+                        {searchQuery.trim() ? "No search results found" : "No contacts yet"}
                       </td>
                     </tr>
                   )}
                   {!isLoading &&
                     filteredContacts.map((c) => (
-                      <tr key={c.id} className="transition-colors hover:bg-muted/30">
+                      <tr
+                        key={c.id}
+                        onClick={() => openChat(c)}
+                        className="transition-colors hover:bg-muted/30 cursor-pointer"
+                      >
                         <td className="px-5 py-3.5 align-middle">
                           <div className="flex items-center gap-3">
                             <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-primary/10 text-xs font-medium text-primary">

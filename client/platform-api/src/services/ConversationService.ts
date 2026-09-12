@@ -214,6 +214,28 @@ function contactHasUnread(
  * Email: one row per Gmail thread under the customer.
  */
 export class ConversationService {
+  static async searchMessages(query: string) {
+    const messages = await prisma.message.findMany({
+      where: { content: { contains: query, mode: 'insensitive' } },
+      orderBy: { createdAt: 'desc' },
+      take: 50,
+    });
+    
+    // We need to return customer info and a computed conversationId for the UI
+    const customerIds = [...new Set(messages.map(m => m.customerId))];
+    const customers = await prisma.customer.findMany({
+      where: { id: { in: customerIds } }
+    });
+    
+    return messages.map(msg => {
+      const customer = customers.find(c => c.id === msg.customerId);
+      return {
+        ...msg,
+        customerName: customer?.name || "Unknown",
+        conversationId: buildConversationId(msg.customerId, msg.channelType, msg.externalThreadId ?? undefined)
+      };
+    });
+  }
   static parseConversationId = parseConversationId;
 
   static async list(status?: "active" | "resolved" | "all") {

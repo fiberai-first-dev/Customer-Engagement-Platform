@@ -1,3 +1,4 @@
+import { MessageSearchResults } from "../../components/inbox/MessageSearchResults";
 import {
   useEffect,
   useLayoutEffect,
@@ -12,6 +13,7 @@ import {
   useAccounts,
   useContacts,
   useConversations,
+  useSearchMessages,
   useDeleteMessages,
   useEnabledChannelTypes,
   useMessages,
@@ -109,6 +111,7 @@ const CHANNEL_FILTER_ICONS: Record<ChannelType, ComponentType<{ className?: stri
   instagram: InstagramGlyph,
   facebook: FacebookGlyph,
   email: Mail,
+  web_chat: MessageCircle,
 };
 
 export function InboxPage() {
@@ -131,6 +134,7 @@ export function InboxPage() {
     isPending: conversationsPending,
     isFetching: conversationsFetching,
   } = useConversations("all");
+  const searchResults = useSearchMessages(searchQuery);
   const { selectedContactId, setSelectedContactId } = useAppStore();
   const { data: accounts } = useAccounts();
   const { data: directoryContacts } = useContacts(accounts?.[0]?.id);
@@ -852,7 +856,7 @@ export function InboxPage() {
               type="text"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="Search contacts"
+              placeholder="Search messages or contacts..."
               className="h-9 w-full rounded-md border border-border bg-background py-0 pl-9 pr-3 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-primary"
             />
           </div>
@@ -896,7 +900,18 @@ export function InboxPage() {
           </div>
         </div>
 
-        {showInitialListLoader ? (
+        {searchQuery.length > 1 ? (
+          <MessageSearchResults
+            query={searchQuery}
+            results={searchResults.data?.results || []}
+            isLoading={searchResults.isLoading}
+            onSelect={(contactId: string, channelType: string, channelId: string) => {
+              const convs = Object.values(conversationsByContact).flat().filter(Boolean);
+              const conv = convs.find((c: any) => c.contactId === contactId && c.channelType === channelType && c.channelId === channelId);
+              if (conv) handleSelectConversation(conv as any);
+            }}
+          />
+        ) : showInitialListLoader ? (
           <div className="flex flex-1 items-center justify-center">
             <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
           </div>

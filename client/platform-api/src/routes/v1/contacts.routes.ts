@@ -11,4 +11,6 @@ export async function contactsRoutes(app: FastifyInstance) {
   app.patch("/:id", ContactController.updateContact);
   app.patch("/:id/tag", ContactController.setTag);
   app.delete("/:id", ContactController.deleteContact);
+  app.get("/:id/timeline", ContactController.getTimeline);
+  app.patch("/:id/custom-fields", ContactController.updateCustomFields);
 }
