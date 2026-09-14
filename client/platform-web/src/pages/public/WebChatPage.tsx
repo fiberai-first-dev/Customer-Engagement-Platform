@@ -2,53 +2,34 @@ import { EmbedWebChat } from "../../embed/EmbedWebChat";
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL ?? "";
 
-function readPreviewKey(): string {
-  if (typeof window === "undefined") return "";
-  try {
-    return new URLSearchParams(window.location.search).get("key")?.trim() || "";
-  } catch {
-    return "";
-  }
-}
-
 /** Public preview page for the embeddable web chat (`/chat`). */
 export function WebChatPage() {
-  const widgetKey = readPreviewKey();
-
   return (
-    <div
-      style={{
-        minHeight: "100vh",
-        background: "linear-gradient(180deg, #f8fafc 0%, #e2e8f0 100%)",
-        fontFamily:
-          'ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif',
-      }}
-    >
+    <div className="relative min-h-screen overflow-hidden bg-[#0b1220] text-white">
       <div
+        className="pointer-events-none absolute inset-0 opacity-80"
         style={{
-          maxWidth: 520,
-          margin: "0 auto",
-          padding: "64px 24px 120px",
-          textAlign: "center",
+          background:
+            "radial-gradient(ellipse 80% 50% at 50% -10%, rgba(15,118,110,0.35), transparent), radial-gradient(ellipse 60% 40% at 100% 50%, rgba(59,130,246,0.12), transparent)",
         }}
-      >
-        <h1 style={{ fontSize: 28, margin: 0, color: "#0f172a" }}>Web Chat preview</h1>
-        <p style={{ marginTop: 12, color: "#475569", lineHeight: 1.5, fontSize: 14 }}>
-          This is the same widget clients embed on their site. Open the bubble, enter
-          your <strong>name</strong> and <strong>WhatsApp number</strong>, then chat —
-          the conversation appears in the CEP inbox under Web Chat and is linked to
-          that WhatsApp identity.
+      />
+      <div className="relative mx-auto flex min-h-screen max-w-3xl flex-col justify-center px-6 py-16 sm:px-10">
+        <p className="text-xs font-semibold uppercase tracking-[0.2em] text-teal-300/90">
+          Web Chat
         </p>
-        {!widgetKey ? (
-          <p style={{ marginTop: 16, color: "#b45309", fontSize: 13 }}>
-            Open this page from Settings → Web Chat embed → Preview widget so the
-            widget key is included.
-          </p>
-        ) : null}
+        <h1 className="mt-3 max-w-xl text-4xl font-semibold tracking-tight sm:text-5xl">
+          Preview your site widget
+        </h1>
+        <p className="mt-4 max-w-lg text-base leading-relaxed text-slate-300">
+          Same bubble your customers see. Open it, share a name and WhatsApp number, and
+          the thread shows up in the CEP inbox under Web Chat.
+        </p>
+        <p className="mt-8 text-sm text-slate-400">
+          Use the chat button in the corner to try a conversation.
+        </p>
       </div>
       <EmbedWebChat
         apiBase={API_BASE || window.location.origin}
-        widgetKey={widgetKey}
         title="Chat with us"
         storageKey="cep_web_chat_preview"
       />

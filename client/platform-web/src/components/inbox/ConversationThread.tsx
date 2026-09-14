@@ -1,4 +1,4 @@
-import { Fragment, useEffect, useMemo, useRef, useState } from "react";
+import { Fragment, useEffect, useRef, useState } from "react";
 import {
   AlertCircle,
   CheckCircle2,
@@ -23,13 +23,15 @@ import {
   TicketIcon,
   Plus,
   Pin,
-  Star,
-  Search,
-  ChevronUp,
-  ChevronDown,
 } from "lucide-react";
 import type { ChannelType, Conversation, Message } from "../../api";
-import { useFeatureFlag, downloadTranscript, useTogglePin, useToggleStar, useBlockCustomer } from "../../api";
+import {
+  useFeatureFlag,
+  downloadTranscript,
+  useTogglePin,
+  useToggleContactPin,
+  useBlockCustomer,
+} from "../../api";
 import { resolveConversationWindow } from "../../lib/messagingWindow";
 import {
   uploadConversationAttachment,
@@ -46,10 +48,6 @@ import {
   WhatsAppTemplateClosedPanel,
 } from "./ConversationWindowBanner";
 import { WhatsAppTemplateSelector } from "./WhatsAppTemplateSelector";
-import { HandoverNotes } from "./HandoverNotes";
-// Canned replies + asset library disabled
-// import { CannedReplyPicker } from "./CannedReplyPicker";
-// import { MediaAssetLibrary } from "./MediaAssetLibrary";
 import { Button } from "../ui/button";
 import { ConfirmDialog } from "../ui/confirm-dialog";
 import { toast } from "sonner";
@@ -456,10 +454,6 @@ export function ConversationThread({
   const { draft, setDraft, clearDraft } = useDraft(selectedConversation?.id);
   const [subject, setSubject] = useState("");
   const [pendingFile, setPendingFile] = useState<File | null>(null);
-  const [chatSearchOpen, setChatSearchOpen] = useState(false);
-  const [chatSearchQuery, setChatSearchQuery] = useState("");
-  const [chatSearchIndex, setChatSearchIndex] = useState(0);
-  const chatSearchInputRef = useRef<HTMLInputElement>(null);
   const messageRefs = useRef<Map<string, HTMLDivElement>>(new Map());
   const [fileError, setFileError] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
@@ -498,29 +492,7 @@ export function ConversationThread({
   const recordingCancelledRef = useRef(false);
 
   const togglePin = useTogglePin();
-  const toggleStar = useToggleStar();
-
-  const chatSearchMatches = useMemo(() => {
-    const q = chatSearchQuery.trim().toLowerCase();
-    if (!q || q.length < 1) return [] as Message[];
-    return (messages ?? []).filter((m) => (m.content ?? "").toLowerCase().includes(q));
-  }, [messages, chatSearchQuery]);
-
-  useEffect(() => {
-    setChatSearchIndex(0);
-  }, [chatSearchQuery, selectedConversation?.id]);
-
-  useEffect(() => {
-    if (!chatSearchOpen) return;
-    chatSearchInputRef.current?.focus();
-  }, [chatSearchOpen]);
-
-  useEffect(() => {
-    const match = chatSearchMatches[chatSearchIndex];
-    if (!match) return;
-    const el = messageRefs.current.get(match.id);
-    el?.scrollIntoView({ behavior: "smooth", block: "center" });
-  }, [chatSearchIndex, chatSearchMatches]);
+  const toggleContactPin = useToggleContactPin();
 
   const startRecording = async () => {
     if (isRecording) return;
@@ -819,11 +791,23 @@ export function ConversationThread({
             <Button
               variant="ghost"
               size="sm"
-              onClick={() => toggleStar.mutate(selectedConversation.id)}
+              onClick={() =>
+                toggleContactPin.mutate(selectedConversation.id, {
+                  onSuccess: (res) =>
+                    toast.success(res.pinned ? "Contact pinned" : "Contact unpinned"),
+                  onError: (err) => toast.error(err.message || "Could not update pin"),
+                })
+              }
+              disabled={toggleContactPin.isPending}
               className="gap-2"
-              title="Star conversation"
+              title={selectedConversation.pinned ? "Unpin contact" : "Pin contact to top"}
             >
-              <Star className="h-4 w-4" />
+              <Pin
+                className={cn(
+                  "h-4 w-4",
+                  selectedConversation.pinned && "fill-primary text-primary",
+                )}
+              />
             </Button>
           )}
           {selectedConversation && needsAttentionHere && !selecting && (
@@ -873,14 +857,14 @@ export function ConversationThread({
 
           <Button
             variant={customerContextOpen ? "secondary" : "ghost"}
-            size="sm"
+            size="icon"
             onClick={onToggleCustomerContext}
-            className="gap-2 h-9"
+            className="h-9 w-9"
             aria-pressed={customerContextOpen}
-            title={customerContextOpen ? "Hide customer context" : "Show customer context"}
+            aria-label={customerContextOpen ? "Hide customer details" : "Show customer details"}
+            title={customerContextOpen ? "Hide customer details" : "Customer details"}
           >
             <PanelRight className="h-4 w-4" />
-            <span className="hidden sm:inline">Customer Context</span>
           </Button>
 
           {showChatMenu && (
@@ -903,20 +887,6 @@ export function ConversationThread({
                   role="menu"
                   className="absolute right-0 top-full z-30 mt-1 w-52 overflow-hidden rounded-lg border border-border bg-card py-1 shadow-lg"
                 >
-                  {hasMessages && (
-                    <button
-                      type="button"
-                      role="menuitem"
-                      className="flex w-full items-center gap-2.5 px-3 py-2.5 text-left text-sm text-foreground hover:bg-muted"
-                      onClick={() => {
-                        setMenuOpen(false);
-                        setChatSearchOpen(true);
-                      }}
-                    >
-                      <Search className="h-4 w-4 text-muted-foreground" />
-                      Search in chat
-                    </button>
-                  )}
                   {isAdmin && onDeleteMessages && hasMessages && (
                     <button
                       type="button"
@@ -987,77 +957,6 @@ export function ConversationThread({
         </div>
       </div>
 
-      {chatSearchOpen && (
-        <div className="flex shrink-0 items-center gap-2 border-b border-border bg-muted/40 px-4 py-2">
-          <Search className="h-4 w-4 shrink-0 text-muted-foreground" />
-          <input
-            ref={chatSearchInputRef}
-            type="text"
-            value={chatSearchQuery}
-            onChange={(e) => setChatSearchQuery(e.target.value)}
-            placeholder={`Search in this ${channelLabel(activeTab)} chat…`}
-            className="h-8 min-w-0 flex-1 rounded-md border border-border bg-background px-2.5 text-sm outline-none focus:ring-1 focus:ring-primary"
-          />
-          <span className="shrink-0 text-[11px] tabular-nums text-muted-foreground">
-            {chatSearchQuery.trim()
-              ? chatSearchMatches.length === 0
-                ? "0 / 0"
-                : `${chatSearchIndex + 1} / ${chatSearchMatches.length}`
-              : ""}
-          </span>
-          <Button
-            type="button"
-            variant="ghost"
-            size="icon"
-            className="h-8 w-8"
-            disabled={chatSearchMatches.length === 0}
-            title="Previous match"
-            onClick={() =>
-              setChatSearchIndex((i) =>
-                chatSearchMatches.length === 0
-                  ? 0
-                  : (i - 1 + chatSearchMatches.length) % chatSearchMatches.length,
-              )
-            }
-          >
-            <ChevronUp className="h-4 w-4" />
-          </Button>
-          <Button
-            type="button"
-            variant="ghost"
-            size="icon"
-            className="h-8 w-8"
-            disabled={chatSearchMatches.length === 0}
-            title="Next match"
-            onClick={() =>
-              setChatSearchIndex((i) =>
-                chatSearchMatches.length === 0 ? 0 : (i + 1) % chatSearchMatches.length,
-              )
-            }
-          >
-            <ChevronDown className="h-4 w-4" />
-          </Button>
-          <Button
-            type="button"
-            variant="ghost"
-            size="icon"
-            className="h-8 w-8"
-            title="Close search"
-            onClick={() => {
-              setChatSearchOpen(false);
-              setChatSearchQuery("");
-              setChatSearchIndex(0);
-            }}
-          >
-            <X className="h-4 w-4" />
-          </Button>
-        </div>
-      )}
-
-      {selectedConversation && (
-        <HandoverNotes contactId={selectedConversation.contactId} />
-      )}
-
       {selecting && (
         <div className="flex shrink-0 items-center justify-between gap-3 border-b border-border bg-muted/40 px-5 py-2">
           <p className="text-sm text-muted-foreground">
@@ -1109,7 +1008,7 @@ export function ConversationThread({
       <div className="flex h-11 shrink-0 items-stretch gap-0 border-b border-border bg-card px-2">
         {(enabledChannels
           ? CHANNELS.filter((c) => enabledChannels.includes(c.id))
-          : CHANNELS
+          : []
         ).map((channel) => {
           const conversation =
             channel.id === "email"
@@ -1288,12 +1187,6 @@ export function ConversationThread({
               const dayLabel = showDaySeparator
                 ? formatDaySeparator(message.createdAt)
                 : null;
-              const isSearchHit =
-                chatSearchOpen &&
-                chatSearchQuery.trim().length > 0 &&
-                chatSearchMatches.some((m) => m.id === message.id);
-              const isActiveSearchHit =
-                isSearchHit && chatSearchMatches[chatSearchIndex]?.id === message.id;
               return (
                 <Fragment key={message.id}>
                   {dayLabel && (
@@ -1311,8 +1204,6 @@ export function ConversationThread({
                     className={cn(
                       "flex w-fit max-w-[min(100%,48rem)] items-end group rounded-lg",
                       incoming ? "mr-auto" : "ml-auto flex-row-reverse",
-                      isActiveSearchHit && "ring-2 ring-amber-400 ring-offset-2 ring-offset-background",
-                      isSearchHit && !isActiveSearchHit && "ring-1 ring-amber-300/70",
                     )}
                   >
                   <div

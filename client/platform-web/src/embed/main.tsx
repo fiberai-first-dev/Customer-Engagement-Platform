@@ -12,8 +12,6 @@ declare global {
 export type EmbedInitOptions = {
   /** Override API base. Defaults to script origin or data-api-base. */
   apiBase?: string;
-  /** Widget key (or use data-key on the script tag). */
-  widgetKey?: string;
   title?: string;
   color?: string;
   /** Unique storage key per tenant (auto-derived from api host when omitted). */
@@ -48,7 +46,6 @@ function resolveApiBase(script: HTMLScriptElement | null, override?: string): st
     }
   }
 
-  // Script hosted on the CEP web app — use the API baked at Docker build time
   const baked = (import.meta.env.VITE_API_BASE_URL as string | undefined)?.trim();
   if (baked) return baked.replace(/\/$/, "");
 
@@ -73,10 +70,6 @@ function mount(options: EmbedInitOptions = {}) {
 
   const script = findEmbedScript();
   const apiBase = resolveApiBase(script, options.apiBase);
-  const widgetKey =
-    options.widgetKey?.trim() ||
-    script?.getAttribute("data-key")?.trim() ||
-    "";
   const title =
     options.title ?? script?.getAttribute("data-title") ?? "Chat with us";
   const color =
@@ -93,7 +86,6 @@ function mount(options: EmbedInitOptions = {}) {
   createRoot(host).render(
     <EmbedWebChat
       apiBase={apiBase}
-      widgetKey={widgetKey}
       title={title}
       color={color}
       storageKey={storageKey}
@@ -103,7 +95,6 @@ function mount(options: EmbedInitOptions = {}) {
 
 window.CepWebChat = { init: mount };
 
-// Auto-boot when the script tag is present (typical third-party install)
 if (typeof document !== "undefined") {
   const boot = () => mount();
   if (document.readyState === "loading") {

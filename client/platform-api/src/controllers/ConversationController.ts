@@ -32,7 +32,24 @@ export class ConversationController {
           ? "active"
           : "all";
     const conversations = await ConversationService.list(mapped);
-    return reply.send(conversations);
+
+    const userId = request.user?.id;
+    if (!userId) {
+      return reply.send(conversations);
+    }
+
+    const pins = await prisma.conversationPin.findMany({
+      where: { userId },
+      select: { conversationId: true },
+    });
+    // Pins are stored as contact ids (pin contact, not channel thread).
+    const pinnedContacts = new Set(pins.map((p) => p.conversationId));
+    return reply.send(
+      conversations.map((c) => ({
+        ...c,
+        pinned: pinnedContacts.has(c.contactId),
+      })),
+    );
   }
 
   static async getConversation(request: FastifyRequest<{ Params: { id: string } }>, reply: FastifyReply) {
@@ -283,7 +300,11 @@ export class ConversationController {
         )
         .send(pdf);
     } catch (err: any) {
-      return reply.code(500).send({ error: err.message });
+      const message =
+        typeof err?.message === "string" && err.message.includes("pinned")
+          ? "Database is missing a required column. Run pending migrations (messages.pinned)."
+          : err?.message || "Failed to generate transcript";
+      return reply.code(500).send({ error: message });
     }
   }
 
@@ -305,26 +326,26 @@ export class ConversationController {
   static async toggleStar(request: FastifyRequest<{ Params: { id: string } }>, reply: FastifyReply) {
     if (!request.user?.id) return reply.code(401).send({ error: "Unauthorized" });
     try {
+      const { customerId } = ConversationService.parseConversationId(request.params.id);
       const existing = await prisma.conversationPin.findUnique({
         where: {
           userId_conversationId: {
             userId: request.user.id,
-            conversationId: request.params.id,
-          }
-        }
+            conversationId: customerId,
+          },
+        },
       });
       if (existing) {
         await prisma.conversationPin.delete({ where: { id: existing.id } });
-        return reply.send({ starred: false });
-      } else {
-        await prisma.conversationPin.create({
-          data: {
-            userId: request.user.id,
-            conversationId: request.params.id,
-          }
-        });
-        return reply.send({ starred: true });
+        return reply.send({ pinned: false });
       }
+      await prisma.conversationPin.create({
+        data: {
+          userId: request.user.id,
+          conversationId: customerId,
+        },
+      });
+      return reply.send({ pinned: true });
     } catch (err: any) {
       return reply.code(500).send({ error: err.message });
     }

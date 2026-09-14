@@ -86,11 +86,11 @@ export function ConversationWindowBanner({
 function RecoveryBannerWrapper({ title, description, children }: { title: string; description: string; children: ReactNode }) {
   return (
     <div className="overflow-hidden rounded-xl border border-border bg-card shadow-sm mx-4 mb-4">
-      <div className="border-b border-border bg-muted/30 px-5 py-4">
+      <div className="border-b border-border bg-muted/30 px-5 py-4 text-center">
         <p className="text-sm font-semibold text-foreground">{title}</p>
         <p className="mt-1 text-sm text-muted-foreground leading-relaxed">{description}</p>
       </div>
-      <div className="px-5 py-4 bg-background flex justify-center sm:justify-start">
+      <div className="flex justify-center bg-background px-5 py-4">
         {children}
       </div>
     </div>

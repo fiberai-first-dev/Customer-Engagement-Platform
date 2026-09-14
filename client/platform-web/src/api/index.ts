@@ -149,6 +149,7 @@ export interface Message {
     contentType?: string | null;
   }>;
   errorMessage?: string | null;
+  pinned?: boolean;
 }
 
 export interface WhatsAppTemplate {
@@ -213,6 +214,8 @@ export interface Conversation {
     requiresHumanAgentTag: boolean;
     requiresExternalInbox: boolean;
   };
+  /** Per-agent pin — pinned contacts sort to the top of the inbox list. */
+  pinned?: boolean;
 }
 
 export interface ShopifyConfig {
@@ -256,43 +259,70 @@ export const CHANNEL_FLAG_KEYS: Record<ChannelType, string> = {
 
 /**
  * Returns the channels that are both:
- * 1. Connected (inbox.enabled === true), AND
- * 2. Allowed by the admin channel feature flag (default: true)
+ * 1. Connected (inbox.enabled === true, not "Not configured/connected"), AND
+ * 2. Allowed by the admin channel feature flag (must be explicitly true)
+ *
+ * While flags/inboxes are loading, `channelsReady` is false and `enabledChannels` is [].
+ * Callers must not fall back to "all channels" when !channelsReady — show nothing instead.
  */
 export const useEnabledChannelTypes = (): {
   enabledChannels: ChannelType[];
+  /** Admin feature flags that are on (whether or not connected). */
+  adminEnabledChannels: ChannelType[];
   channelsReady: boolean;
 } => {
   const { data: accounts } = useAccounts();
   const accountId = accounts?.[0]?.id;
-  const { data: inboxes, isSuccess } = useInboxes(accountId);
+  const { data: inboxes, isSuccess: inboxesSuccess } = useInboxes(accountId);
 
-  // Fetch the four channel flags in parallel
-  const waFlag = useQuery({ queryKey: ["feature-flag", "whatsapp_channel"], queryFn: () => request<{ enabled: boolean }>(`/api/v1/features?key=whatsapp_channel`) });
-  const igFlag = useQuery({ queryKey: ["feature-flag", "instagram_channel"], queryFn: () => request<{ enabled: boolean }>(`/api/v1/features?key=instagram_channel`) });
-  const fbFlag = useQuery({ queryKey: ["feature-flag", "facebook_channel"], queryFn: () => request<{ enabled: boolean }>(`/api/v1/features?key=facebook_channel`) });
-  const emailFlag = useQuery({ queryKey: ["feature-flag", "email_channel"], queryFn: () => request<{ enabled: boolean }>(`/api/v1/features?key=email_channel`) });
+  const waFlag = useQuery({
+    queryKey: ["feature-flag", "whatsapp_channel"],
+    queryFn: () => request<{ enabled: boolean }>(`/api/v1/features?key=whatsapp_channel`),
+  });
+  const igFlag = useQuery({
+    queryKey: ["feature-flag", "instagram_channel"],
+    queryFn: () => request<{ enabled: boolean }>(`/api/v1/features?key=instagram_channel`),
+  });
+  const fbFlag = useQuery({
+    queryKey: ["feature-flag", "facebook_channel"],
+    queryFn: () => request<{ enabled: boolean }>(`/api/v1/features?key=facebook_channel`),
+  });
+  const emailFlag = useQuery({
+    queryKey: ["feature-flag", "email_channel"],
+    queryFn: () => request<{ enabled: boolean }>(`/api/v1/features?key=email_channel`),
+  });
+  const webChatFlag = useQuery({
+    queryKey: ["feature-flag", "web_chat_channel"],
+    queryFn: () => request<{ enabled: boolean }>(`/api/v1/features?key=web_chat_channel`),
+  });
 
-  // Build a set of admin-allowed channels (default false = hidden unless explicitly enabled)
-  const flagAllowed = new Set<ChannelType>();
-  if (waFlag.data?.enabled === true) flagAllowed.add("whatsapp");
-  if (igFlag.data?.enabled === true) flagAllowed.add("instagram");
-  if (fbFlag.data?.enabled === true) flagAllowed.add("facebook");
-  if (emailFlag.data?.enabled === true) flagAllowed.add("email");
+  const flagQueries = [waFlag, igFlag, fbFlag, emailFlag, webChatFlag];
+  const flagsReady = flagQueries.every((q) => q.isFetched || q.isError);
 
-  const connectedChannels = (inboxes ?? []).filter((i) => {
-    if (!i.enabled) return false;
-    // Hide if it's completely unconfigured (never connected)
-    const summary = i.health?.summary;
-    if (summary === "Not configured" || summary === "Not connected") return false;
-    return true;
-  }).map((i) => i.channelType);
+  const adminEnabledChannels: ChannelType[] = [];
+  if (waFlag.data?.enabled === true) adminEnabledChannels.push("whatsapp");
+  if (igFlag.data?.enabled === true) adminEnabledChannels.push("instagram");
+  if (fbFlag.data?.enabled === true) adminEnabledChannels.push("facebook");
+  if (emailFlag.data?.enabled === true) adminEnabledChannels.push("email");
+  if (webChatFlag.data?.enabled === true) adminEnabledChannels.push("web_chat");
+
+  const flagAllowed = new Set(adminEnabledChannels);
+
+  const connectedChannels = (inboxes ?? [])
+    .filter((i) => {
+      if (!i.enabled) return false;
+      const summary = i.health?.summary;
+      if (summary === "Not configured" || summary === "Not connected") return false;
+      return true;
+    })
+    .map((i) => i.channelType);
 
   const enabledChannels = connectedChannels.filter((ch) => flagAllowed.has(ch));
 
   return {
     enabledChannels,
-    channelsReady: Boolean(accountId && isSuccess),
+    adminEnabledChannels,
+    channelsReady: Boolean(accountId && inboxesSuccess && flagsReady),
   };
 };
 
@@ -306,20 +336,17 @@ export const useConversations = (status?: string, inboxId?: string) =>
       return request<Conversation[]>(`/api/v1/conversations${q.toString() ? `?${q}` : ""}`);
     },
     refetchInterval: 5000,
+    staleTime: 2_000,
     placeholderData: (previous) => previous,
   });
 
 export const useMessages = (conversationId?: string) => {
-  const queryClient = useQueryClient();
   return useQuery({
     queryKey: ["messages", conversationId],
-    queryFn: async () => {
-      const data = await request<Message[]>(
+    queryFn: () =>
+      request<Message[]>(
         `/api/v1/conversations/${encodeURIComponent(conversationId!)}/messages`,
-      );
-      await queryClient.invalidateQueries({ queryKey: ["conversations"] });
-      return data;
-    },
+      ),
     enabled: !!conversationId,
     refetchInterval: 5000,
     // Never reuse the previous contact's messages while the new query loads.
@@ -1041,6 +1068,9 @@ export const useTeam = (id?: string) =>
 export interface DashboardMetrics {
   totalMessages: number;
   activeContacts: number;
+  openConversations?: number;
+  pendingConversations?: number;
+  unassignedTickets?: number;
   recentActivity: {
     id: string;
     contactName: string;
@@ -1050,6 +1080,19 @@ export interface DashboardMetrics {
     channelType?: string;
   }[];
   channelDistribution: Record<string, number>;
+  ticketsByStatus?: Record<string, number>;
+  ticketsByTeam?: Array<{ teamName: string; count: number }>;
+  agingConversations?: {
+    total: number;
+    over24h: number;
+    over48h: number;
+    sample: Array<{
+      conversationId: string;
+      contactName: string;
+      channelType: string;
+      ageHours: number;
+    }>;
+  };
 }
 
 export const useDashboardMetrics = (accountId?: string) =>
@@ -1289,7 +1332,13 @@ export const useToggleFeatureFlag = () => {
     onSuccess: (_data, variables) => {
       queryClient.invalidateQueries({ queryKey: ['feature-flag', variables.key] });
       // Invalidate conversations + inboxes when channel visibility flags change
-      const channelFlags = new Set(["whatsapp_channel", "instagram_channel", "facebook_channel", "email_channel"]);
+      const channelFlags = new Set([
+        "whatsapp_channel",
+        "instagram_channel",
+        "facebook_channel",
+        "email_channel",
+        "web_chat_channel",
+      ]);
       if (channelFlags.has(variables.key)) {
         queryClient.invalidateQueries({ queryKey: ["conversations"] });
         queryClient.invalidateQueries({ queryKey: ["inboxes"] });
@@ -1311,7 +1360,7 @@ export interface BroadcastRecipient {
   jobId: string;
   customerId: string;
   customerName: string | null;
-  status: "sent" | "delivered" | "failed";
+  status: "pending" | "sent" | "delivered" | "failed";
   error: string | null;
   deliveredAt: string | null;
   readAt: string | null;
@@ -1328,6 +1377,10 @@ export interface BroadcastJob {
   succeeded: number;
   failed: number;
   createdAt: string;
+  scheduledAt?: string | null;
+  pausedAt?: string | null;
+  cancelledAt?: string | null;
+  recurrence?: string | null;
   recipients: BroadcastRecipient[];
 }
 
@@ -1400,25 +1453,6 @@ export const useSetContactTag = () => {
 
 
 // --- SUBAGENT DECLARATION MERGES ---
-export interface DashboardMetrics {
-  ticketsByStatus?: Record<string, number>;
-  openConversations?: number;
-  pendingConversations?: number;
-  unassignedTickets?: number;
-  agingConversations?: { total: number; over24h: number; over48h: number; sample: any[]; };
-  ticketsByTeam?: Record<string, number>;
-}
-
-export interface BroadcastJob {
-  scheduledAt?: string;
-  pausedAt?: string;
-  cancelledAt?: string;
-}
-
-export interface Message {
-  pinned?: boolean;
-}
-
 export interface TimelineEvent {
   status?: string;
   error?: string;
@@ -1590,21 +1624,21 @@ export const useUnblockCustomer = () => {
 
 export type WebChatWidgetSettings = {
   enabled: boolean;
-  widgetKey: string;
   allowedOrigins: string[];
 };
 
-export const useWebChatSettings = () => {
+export const useWebChatSettings = (enabled = true) => {
   return useQuery({
     queryKey: ["webChatSettings"],
     queryFn: () => request<WebChatWidgetSettings>("/api/v1/web-chat/settings"),
+    enabled,
   });
 };
 
 export const useUpdateWebChatSettings = () => {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (data: { allowedOrigins?: string[]; rotateKey?: boolean }) =>
+    mutationFn: (data: { allowedOrigins?: string[] }) =>
       request<WebChatWidgetSettings>("/api/v1/web-chat/settings", {
         method: "PATCH",
         body: JSON.stringify(data),
@@ -1625,16 +1659,22 @@ export const useTogglePin = () => {
   });
 };
 
-export const useToggleStar = () => {
+export const useToggleContactPin = () => {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (conversationId: string) =>
-      request(`/api/v1/conversations/${encodeURIComponent(conversationId)}/star`, {
-        method: "POST",
-      }),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["messages"] })
+      request<{ pinned: boolean }>(
+        `/api/v1/conversations/${encodeURIComponent(conversationId)}/star`,
+        { method: "POST" },
+      ),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["conversations"] });
+    },
   });
 };
+
+/** @deprecated use useToggleContactPin */
+export const useToggleStar = useToggleContactPin;
 
 export const downloadTranscript = async (conversationId: string) => {
   const token = useAuthStore.getState().token;

@@ -756,6 +756,7 @@ export function App() {
                         { key: "instagram_channel", description: "Enable Instagram channel" },
                         { key: "facebook_channel", description: "Enable Facebook channel" },
                         { key: "email_channel", description: "Enable Email channel" },
+                        { key: "web_chat_channel", description: "Enable Web Chat channel (site embed widget)" },
                       ];
                       
                       const allFeatures = [...features];
@@ -780,6 +781,7 @@ export function App() {
                         "instagram_channel": "Instagram Channel",
                         "facebook_channel": "Facebook Channel",
                         "email_channel": "Email Channel",
+                        "web_chat_channel": "Web Chat Channel",
                       };
                       
                       const filteredFeatures = allFeatures.filter(f => {

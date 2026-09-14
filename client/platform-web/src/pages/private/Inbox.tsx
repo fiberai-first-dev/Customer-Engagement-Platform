@@ -4,10 +4,11 @@ import {
   useMemo,
   useRef,
   useState,
+  useDeferredValue,
   type ComponentType,
 } from "react";
 import { toast } from "sonner";
-import { Loader2, Mail, MessageCircle, Search, TicketIcon, Plus } from "lucide-react";
+import { Mail, MessageCircle, Search, TicketIcon, Plus } from "lucide-react";
 import {
   useAccounts,
   useContacts,
@@ -24,6 +25,7 @@ import {
   type Conversation,
   type TicketStatus,
   useSendWhatsAppTemplate,
+  useSearchMessages,
 } from "../../api";
 import { useNavigate } from "react-router-dom";
 import { useAppStore } from "../../store";
@@ -45,6 +47,7 @@ import {
   pickPrimaryConversation,
   pickPrimaryEmailThread,
 } from "../../components/inbox";
+import { MessageSearchResults } from "../../components/inbox/MessageSearchResults";
 import { ConfirmDialog } from "../../components/ui/confirm-dialog";
 import { CreateTicketModal } from "../../components/tickets/CreateTicketModal";
 import { KeyboardShortcutsOverlay } from "../../components/ui/KeyboardShortcutsOverlay";
@@ -115,6 +118,8 @@ const CHANNEL_FILTER_ICONS: Record<ChannelType, ComponentType<{ className?: stri
 
 export function InboxPage() {
   const [searchQuery, setSearchQuery] = useState("");
+  const [searchMode, setSearchMode] = useState<"contacts" | "messages">("contacts");
+  const deferredSearch = useDeferredValue(searchQuery.trim());
   const [statusFilter, setStatusFilter] = useState<"active" | "all">("active");
   const [channelFilter, setChannelFilter] = useState<ChannelFilter>("all");
   const [activeTab, setActiveTab] = useState<ChannelType>("whatsapp");
@@ -145,6 +150,16 @@ export function InboxPage() {
   const { enabledChannels, channelsReady } = useEnabledChannelTypes();
   const enabledSet = useMemo(() => new Set(enabledChannels), [enabledChannels]);
 
+  const messageSearchEnabled = searchMode === "messages" && deferredSearch.length > 1;
+  const {
+    data: messageSearchData,
+    isFetching: messageSearchFetching,
+    isPending: messageSearchPending,
+  } = useSearchMessages(messageSearchEnabled ? deferredSearch : "");
+  const messageSearchResults = messageSearchData?.results ?? [];
+  const messageSearchLoading =
+    messageSearchEnabled && (messageSearchPending || messageSearchFetching);
+
   const showInitialListLoader = conversationsPending && conversations === undefined;
 
   /** Channel threads grouped by contact — status lives per channel conversation. */
@@ -174,7 +189,10 @@ export function InboxPage() {
       }
 
       if (!query) {
-        items.push(listRow);
+        items.push({
+          ...listRow,
+          pinned: channelConvs.some((c) => c.pinned) || listRow.pinned,
+        });
         continue;
       }
 
@@ -203,10 +221,17 @@ export function InboxPage() {
           (digitsQuery.length >= 4 && digitsWhatsapp.includes(digitsQuery))
         );
       });
-      if (matches) items.push(listRow);
+      if (matches) {
+        items.push({
+          ...listRow,
+          pinned: channelConvs.some((c) => c.pinned) || listRow.pinned,
+        });
+      }
     }
 
     return items.sort((a, b) => {
+      const pin = Number(Boolean(b.pinned)) - Number(Boolean(a.pinned));
+      if (pin !== 0) return pin;
       const aTime = a.lastMessageAt ? new Date(a.lastMessageAt).getTime() : 0;
       const bTime = b.lastMessageAt ? new Date(b.lastMessageAt).getTime() : 0;
       return bTime - aTime;
@@ -245,9 +270,10 @@ export function InboxPage() {
   }, [conversations]);
 
   const channelFilterOptions = useMemo(() => {
-    const enabled = channelsReady
-      ? CHANNELS.filter((c) => enabledChannels.includes(c.id))
-      : CHANNELS;
+    // Don't flash every channel while flags/inboxes load — wait, then only connected+enabled.
+    if (!channelsReady) return [];
+    const enabled = CHANNELS.filter((c) => enabledChannels.includes(c.id));
+    if (!enabled.length) return [];
     return [{ id: "all" as const, label: "All" }, ...enabled];
   }, [channelsReady, enabledChannels]);
 
@@ -338,6 +364,7 @@ export function InboxPage() {
   /** Email / WhatsApp can start outbound when an identity exists (Shopify-linked email, etc.). Instagram cannot. */
   const selectedConversation = useMemo(() => {
     if (!selectedContactId || !selectedContact) return null;
+    const pinned = (conversationsByContact[selectedContactId] ?? []).some((c) => c.pinned);
 
     if (activeTab === "email") {
       if (composingNewEmail) {
@@ -357,6 +384,7 @@ export function InboxPage() {
           },
           contact: selectedContact,
           messages: [],
+          pinned,
         } satisfies Conversation;
       }
       const existing =
@@ -365,7 +393,7 @@ export function InboxPage() {
         contactConversations.email ||
         emailThreads[0] ||
         null;
-      if (existing) return existing;
+      if (existing) return { ...existing, pinned: existing.pinned || pinned };
       if (channelsReady && !enabledSet.has("email")) return null;
       const ids = identitiesFor(selectedContact, "email");
       if (!ids.length) return null;
@@ -385,11 +413,12 @@ export function InboxPage() {
         },
         contact: selectedContact,
         messages: [],
+        pinned,
       } satisfies Conversation;
     }
 
     const existing = contactConversations[activeTab];
-    if (existing) return existing;
+    if (existing) return { ...existing, pinned: existing.pinned || pinned };
     if (activeTab === "instagram" || activeTab === "facebook") return null;
     if (channelsReady && !enabledSet.has(activeTab)) return null;
     const ids = identitiesFor(selectedContact, activeTab);
@@ -408,11 +437,13 @@ export function InboxPage() {
       },
       contact: selectedContact,
       messages: [],
+      pinned,
     } satisfies Conversation;
   }, [
     selectedContactId,
     selectedContact,
     contactConversations,
+    conversationsByContact,
     activeTab,
     channelsReady,
     enabledSet,
@@ -591,6 +622,35 @@ export function InboxPage() {
     } else {
       setActiveTab(pickPrimaryConversation(rows).channelType);
     }
+  };
+
+  const handleSelectMessageSearch = (
+    contactId: string,
+    channelType: string,
+    _channelId: string,
+    conversationId?: string,
+  ) => {
+    focusedContactRef.current = contactId;
+    setSelectedContactId(contactId);
+    setComposingNewEmail(false);
+    const tab = (["whatsapp", "instagram", "facebook", "email", "web_chat"] as ChannelType[]).includes(
+      channelType as ChannelType,
+    )
+      ? (channelType as ChannelType)
+      : "whatsapp";
+    setActiveTab(tab);
+    if (tab === "email" && conversationId) {
+      setSelectedEmailThreadId(conversationId);
+    } else {
+      setSelectedEmailThreadId(null);
+    }
+    const scopeKey = listReadScopeKey(contactId, channelFilter);
+    setReadScopeKeys((prev) => {
+      if (prev.has(scopeKey)) return prev;
+      const next = new Set(prev);
+      next.add(scopeKey);
+      return next;
+    });
   };
 
   const handleSend = async (
@@ -882,10 +942,42 @@ export function InboxPage() {
               type="text"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="Search contacts…"
+              placeholder={
+                searchMode === "messages"
+                  ? "Search message text…"
+                  : "Search contacts…"
+              }
               className="h-9 w-full rounded-md border border-border bg-background py-0 pl-9 pr-3 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-primary"
             />
           </div>
+          <div className="flex h-7 items-center rounded-md border border-border p-0.5">
+            <button
+              type="button"
+              onClick={() => setSearchMode("contacts")}
+              className={cn(
+                "h-full flex-1 rounded px-2 text-[11px] font-medium leading-none",
+                searchMode === "contacts"
+                  ? "bg-muted text-foreground"
+                  : "text-muted-foreground hover:text-foreground",
+              )}
+            >
+              Contacts
+            </button>
+            <button
+              type="button"
+              onClick={() => setSearchMode("messages")}
+              className={cn(
+                "h-full flex-1 rounded px-2 text-[11px] font-medium leading-none",
+                searchMode === "messages"
+                  ? "bg-muted text-foreground"
+                  : "text-muted-foreground hover:text-foreground",
+              )}
+            >
+              Messages
+            </button>
+          </div>
+          {searchMode === "contacts" ? (
+          channelFilterOptions.length > 0 ? (
           <div
             className="flex gap-1 overflow-x-auto scrollbar-hide"
             role="tablist"
@@ -924,12 +1016,27 @@ export function InboxPage() {
               );
             })}
           </div>
+          ) : null
+          ) : (
+            <p className="text-[11px] text-muted-foreground">
+              Searches message body across all conversations (min 2 characters).
+            </p>
+          )}
         </div>
 
-        {showInitialListLoader ? (
-          <div className="flex flex-1 items-center justify-center">
-            <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
-          </div>
+        {searchMode === "messages" ? (
+          deferredSearch.length < 2 ? (
+            <div className="flex flex-1 items-center justify-center px-6 text-center text-sm text-muted-foreground">
+              Type at least 2 characters to search messages
+            </div>
+          ) : (
+            <MessageSearchResults
+              query={deferredSearch}
+              results={messageSearchResults}
+              isLoading={messageSearchLoading}
+              onSelect={handleSelectMessageSearch}
+            />
+          )
         ) : (
           <ConversationList
             conversations={listConversations}
@@ -939,6 +1046,7 @@ export function InboxPage() {
             emptyHint={listEmptyHint}
             channelFilter={channelFilter}
             readScopeKeys={readScopeKeys}
+            loading={showInitialListLoader}
           />
         )}
       </Panel>

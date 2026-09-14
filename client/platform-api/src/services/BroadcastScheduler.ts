@@ -72,20 +72,27 @@ async function processJob(job: any) {
           succeeded++;
           await prisma.broadcastRecipient.update({
             where: { id: recipient.id },
-            data: { status: "sent", messageId: result.result.externalId }
+            data: {
+              status: "sent",
+              messageId: result.result.externalId ?? null,
+              error: null,
+            },
           });
         } else {
           failed++;
           await prisma.broadcastRecipient.update({
             where: { id: recipient.id },
-            data: { status: "failed", error: result.result.error ?? "Unknown error" }
+            data: { status: "failed", error: result.result.error ?? "Unknown error" },
           });
         }
       } catch (err: any) {
+        // Only count as failed when we never got a provider accept.
+        // Persist/schema errors after a successful send are logged by MessagingService.
+        const msg = err?.message ?? "Unknown error";
         failed++;
         await prisma.broadcastRecipient.update({
           where: { id: recipient.id },
-          data: { status: "failed", error: err.message ?? "Unknown error" }
+          data: { status: "failed", error: msg },
         });
       }
 

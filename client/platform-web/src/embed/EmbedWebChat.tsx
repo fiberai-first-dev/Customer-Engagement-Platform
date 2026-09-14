@@ -3,8 +3,6 @@ import { useEffect, useRef, useState, type CSSProperties, type FormEvent } from 
 export type EmbedWebChatProps = {
   /** Tenant API origin, e.g. https://api.cep-demo.fybud.com */
   apiBase: string;
-  /** Widget key from Settings (sent as X-CEP-Widget-Key) */
-  widgetKey: string;
   /** Header title */
   title?: string;
   /** Accent color */
@@ -33,7 +31,6 @@ function isValidWhatsApp(raw: string) {
 
 export function EmbedWebChat({
   apiBase,
-  widgetKey,
   title = "Chat with us",
   color = DEFAULT_COLOR,
   storageKey = "cep_web_chat_id",
@@ -41,9 +38,7 @@ export function EmbedWebChat({
   const base = normalizeApiBase(apiBase);
 
   const widgetHeaders = (json = false): HeadersInit => {
-    const h: Record<string, string> = {
-      "X-CEP-Widget-Key": widgetKey,
-    };
+    const h: Record<string, string> = {};
     if (json) h["Content-Type"] = "application/json";
     return h;
   };
@@ -81,10 +76,6 @@ export function EmbedWebChat({
 
   const startSession = async () => {
     setFormError(null);
-    if (!widgetKey) {
-      setFormError("Widget key missing — check the embed snippet");
-      return;
-    }
     if (!name.trim()) {
       setFormError("Please enter your name");
       return;

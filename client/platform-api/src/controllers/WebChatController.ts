@@ -278,7 +278,7 @@ export class WebChatController {
     });
   }
 
-  /** Auth: agent settings (includes widget key). */
+  /** Auth: agent settings (allowed domains). */
   static async getSettings(_request: FastifyRequest, reply: FastifyReply) {
     try {
       const settings = await getWebChatSettings();
@@ -292,11 +292,9 @@ export class WebChatController {
     try {
       const body = request.body as {
         allowedOrigins?: string[];
-        rotateKey?: boolean;
       };
       const settings = await updateWebChatSettings({
         allowedOrigins: body.allowedOrigins,
-        rotateKey: Boolean(body.rotateKey),
       });
       return reply.send(settings);
     } catch (err: any) {

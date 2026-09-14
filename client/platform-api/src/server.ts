@@ -10,8 +10,10 @@ import { startTelemetryCleanupScheduler } from "./services/TelemetryCleanupServi
 import { startBroadcastScheduler } from "./services/BroadcastScheduler.js";
 
 async function main() {
-  // Schema first — creates tables when missing; no-op when current
+  // Always apply pending prisma/migrations (+ critical schema safety nets) before listen.
+  console.log("[boot] Running database migrations…");
   await runDatabaseMigrations();
+  console.log("[boot] Database ready");
 
   // Workspace + sync .env channel creds + enable channels + Gmail watch + IG subscribe
   // Channel steps never abort boot (warnings only)

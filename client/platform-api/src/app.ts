@@ -8,7 +8,7 @@ export async function buildApp() {
   const app = Fastify({ logger: true });
   await app.register(cors, {
     origin: true,
-    allowedHeaders: ["Content-Type", "Authorization", "X-CEP-Widget-Key"],
+    allowedHeaders: ["Content-Type", "Authorization"],
   });
   await app.register(multipart, {
     limits: { fileSize: mediaConfig.maxBytes },

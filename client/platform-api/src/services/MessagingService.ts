@@ -1482,34 +1482,43 @@ export async function sendWhatsAppTemplateMessage(input: {
   }
   const renderedContent = resolveTemplateContent(template);
 
-  const message = await prisma.message.create({
-    data: {
-      id: ulid(),
-      channelType: "whatsapp",
-      channelId: identity.id,
-      customerId: input.customerId,
-      direction: "outgoing",
-      content: renderedContent,
-      contentType: "template",
-      externalId: result.externalId ?? `local_${ulid()}`,
-      status: mapSendStatus(result.status),
-      isRead: true,
-      rawPayload: {
-        to,
-        templateName: template.name,
-        template: templatePayload,
-        ...(result.raw && typeof result.raw === "object" ? (result.raw as object) : {}),
-      } as Prisma.InputJsonValue,
-    },
-  });
+  let message: Awaited<ReturnType<typeof prisma.message.create>> | null = null;
+  try {
+    message = await prisma.message.create({
+      data: {
+        id: ulid(),
+        channelType: "whatsapp",
+        channelId: identity.id,
+        customerId: input.customerId,
+        direction: "outgoing",
+        content: renderedContent,
+        contentType: "template",
+        externalId: result.externalId ?? `local_${ulid()}`,
+        status: mapSendStatus(result.status),
+        isRead: true,
+        rawPayload: {
+          to,
+          templateName: template.name,
+          template: templatePayload,
+          ...(result.raw && typeof result.raw === "object" ? (result.raw as object) : {}),
+        } as Prisma.InputJsonValue,
+      },
+    });
 
-  await touchIdentityLastMessageAt("whatsapp", identity.id, message.createdAt);
-  await recomputeCustomerResolved(input.customerId);
+    await touchIdentityLastMessageAt("whatsapp", identity.id, message.createdAt);
+    await recomputeCustomerResolved(input.customerId);
+  } catch (persistErr) {
+    // Meta already accepted the template — do not report send failure to broadcasts.
+    console.error(
+      "[whatsapp:template] sent on channel but failed to persist message:",
+      persistErr instanceof Error ? persistErr.message : persistErr,
+    );
+  }
 
   return {
     message,
     result: {
-      ok: result.ok,
+      ok: true,
       status: result.status,
       error: result.error,
       externalId: result.externalId,

@@ -1,5 +1,4 @@
-// @ts-nocheck
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import {
   MessageSquare,
   TicketIcon,
@@ -7,59 +6,64 @@ import {
   StickyNote,
   ChevronDown,
   ChevronUp,
-  Plus,
-  Trash2,
   Loader2,
-  Tag,
 } from "lucide-react";
-import {
-  useContactTimeline,
-  useUpdateContactCustomFields,
-  type TimelineEvent,
-  type Contact,
-} from "../../api";
+import { useContactTimeline, type TimelineEvent, type Contact } from "../../api";
 import { formatDistanceToNow } from "date-fns";
-import { toast } from "sonner";
 import { cn } from "../inbox/utils";
 
-const CHANNEL_ICONS: Record<string, string> = {
+const CHANNEL_LABELS: Record<string, string> = {
   whatsapp: "WhatsApp",
   instagram: "Instagram",
   facebook: "Facebook",
   email: "Email",
+  web_chat: "Web Chat",
 };
 
 const EVENT_STYLES: Record<
   string,
-  { icon: React.ElementType; color: string; bg: string; label: string }
+  { icon: React.ElementType; color: string; ring: string; label: string }
 > = {
   message: {
     icon: MessageSquare,
     color: "text-blue-600 dark:text-blue-400",
-    bg: "bg-blue-50 dark:bg-blue-900/20",
+    ring: "bg-blue-500/10 ring-blue-500/20",
     label: "Message",
   },
   ticket: {
     icon: TicketIcon,
     color: "text-violet-600 dark:text-violet-400",
-    bg: "bg-violet-50 dark:bg-violet-900/20",
+    ring: "bg-violet-500/10 ring-violet-500/20",
     label: "Ticket",
   },
   ticket_note: {
     icon: StickyNote,
     color: "text-amber-600 dark:text-amber-400",
-    bg: "bg-amber-50 dark:bg-amber-900/20",
+    ring: "bg-amber-500/10 ring-amber-500/20",
     label: "Note",
   },
   broadcast: {
     icon: Radio,
     color: "text-emerald-600 dark:text-emerald-400",
-    bg: "bg-emerald-50 dark:bg-emerald-900/20",
+    ring: "bg-emerald-500/10 ring-emerald-500/20",
     label: "Broadcast",
   },
 };
 
-function TimelineEventRow({ event }: { event: TimelineEvent }) {
+const FILTERS = [
+  { id: "all", label: "All" },
+  { id: "message", label: "Messages" },
+  { id: "ticket", label: "Tickets" },
+  { id: "broadcast", label: "Broadcasts" },
+] as const;
+
+function TimelineEventRow({
+  event,
+  isLast,
+}: {
+  event: TimelineEvent;
+  isLast: boolean;
+}) {
   const [expanded, setExpanded] = useState(false);
   const style = EVENT_STYLES[event.type] ?? EVENT_STYLES.message;
   const Icon = style.icon;
@@ -69,10 +73,10 @@ function TimelineEventRow({ event }: { event: TimelineEvent }) {
     event.type === "message"
       ? `${event.direction === "incoming" ? "Received" : "Sent"} message`
       : event.type === "ticket"
-        ? `Ticket #${event.ticketNumber} — ${event.subject ?? "Support ticket"}`
+        ? `Ticket #${event.ticketNumber}${event.subject ? ` — ${event.subject}` : ""}`
         : event.type === "ticket_note"
           ? "Internal note"
-          : `Broadcast: ${event.templateName ?? "Campaign"}`;
+          : `Broadcast · ${event.templateName ?? "Campaign"}`;
 
   const body =
     event.type === "message"
@@ -81,279 +85,150 @@ function TimelineEventRow({ event }: { event: TimelineEvent }) {
         ? event.body
         : event.type === "broadcast"
           ? event.status === "failed"
-            ? `Failed: ${event.error ?? "unknown error"}`
-            : `Delivered via broadcast`
+            ? `Failed${event.error ? `: ${event.error}` : ""}`
+            : "Sent via broadcast"
           : null;
 
-  const hasBody = Boolean(body && body.length > 60);
+  const hasBody = Boolean(body && body.length > 80);
+  const channelLabel = event.channelType
+    ? CHANNEL_LABELS[event.channelType] ?? event.channelType
+    : null;
 
   return (
-    <div className="flex gap-3 group">
-      {/* Timeline spine */}
+    <div className="flex gap-3">
       <div className="flex flex-col items-center">
-        <div className={cn("w-7 h-7 rounded-full flex items-center justify-center shrink-0 border border-border/60", style.bg)}>
-          <Icon className={cn("w-3.5 h-3.5", style.color)} />
+        <div
+          className={cn(
+            "flex h-8 w-8 shrink-0 items-center justify-center rounded-full ring-1",
+            style.ring,
+          )}
+        >
+          <Icon className={cn("h-3.5 w-3.5", style.color)} />
         </div>
-        <div className="w-px flex-1 bg-border/50 mt-1" />
+        {!isLast && <div className="mt-1 w-px flex-1 bg-border" />}
       </div>
 
-      <div className="flex-1 pb-4 min-w-0">
+      <div className={cn("min-w-0 flex-1", !isLast && "pb-5")}>
         <div className="flex items-start justify-between gap-2">
           <div className="min-w-0">
-            <p className="text-xs font-semibold text-foreground leading-tight">{title}</p>
-            {event.channelType && (
-              <span className="text-[10px] text-muted-foreground">
-                {CHANNEL_ICONS[event.channelType || "whatsapp"] ?? "💬"} {event.channelType}
-              </span>
-            )}
+            <p className="text-sm font-medium leading-snug text-foreground">{title}</p>
+            <div className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5">
+              {channelLabel && (
+                <span className="text-[11px] text-muted-foreground">{channelLabel}</span>
+              )}
+              {event.type === "ticket" && event.status && (
+                <span
+                  className={cn(
+                    "rounded px-1.5 py-px text-[10px] font-semibold uppercase tracking-wide",
+                    event.status === "OPEN" && "bg-blue-500/10 text-blue-700 dark:text-blue-400",
+                    event.status === "IN_PROGRESS" &&
+                      "bg-amber-500/10 text-amber-700 dark:text-amber-400",
+                    event.status === "ESCALATED" && "bg-red-500/10 text-red-700 dark:text-red-400",
+                    event.status === "RESOLVED" &&
+                      "bg-emerald-500/10 text-emerald-700 dark:text-emerald-400",
+                    event.status === "CLOSED" && "bg-muted text-muted-foreground",
+                  )}
+                >
+                  {event.status.replace(/_/g, " ")}
+                </span>
+              )}
+            </div>
           </div>
-          <span className="text-[10px] text-muted-foreground whitespace-nowrap shrink-0 mt-0.5">{ts}</span>
+          <time className="shrink-0 pt-0.5 text-[11px] text-muted-foreground">{ts}</time>
         </div>
 
         {body && (
-          <div className="mt-1">
-            <p className={cn("text-xs text-muted-foreground leading-relaxed", !expanded && "line-clamp-2")}>
+          <div className="mt-1.5 rounded-lg border border-border/60 bg-muted/30 px-2.5 py-2">
+            <p
+              className={cn(
+                "text-xs leading-relaxed text-muted-foreground",
+                !expanded && "line-clamp-2",
+              )}
+            >
               {body}
             </p>
             {hasBody && (
               <button
                 type="button"
                 onClick={() => setExpanded((p) => !p)}
-                className="mt-0.5 text-[10px] text-primary hover:underline flex items-center gap-0.5"
+                className="mt-1 inline-flex items-center gap-0.5 text-[11px] font-medium text-primary hover:underline"
               >
-                {expanded ? <ChevronUp className="w-2.5 h-2.5" /> : <ChevronDown className="w-2.5 h-2.5" />}
-                {expanded ? "Show less" : "Show more"}
+                {expanded ? (
+                  <ChevronUp className="h-3 w-3" />
+                ) : (
+                  <ChevronDown className="h-3 w-3" />
+                )}
+                {expanded ? "Less" : "More"}
               </button>
             )}
           </div>
         )}
-
-        {event.type === "ticket" && (
-          <span
-            className={cn(
-              "inline-block mt-1 text-[10px] font-semibold rounded-full px-1.5 py-0.5",
-              event.status === "OPEN" && "bg-blue-100 text-blue-700",
-              event.status === "IN_PROGRESS" && "bg-amber-100 text-amber-700",
-              event.status === "ESCALATED" && "bg-red-100 text-red-700",
-              event.status === "RESOLVED" && "bg-emerald-100 text-emerald-700",
-              event.status === "CLOSED" && "bg-slate-100 text-slate-600",
-            )}
-          >
-            {event.status}
-          </span>
-        )}
       </div>
-    </div>
-  );
-}
-
-function CustomFieldsEditor({
-  contactId,
-  initial,
-}: {
-  contactId: string;
-  initial: Record<string, string>;
-}) {
-  const [fields, setFields] = useState<Record<string, string>>(initial);
-  const [newKey, setNewKey] = useState("");
-  const [newVal, setNewVal] = useState("");
-  const [editing, setEditing] = useState<string | null>(null);
-  const [editVal, setEditVal] = useState("");
-  const updateFields = useUpdateContactCustomFields();
-
-  // Sync when timeline payload loads
-  useEffect(() => {
-    setFields(initial ?? {});
-  }, [contactId, JSON.stringify(initial)]);
-
-  const save = async (patch: Record<string, string | null>) => {
-    try {
-      const result = await updateFields.mutateAsync({ id: contactId, fields: patch });
-      setFields(result.customFields);
-    } catch (err: any) {
-      toast.error(err.message ?? "Failed to save");
-    }
-  };
-
-  const addField = async () => {
-    if (!newKey.trim()) return;
-    await save({ [newKey.trim()]: newVal.trim() || "" });
-    setNewKey("");
-    setNewVal("");
-  };
-
-  const deleteField = (key: string) => save({ [key]: null });
-
-  const commitEdit = (key: string) => {
-    save({ [key]: editVal });
-    setEditing(null);
-  };
-
-  return (
-    <div className="space-y-2">
-      {Object.entries(fields).map(([key, val]) => (
-        <div key={key} className="flex items-center gap-1.5 group">
-          <span className="text-[10px] font-semibold text-muted-foreground uppercase shrink-0 w-20 truncate">
-            {key}
-          </span>
-          {editing === key ? (
-            <input
-              className="flex-1 text-xs rounded border border-primary px-1.5 py-0.5 bg-background focus:outline-none"
-              value={editVal}
-              autoFocus
-              onChange={(e) => setEditVal(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter") commitEdit(key);
-                if (e.key === "Escape") setEditing(null);
-              }}
-              onBlur={() => commitEdit(key)}
-            />
-          ) : (
-            <span
-              className="flex-1 text-xs text-foreground truncate cursor-pointer hover:text-primary"
-              onClick={() => { setEditing(key); setEditVal(val); }}
-              title="Click to edit"
-            >
-              {val || <em className="text-muted-foreground">empty</em>}
-            </span>
-          )}
-          <button
-            type="button"
-            onClick={() => deleteField(key)}
-            className="opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-red-500 transition-opacity"
-          >
-            <Trash2 className="w-3 h-3" />
-          </button>
-        </div>
-      ))}
-
-      {/* Add field row */}
-      <div className="flex items-center gap-1.5 pt-1">
-        <input
-          placeholder="Field"
-          value={newKey}
-          onChange={(e) => setNewKey(e.target.value)}
-          className="w-20 text-xs rounded border border-border px-1.5 py-0.5 bg-background focus:outline-none focus:border-primary"
-          onKeyDown={(e) => { if (e.key === "Enter") addField(); }}
-        />
-        <input
-          placeholder="Value"
-          value={newVal}
-          onChange={(e) => setNewVal(e.target.value)}
-          className="flex-1 text-xs rounded border border-border px-1.5 py-0.5 bg-background focus:outline-none focus:border-primary"
-          onKeyDown={(e) => { if (e.key === "Enter") addField(); }}
-        />
-        <button
-          type="button"
-          onClick={addField}
-          disabled={!newKey.trim()}
-          className="shrink-0 text-primary hover:text-primary/80 disabled:opacity-30"
-        >
-          <Plus className="w-3.5 h-3.5" />
-        </button>
-      </div>
-      {updateFields.isPending && (
-        <p className="text-[10px] text-muted-foreground flex items-center gap-1">
-          <Loader2 className="w-2.5 h-2.5 animate-spin" /> Saving…
-        </p>
-      )}
     </div>
   );
 }
 
 interface ContactTimelinePanelProps {
   contact: Contact;
-  /** Navigate to inbox with this conversation selected */
   onOpenConversation?: (conversationId: string) => void;
 }
 
 export function ContactTimelinePanel({ contact }: ContactTimelinePanelProps) {
   const { data, isLoading } = useContactTimeline(contact.id);
-  const [filter, setFilter] = useState<"all" | "message" | "ticket" | "broadcast">("all");
+  const [filter, setFilter] = useState<(typeof FILTERS)[number]["id"]>("all");
 
   const events = (data?.events ?? []).filter(
-    (e) => filter === "all" || e.type === filter || (filter === "ticket" && e.type === "ticket_note"),
+    (e) =>
+      filter === "all" ||
+      e.type === filter ||
+      (filter === "ticket" && e.type === "ticket_note"),
   );
 
-  const identities = [
-    ...(contact.whatsappIds ?? (contact.whatsappId ? [contact.whatsappId] : [])),
-    ...(contact.identities?.filter((i: any) => i.channelType === "email").map((e: any) => e.externalId ?? e) ?? []),
-    ...(contact.instagramId ? [`@ig:${contact.instagramId}`] : []),
-    ...(contact.facebookId ? [`fb:${contact.facebookId}`] : []),
-  ];
-
   return (
-    <div className="flex flex-col h-full overflow-hidden bg-card text-sm">
-      {/* Contact header */}
-      <div className="px-4 py-4 border-b border-border/50">
-        <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-full bg-gradient-to-br from-primary/20 to-primary/5 flex items-center justify-center text-primary font-bold text-sm shrink-0 border border-primary/10">
-            {(contact.name ?? "?").slice(0, 2).toUpperCase()}
-          </div>
-          <div className="min-w-0">
-            <p className="font-semibold text-foreground truncate">{contact.name ?? "Unknown"}</p>
-            {contact.tag && (
-              <span className="inline-flex items-center gap-1 text-[10px] text-muted-foreground">
-                <Tag className="w-2.5 h-2.5" />
-                {contact.tag}
-              </span>
-            )}
-          </div>
+    <div className="flex h-full flex-col overflow-hidden">
+      <div className="shrink-0 border-b border-border px-4 py-2.5">
+        <div className="flex gap-1 overflow-x-auto">
+          {FILTERS.map((f) => (
+            <button
+              key={f.id}
+              type="button"
+              onClick={() => setFilter(f.id)}
+              className={cn(
+                "shrink-0 rounded-md px-2.5 py-1 text-xs font-medium transition-colors",
+                filter === f.id
+                  ? "bg-primary text-primary-foreground"
+                  : "text-muted-foreground hover:bg-muted hover:text-foreground",
+              )}
+            >
+              {f.label}
+            </button>
+          ))}
         </div>
-        {identities.length > 0 && (
-          <div className="mt-2 flex flex-wrap gap-1">
-            {identities.map((id, i) => (
-              <span key={i} className="text-[10px] bg-muted/70 rounded-full px-2 py-0.5 text-muted-foreground font-mono truncate max-w-[140px]">
-                {id}
-              </span>
-            ))}
-          </div>
-        )}
       </div>
 
-      {/* Custom fields */}
-      <div className="px-4 py-3 border-b border-border/50">
-        <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground mb-2">Custom fields</p>
-        <CustomFieldsEditor
-          contactId={contact.id}
-          initial={data?.customFields ?? {}}
-        />
-      </div>
-
-      {/* Timeline filter tabs */}
-      <div className="px-4 py-2 border-b border-border/50 flex gap-1">
-        {(["all", "message", "ticket", "broadcast"] as const).map((f) => (
-          <button
-            key={f}
-            type="button"
-            onClick={() => setFilter(f)}
-            className={cn(
-              "rounded-full px-2.5 py-0.5 text-[10px] font-semibold capitalize transition-colors",
-              filter === f
-                ? "bg-primary/10 text-primary"
-                : "text-muted-foreground hover:text-foreground",
-            )}
-          >
-            {f}
-          </button>
-        ))}
-      </div>
-
-      {/* Timeline feed */}
       <div className="flex-1 overflow-y-auto px-4 py-4">
         {isLoading ? (
-          <div className="flex justify-center py-8">
-            <Loader2 className="w-5 h-5 animate-spin text-muted-foreground" />
+          <div className="flex justify-center py-16">
+            <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
           </div>
         ) : events.length === 0 ? (
-          <div className="flex flex-col items-center justify-center py-12 text-muted-foreground">
-            <MessageSquare className="w-8 h-8 mb-2 opacity-20" />
-            <p className="text-xs">No events yet</p>
+          <div className="flex flex-col items-center justify-center gap-2 py-16 text-center">
+            <div className="flex h-10 w-10 items-center justify-center rounded-full bg-muted">
+              <MessageSquare className="h-4 w-4 text-muted-foreground" />
+            </div>
+            <p className="text-sm font-medium text-foreground">No activity yet</p>
+            <p className="max-w-[200px] text-xs text-muted-foreground">
+              Messages, tickets, and broadcasts for this contact will show up here.
+            </p>
           </div>
         ) : (
           <div>
-            {events.map((event: any) => (
-              <TimelineEventRow key={event.id} event={event} />
+            {events.map((event, i) => (
+              <TimelineEventRow
+                key={event.id}
+                event={event}
+                isLast={i === events.length - 1}
+              />
             ))}
           </div>
         )}

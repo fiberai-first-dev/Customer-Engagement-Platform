@@ -1,28 +1,62 @@
 import { useState } from "react";
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "../../components/ui/card";
 import {
   MessageSquare,
   Users,
   Loader2,
-  Activity,
   Inbox,
   TicketIcon,
   Clock,
   CheckCircle2,
   UserX,
   MessagesSquare,
+  Mail,
+  AlertCircle,
 } from "lucide-react";
-import { useDashboardMetrics } from "../../api";
+import { useDashboardMetrics, useFeatureFlag, type ChannelType } from "../../api";
 import { formatDistanceToNow } from "date-fns";
 import { cn } from "../../utils/utils";
 import { useNavigate } from "react-router-dom";
 
-const CHANNEL_ICONS: Record<string, string> = {
-  whatsapp: "💬",
-  instagram: "📸",
-  facebook: "📘",
-  email: "✉️",
-};
+function channelLabel(channel: string) {
+  switch (channel) {
+    case "whatsapp":
+      return "WhatsApp";
+    case "instagram":
+      return "Instagram";
+    case "facebook":
+      return "Facebook";
+    case "email":
+      return "Email";
+    case "web_chat":
+      return "Web Chat";
+    default:
+      return channel;
+  }
+}
+
+function ChannelMark({ channel }: { channel?: string }) {
+  const label = channelLabel(channel || "");
+  const short =
+    channel === "whatsapp"
+      ? "WA"
+      : channel === "instagram"
+        ? "IG"
+        : channel === "facebook"
+          ? "FB"
+          : channel === "email"
+            ? "EM"
+            : channel === "web_chat"
+              ? "WC"
+              : "?";
+  return (
+    <span
+      title={label}
+      className="inline-flex h-5 min-w-5 items-center justify-center rounded bg-muted px-1 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground"
+    >
+      {short}
+    </span>
+  );
+}
 
 const TICKET_STATUS_COLORS: Record<string, string> = {
   OPEN: "bg-blue-500",
@@ -34,22 +68,34 @@ const TICKET_STATUS_COLORS: Record<string, string> = {
 
 const TICKET_STATUS_TEXT: Record<string, string> = {
   OPEN: "Open",
-  IN_PROGRESS: "In Progress",
+  IN_PROGRESS: "In progress",
   ESCALATED: "Escalated",
   RESOLVED: "Resolved",
   CLOSED: "Closed",
 };
 
 export function DashboardPage() {
-  const { data: dashboard, isLoading } = useDashboardMetrics();
+  const { data: dashFlag, isFetched: flagFetched } = useFeatureFlag("dashboard_enabled");
+  const { data: dashboard, isLoading, isError, error } = useDashboardMetrics();
   const navigate = useNavigate();
   const [agingExpanded, setAgingExpanded] = useState(false);
+
+  if (flagFetched && dashFlag?.enabled === false) {
+    return (
+      <div className="flex h-full flex-1 flex-col items-center justify-center gap-3 bg-background px-6 text-center">
+        <AlertCircle className="h-8 w-8 text-muted-foreground" />
+        <h1 className="text-lg font-semibold text-foreground">Dashboard disabled</h1>
+        <p className="max-w-sm text-sm text-muted-foreground">
+          Ask an admin to enable the dashboard feature for this workspace.
+        </p>
+      </div>
+    );
+  }
 
   const totalTickets = Object.values(dashboard?.ticketsByStatus ?? {}).reduce(
     (a, b) => a + b,
     0,
   );
-
   const channelTotal = Object.values(dashboard?.channelDistribution ?? {}).reduce(
     (a, b) => a + b,
     0,
@@ -57,279 +103,222 @@ export function DashboardPage() {
 
   const metrics = [
     {
-      title: "Open Conversations",
-      value: dashboard?.openConversations?.toLocaleString() ?? "0",
+      title: "Open conversations",
+      value: dashboard?.openConversations?.toLocaleString() ?? "—",
       icon: MessagesSquare,
-      color: "text-blue-600",
-      bg: "bg-blue-100 dark:bg-blue-900/30",
-      action: () => navigate("/inbox?status=active"),
+      onClick: () => navigate("/inbox"),
     },
     {
-      title: "Pending (Unassigned)",
-      value: dashboard?.pendingConversations?.toLocaleString() ?? "0",
+      title: "Unresolved contacts",
+      value: dashboard?.pendingConversations?.toLocaleString() ?? "—",
       icon: Inbox,
-      color: "text-amber-600",
-      bg: "bg-amber-100 dark:bg-amber-900/30",
-      action: () => navigate("/inbox?status=active"),
+      onClick: () => navigate("/inbox"),
     },
     {
-      title: "Unassigned Tickets",
-      value: dashboard?.unassignedTickets?.toLocaleString() ?? "0",
+      title: "Unassigned tickets",
+      value: dashboard?.unassignedTickets?.toLocaleString() ?? "—",
       icon: UserX,
-      color: "text-red-600",
-      bg: "bg-red-100 dark:bg-red-900/30",
-      action: () => navigate("/tickets"),
+      onClick: () => navigate("/tickets"),
     },
     {
-      title: "Active Contacts",
-      value: dashboard?.activeContacts?.toLocaleString() ?? "0",
+      title: "Active contacts",
+      value: dashboard?.activeContacts?.toLocaleString() ?? "—",
       icon: Users,
-      color: "text-emerald-600",
-      bg: "bg-emerald-100 dark:bg-emerald-900/30",
-      action: () => navigate("/contacts"),
+      onClick: () => navigate("/contacts"),
     },
     {
-      title: "Total Messages",
-      value: dashboard?.totalMessages?.toLocaleString() ?? "0",
+      title: "Messages",
+      value: dashboard?.totalMessages?.toLocaleString() ?? "—",
       icon: MessageSquare,
-      color: "text-violet-600",
-      bg: "bg-violet-100 dark:bg-violet-900/30",
     },
     {
-      title: "Aging (>24h)",
-      value: dashboard?.agingConversations?.total?.toLocaleString() ?? "0",
+      title: "Aging over 24h",
+      value: dashboard?.agingConversations?.total?.toLocaleString() ?? "—",
       icon: Clock,
-      color: "text-orange-600",
-      bg: "bg-orange-100 dark:bg-orange-900/30",
     },
   ];
 
   return (
-    <div className="flex-1 flex flex-col h-full overflow-y-auto bg-background">
-      <div className="border-b border-border bg-card px-8 py-5">
-        <h1 className="text-xl font-bold text-foreground">Dashboard</h1>
-        <p className="text-sm text-muted-foreground mt-1">
-          Overview of active conversations and tickets.
+    <div className="flex h-full flex-1 flex-col overflow-y-auto bg-background">
+      <div className="border-b border-border bg-card px-6 py-5 sm:px-8">
+        <h1 className="text-lg font-semibold text-foreground">Dashboard</h1>
+        <p className="mt-1 text-sm text-muted-foreground">
+          Snapshot of inbox load, tickets, and channel mix.
         </p>
       </div>
 
-      <div className="max-w-7xl w-full mx-auto p-6 space-y-6">
+      <div className="mx-auto w-full max-w-6xl space-y-6 p-6 sm:p-8">
         {isLoading ? (
-          <div className="flex justify-center p-12 bg-card rounded-2xl shadow-sm border border-border/50">
-            <Loader2 className="w-8 h-8 animate-spin text-primary" />
+          <div className="flex justify-center py-16">
+            <Loader2 className="h-7 w-7 animate-spin text-muted-foreground" />
+          </div>
+        ) : isError ? (
+          <div className="rounded-xl border border-destructive/30 bg-destructive/5 px-5 py-8 text-center">
+            <p className="text-sm font-medium text-foreground">Could not load dashboard</p>
+            <p className="mt-1 text-xs text-muted-foreground">
+              {(error as Error)?.message || "Try refreshing the page."}
+            </p>
           </div>
         ) : (
           <>
-            {/* 6-metric KPI grid */}
-            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
-              {metrics.map((m, i) => (
-                <Card
-                  key={i}
+            <div className="grid grid-cols-2 gap-3 md:grid-cols-3 lg:grid-cols-6">
+              {metrics.map((m) => (
+                <button
+                  key={m.title}
+                  type="button"
+                  disabled={!m.onClick}
+                  onClick={m.onClick}
                   className={cn(
-                    "shadow-sm border-border/50 hover:shadow-md transition-all duration-200 bg-card/80 backdrop-blur-sm",
-                    m.action && "cursor-pointer hover:-translate-y-0.5",
+                    "rounded-xl border border-border bg-card p-4 text-left transition-colors",
+                    m.onClick && "hover:bg-muted/40",
+                    !m.onClick && "cursor-default",
                   )}
-                  onClick={m.action}
                 >
-                  <CardContent className="p-4">
-                    <div className="flex flex-col gap-3">
-                      <div
-                        className={cn(
-                          "w-9 h-9 rounded-xl flex items-center justify-center",
-                          m.bg,
-                          m.color,
-                        )}
-                      >
-                        <m.icon className="w-4.5 h-4.5" />
-                      </div>
-                      <div>
-                        <p className="text-2xl font-bold tracking-tight text-foreground">
-                          {m.value}
-                        </p>
-                        <p className="text-xs font-medium text-muted-foreground mt-0.5 leading-tight">
-                          {m.title}
-                        </p>
-                      </div>
-                    </div>
-                  </CardContent>
-                </Card>
+                  <m.icon className="mb-3 h-4 w-4 text-muted-foreground" />
+                  <p className="text-2xl font-semibold tabular-nums tracking-tight text-foreground">
+                    {m.value}
+                  </p>
+                  <p className="mt-1 text-xs text-muted-foreground">{m.title}</p>
+                </button>
               ))}
             </div>
 
-            <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-              {/* Recent Activity */}
-              <Card className="lg:col-span-5 shadow-sm border-border/50 bg-card/80 backdrop-blur-sm">
-                <CardHeader className="border-b border-border/50 pb-3">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <CardTitle className="text-base">Recent Activity</CardTitle>
-                      <CardDescription className="mt-0.5 text-xs">Latest messages across channels.</CardDescription>
-                    </div>
-                    <div className="p-1.5 bg-primary/10 rounded-full text-primary">
-                      <Inbox className="w-4 h-4" />
-                    </div>
+            <div className="grid grid-cols-1 gap-6 lg:grid-cols-12">
+              <section className="rounded-xl border border-border bg-card lg:col-span-5">
+                <div className="flex items-center justify-between border-b border-border px-5 py-4">
+                  <div>
+                    <h2 className="text-sm font-semibold text-foreground">Recent activity</h2>
+                    <p className="mt-0.5 text-xs text-muted-foreground">
+                      Latest messages across channels
+                    </p>
                   </div>
-                </CardHeader>
-                <CardContent className="pt-4 px-4 pb-2">
-                  <div className="space-y-3">
-                    {(dashboard?.recentActivity ?? []).length === 0 && (
-                      <div className="flex flex-col items-center justify-center py-8 text-muted-foreground">
-                        <MessageSquare className="w-10 h-10 mb-3 opacity-20" />
-                        <p className="text-sm font-medium">No recent activity</p>
-                      </div>
-                    )}
-                    {(dashboard?.recentActivity ?? []).map((activity) => (
-                      <div
-                        key={activity.id}
-                        className="group flex items-center gap-3 p-2.5 -mx-2 rounded-xl hover:bg-muted/50 transition-colors cursor-pointer"
-                        onClick={() => navigate("/inbox")}
-                      >
-                        <div className="w-9 h-9 rounded-full bg-gradient-to-br from-primary/20 to-primary/5 text-primary flex items-center justify-center font-bold text-xs shadow-sm border border-primary/10 shrink-0">
-                          {activity.initials}
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <div className="flex justify-between items-center mb-0.5">
-                            <p className="text-sm font-semibold text-foreground truncate">
-                              {activity.contactName}
-                            </p>
-                            <div className="flex items-center gap-1.5 shrink-0 ml-2">
-                              {activity.channelType && (
-                                <span className="text-sm" title={activity.channelType}>
-                                  {CHANNEL_ICONS[activity.channelType] ?? "💬"}
-                                </span>
-                              )}
-                              <span className="text-[10px] font-medium text-muted-foreground whitespace-nowrap bg-muted px-1.5 py-0.5 rounded-full">
-                                {formatDistanceToNow(new Date(activity.timestamp), { addSuffix: true })}
-                              </span>
-                            </div>
-                          </div>
-                          <p className="text-xs text-muted-foreground truncate leading-relaxed">
-                            {activity.preview}
-                          </p>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </CardContent>
-              </Card>
-
-              {/* Right column: Tickets by Status + Channel Mix */}
-              <div className="lg:col-span-7 space-y-6">
-                {/* Ticket backlog by status */}
-                <Card className="shadow-sm border-border/50 bg-card/80 backdrop-blur-sm">
-                  <CardHeader className="border-b border-border/50 pb-3">
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <CardTitle className="text-base">Ticket Backlog by Status</CardTitle>
-                        <CardDescription className="mt-0.5 text-xs">
-                          {totalTickets.toLocaleString()} total tickets
-                        </CardDescription>
-                      </div>
-                      <div className="p-1.5 bg-primary/10 rounded-full text-primary">
-                        <TicketIcon className="w-4 h-4" />
-                      </div>
-                    </div>
-                  </CardHeader>
-                  <CardContent className="pt-4">
-                    {totalTickets === 0 ? (
-                      <div className="flex flex-col items-center justify-center py-6 text-muted-foreground">
-                        <CheckCircle2 className="w-8 h-8 mb-2 opacity-20" />
-                        <p className="text-sm">No open tickets</p>
-                      </div>
-                    ) : (
-                      <div className="flex flex-wrap gap-3">
-                        {Object.entries(dashboard?.ticketsByStatus ?? {}).map(([status, count]) => {
-                          const pct = totalTickets ? Math.round((count / totalTickets) * 100) : 0;
-                          return (
-                            <div
-                              key={status}
-                              className="flex-1 min-w-[100px] rounded-xl border border-border/60 p-3 cursor-pointer hover:bg-muted/40 transition-colors"
-                              onClick={() => navigate("/tickets")}
-                            >
-                              <div className="flex items-center gap-2 mb-1.5">
-                                <div className={cn("w-2.5 h-2.5 rounded-full", TICKET_STATUS_COLORS[status] ?? "bg-slate-400")} />
-                                <span className="text-xs font-medium text-muted-foreground">{TICKET_STATUS_TEXT[status] ?? status}</span>
-                              </div>
-                              <p className="text-xl font-bold text-foreground">{count}</p>
-                              <p className="text-[10px] text-muted-foreground">{pct}% of total</p>
-                            </div>
-                          );
-                        })}
-                      </div>
-                    )}
-                  </CardContent>
-                </Card>
-
-                {/* Tickets by Team */}
-                {((dashboard?.ticketsByTeam as any) ?? []).length > 0 && (
-                  <Card className="shadow-sm border-border/50 bg-card/80 backdrop-blur-sm">
-                    <CardHeader className="border-b border-border/50 pb-3">
-                      <CardTitle className="text-base">Tickets by Team</CardTitle>
-                    </CardHeader>
-                    <CardContent className="pt-4">
-                      <div className="space-y-3">
-                        {((dashboard?.ticketsByTeam as any) ?? []).map((team: any) => {
-                          const max = Math.max(...((dashboard?.ticketsByTeam as any) ?? []).map((t: any) => t.count), 1);
-                          const pct = Math.round((team.count / max) * 100);
-                          return (
-                            <div key={team.teamName} className="space-y-1.5">
-                              <div className="flex justify-between text-xs">
-                                <span className="font-medium text-foreground">{team.teamName}</span>
-                                <span className="text-muted-foreground font-medium">{team.count}</span>
-                              </div>
-                              <div className="w-full h-2 bg-muted/60 rounded-full overflow-hidden">
-                                <div
-                                  className="h-full bg-gradient-to-r from-primary/60 to-primary rounded-full transition-all duration-700"
-                                  style={{ width: `${pct}%` }}
-                                />
-                              </div>
-                            </div>
-                          );
-                        })}
-                      </div>
-                    </CardContent>
-                  </Card>
-                )}
-              </div>
-            </div>
-
-            {/* Channel Mix + Aging conversations row */}
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-              {/* Channel Mix */}
-              <Card className="shadow-sm border-border/50 bg-card/80 backdrop-blur-sm">
-                <CardHeader className="border-b border-border/50 pb-3">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <CardTitle className="text-base">Channel Mix</CardTitle>
-                      <CardDescription className="mt-0.5 text-xs">Message volume by channel.</CardDescription>
-                    </div>
-                    <div className="p-1.5 bg-primary/10 rounded-full text-primary">
-                      <Activity className="w-4 h-4" />
-                    </div>
-                  </div>
-                </CardHeader>
-                <CardContent className="pt-4">
-                  {Object.keys(dashboard?.channelDistribution ?? {}).length === 0 ? (
-                    <div className="flex flex-col items-center justify-center h-[120px] text-muted-foreground">
-                      <Activity className="w-8 h-8 mb-2 opacity-20" />
-                      <p className="text-sm">No channel data</p>
+                  <Inbox className="h-4 w-4 text-muted-foreground" />
+                </div>
+                <div className="divide-y divide-border">
+                  {(dashboard?.recentActivity ?? []).length === 0 ? (
+                    <div className="flex flex-col items-center justify-center gap-2 px-5 py-12 text-muted-foreground">
+                      <MessageSquare className="h-7 w-7 opacity-30" />
+                      <p className="text-sm">No recent activity</p>
                     </div>
                   ) : (
-                    <div className="space-y-3">
-                      {Object.entries(dashboard?.channelDistribution ?? {}).map(([channel, count]) => {
-                        const pct = channelTotal ? Math.round((Number(count) / channelTotal) * 100) : 0;
-                        return (
-                          <div key={channel} className="space-y-1.5">
-                            <div className="flex justify-between items-end text-xs">
-                              <span className="flex items-center gap-1.5 font-semibold capitalize text-foreground">
-                                <span>{CHANNEL_ICONS[channel] ?? "💬"}</span>
-                                {channel}
-                              </span>
-                              <span className="text-muted-foreground font-medium">{count as number} · {pct}%</span>
+                    (dashboard?.recentActivity ?? []).map((activity) => {
+                      let when = "";
+                      try {
+                        when = formatDistanceToNow(new Date(activity.timestamp), {
+                          addSuffix: true,
+                        });
+                      } catch {
+                        when = "";
+                      }
+                      return (
+                        <button
+                          key={activity.id}
+                          type="button"
+                          className="flex w-full items-start gap-3 px-5 py-3 text-left hover:bg-muted/30"
+                          onClick={() => navigate("/inbox")}
+                        >
+                          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-muted text-xs font-semibold text-foreground">
+                            {activity.initials || "?"}
+                          </div>
+                          <div className="min-w-0 flex-1">
+                            <div className="flex items-center gap-2">
+                              <p className="truncate text-sm font-medium text-foreground">
+                                {activity.contactName}
+                              </p>
+                              <ChannelMark channel={activity.channelType} />
+                              {when ? (
+                                <span className="ml-auto shrink-0 text-[11px] text-muted-foreground">
+                                  {when}
+                                </span>
+                              ) : null}
                             </div>
-                            <div className="w-full h-2 bg-muted/70 rounded-full overflow-hidden">
+                            <p className="mt-0.5 truncate text-xs text-muted-foreground">
+                              {activity.preview}
+                            </p>
+                          </div>
+                        </button>
+                      );
+                    })
+                  )}
+                </div>
+              </section>
+
+              <div className="space-y-6 lg:col-span-7">
+                <section className="rounded-xl border border-border bg-card">
+                  <div className="flex items-center justify-between border-b border-border px-5 py-4">
+                    <div>
+                      <h2 className="text-sm font-semibold text-foreground">Tickets by status</h2>
+                      <p className="mt-0.5 text-xs text-muted-foreground">
+                        {totalTickets.toLocaleString()} total
+                      </p>
+                    </div>
+                    <TicketIcon className="h-4 w-4 text-muted-foreground" />
+                  </div>
+                  <div className="p-5">
+                    {totalTickets === 0 ? (
+                      <div className="flex flex-col items-center justify-center gap-2 py-8 text-muted-foreground">
+                        <CheckCircle2 className="h-7 w-7 opacity-30" />
+                        <p className="text-sm">No tickets yet</p>
+                      </div>
+                    ) : (
+                      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+                        {Object.entries(dashboard?.ticketsByStatus ?? {}).map(([status, count]) => {
+                          const pct = totalTickets
+                            ? Math.round((count / totalTickets) * 100)
+                            : 0;
+                          return (
+                            <button
+                              key={status}
+                              type="button"
+                              className="rounded-lg border border-border p-3 text-left hover:bg-muted/30"
+                              onClick={() => navigate("/tickets")}
+                            >
+                              <div className="mb-2 flex items-center gap-2">
+                                <span
+                                  className={cn(
+                                    "h-2 w-2 rounded-full",
+                                    TICKET_STATUS_COLORS[status] ?? "bg-slate-400",
+                                  )}
+                                />
+                                <span className="text-xs text-muted-foreground">
+                                  {TICKET_STATUS_TEXT[status] ?? status}
+                                </span>
+                              </div>
+                              <p className="text-xl font-semibold tabular-nums text-foreground">
+                                {count}
+                              </p>
+                              <p className="text-[11px] text-muted-foreground">{pct}%</p>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+                </section>
+
+                {(dashboard?.ticketsByTeam ?? []).length > 0 && (
+                  <section className="rounded-xl border border-border bg-card">
+                    <div className="border-b border-border px-5 py-4">
+                      <h2 className="text-sm font-semibold text-foreground">Tickets by team</h2>
+                    </div>
+                    <div className="space-y-3 p-5">
+                      {(dashboard?.ticketsByTeam ?? []).map((team) => {
+                        const max = Math.max(
+                          ...(dashboard?.ticketsByTeam ?? []).map((t) => t.count),
+                          1,
+                        );
+                        const pct = Math.round((team.count / max) * 100);
+                        return (
+                          <div key={team.teamName} className="space-y-1.5">
+                            <div className="flex justify-between text-xs">
+                              <span className="font-medium text-foreground">{team.teamName}</span>
+                              <span className="tabular-nums text-muted-foreground">
+                                {team.count}
+                              </span>
+                            </div>
+                            <div className="h-1.5 overflow-hidden rounded-full bg-muted">
                               <div
-                                className="h-full bg-gradient-to-r from-primary/60 to-primary rounded-full transition-all duration-1000"
+                                className="h-full rounded-full bg-foreground/70"
                                 style={{ width: `${pct}%` }}
                               />
                             </div>
@@ -337,90 +326,137 @@ export function DashboardPage() {
                         );
                       })}
                     </div>
-                  )}
-                </CardContent>
-              </Card>
+                  </section>
+                )}
+              </div>
+            </div>
 
-              {/* Aging Conversations */}
-              <Card className="shadow-sm border-border/50 bg-card/80 backdrop-blur-sm">
-                <CardHeader className="border-b border-border/50 pb-3">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <CardTitle className="text-base flex items-center gap-2">
-                        <Clock className="w-4 h-4 text-orange-500" />
-                        Aging Conversations
-                      </CardTitle>
-                      <CardDescription className="mt-0.5 text-xs">
-                        Open chats with no reply in the last 24h.
-                      </CardDescription>
-                    </div>
-                    {(dashboard?.agingConversations?.total ?? 0) > 0 && (
-                      <span className="text-xs font-bold text-orange-600 bg-orange-100 dark:bg-orange-900/30 px-2 py-0.5 rounded-full">
-                        {dashboard?.agingConversations?.total} total
-                      </span>
-                    )}
+            <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+              <section className="rounded-xl border border-border bg-card">
+                <div className="flex items-center justify-between border-b border-border px-5 py-4">
+                  <div>
+                    <h2 className="text-sm font-semibold text-foreground">Channel mix</h2>
+                    <p className="mt-0.5 text-xs text-muted-foreground">Message volume by channel</p>
                   </div>
-                </CardHeader>
-                <CardContent className="pt-4">
-                  {(dashboard?.agingConversations?.total ?? 0) === 0 ? (
-                    <div className="flex flex-col items-center justify-center h-[120px] text-muted-foreground">
-                      <CheckCircle2 className="w-8 h-8 mb-2 text-emerald-400 opacity-60" />
-                      <p className="text-sm font-medium">All conversations up to date</p>
+                  <Mail className="h-4 w-4 text-muted-foreground" />
+                </div>
+                <div className="p-5">
+                  {Object.keys(dashboard?.channelDistribution ?? {}).length === 0 ? (
+                    <div className="flex flex-col items-center justify-center gap-2 py-10 text-muted-foreground">
+                      <MessageSquare className="h-7 w-7 opacity-30" />
+                      <p className="text-sm">No channel data yet</p>
                     </div>
                   ) : (
                     <div className="space-y-3">
-                      {/* Bucket summary */}
+                      {Object.entries(dashboard?.channelDistribution ?? {}).map(
+                        ([channel, count]) => {
+                          const pct = channelTotal
+                            ? Math.round((Number(count) / channelTotal) * 100)
+                            : 0;
+                          return (
+                            <div key={channel} className="space-y-1.5">
+                              <div className="flex items-center justify-between text-xs">
+                                <span className="flex items-center gap-2 font-medium text-foreground">
+                                  <ChannelMark channel={channel as ChannelType} />
+                                  {channelLabel(channel)}
+                                </span>
+                                <span className="tabular-nums text-muted-foreground">
+                                  {count as number} · {pct}%
+                                </span>
+                              </div>
+                              <div className="h-1.5 overflow-hidden rounded-full bg-muted">
+                                <div
+                                  className="h-full rounded-full bg-foreground/70"
+                                  style={{ width: `${pct}%` }}
+                                />
+                              </div>
+                            </div>
+                          );
+                        },
+                      )}
+                    </div>
+                  )}
+                </div>
+              </section>
+
+              <section className="rounded-xl border border-border bg-card">
+                <div className="flex items-center justify-between border-b border-border px-5 py-4">
+                  <div>
+                    <h2 className="text-sm font-semibold text-foreground">Aging conversations</h2>
+                    <p className="mt-0.5 text-xs text-muted-foreground">
+                      Unresolved chats waiting over 24 hours
+                    </p>
+                  </div>
+                  {(dashboard?.agingConversations?.total ?? 0) > 0 ? (
+                    <span className="rounded-md bg-muted px-2 py-0.5 text-xs font-medium tabular-nums text-foreground">
+                      {dashboard?.agingConversations?.total}
+                    </span>
+                  ) : (
+                    <Clock className="h-4 w-4 text-muted-foreground" />
+                  )}
+                </div>
+                <div className="p-5">
+                  {(dashboard?.agingConversations?.total ?? 0) === 0 ? (
+                    <div className="flex flex-col items-center justify-center gap-2 py-10 text-muted-foreground">
+                      <CheckCircle2 className="h-7 w-7 opacity-30" />
+                      <p className="text-sm">Nothing aging past 24h</p>
+                    </div>
+                  ) : (
+                    <div className="space-y-4">
                       <div className="grid grid-cols-2 gap-3">
-                        <div className="rounded-lg border border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-900/20 p-3">
-                          <p className="text-xl font-bold text-amber-700 dark:text-amber-400">
+                        <div className="rounded-lg border border-border p-3">
+                          <p className="text-xl font-semibold tabular-nums text-foreground">
                             {dashboard?.agingConversations?.over24h ?? 0}
                           </p>
-                          <p className="text-xs text-amber-600 dark:text-amber-500">24–48h old</p>
+                          <p className="text-xs text-muted-foreground">24–48 hours</p>
                         </div>
-                        <div className="rounded-lg border border-red-200 dark:border-red-800 bg-red-50 dark:bg-red-900/20 p-3">
-                          <p className="text-xl font-bold text-red-700 dark:text-red-400">
+                        <div className="rounded-lg border border-border p-3">
+                          <p className="text-xl font-semibold tabular-nums text-foreground">
                             {dashboard?.agingConversations?.over48h ?? 0}
                           </p>
-                          <p className="text-xs text-red-600 dark:text-red-500">48h+ old</p>
+                          <p className="text-xs text-muted-foreground">Over 48 hours</p>
                         </div>
                       </div>
 
-                      {/* Sample list */}
                       {(dashboard?.agingConversations?.sample ?? []).length > 0 && (
-                        <div className="space-y-1">
+                        <div className="divide-y divide-border rounded-lg border border-border">
                           {(dashboard?.agingConversations?.sample ?? [])
-                            .slice(0, agingExpanded ? undefined : 3)
+                            .slice(0, agingExpanded ? undefined : 4)
                             .map((item) => (
-                              <div
+                              <button
                                 key={item.conversationId}
-                                className="flex items-center justify-between gap-2 px-2 py-1.5 rounded-lg hover:bg-muted/50 cursor-pointer transition-colors"
+                                type="button"
+                                className="flex w-full items-center justify-between gap-2 px-3 py-2.5 text-left hover:bg-muted/30"
                                 onClick={() => navigate("/inbox")}
                               >
-                                <div className="flex items-center gap-2 min-w-0">
-                                  <span className="text-sm">{CHANNEL_ICONS[item.channelType] ?? "💬"}</span>
-                                  <span className="text-xs font-medium text-foreground truncate">
+                                <span className="flex min-w-0 items-center gap-2">
+                                  <ChannelMark channel={item.channelType} />
+                                  <span className="truncate text-xs font-medium text-foreground">
                                     {item.contactName}
                                   </span>
-                                </div>
-                                <span className="text-[10px] font-semibold text-orange-600 dark:text-orange-400 shrink-0 bg-orange-100 dark:bg-orange-900/30 px-1.5 py-0.5 rounded-full">
-                                  {item.ageHours}h ago
                                 </span>
-                              </div>
+                                <span className="shrink-0 text-[11px] tabular-nums text-muted-foreground">
+                                  {item.ageHours}h
+                                </span>
+                              </button>
                             ))}
-                          {(dashboard?.agingConversations?.sample ?? []).length > 3 && (
+                          {(dashboard?.agingConversations?.sample ?? []).length > 4 && (
                             <button
+                              type="button"
                               onClick={() => setAgingExpanded((p) => !p)}
-                              className="text-xs text-primary hover:underline px-2 py-1"
+                              className="w-full px-3 py-2 text-left text-xs font-medium text-foreground hover:bg-muted/30"
                             >
-                              {agingExpanded ? "Show less" : `Show ${(dashboard?.agingConversations?.sample ?? []).length - 3} more`}
+                              {agingExpanded
+                                ? "Show less"
+                                : `Show ${(dashboard?.agingConversations?.sample ?? []).length - 4} more`}
                             </button>
                           )}
                         </div>
                       )}
                     </div>
                   )}
-                </CardContent>
-              </Card>
+                </div>
+              </section>
             </div>
           </>
         )}

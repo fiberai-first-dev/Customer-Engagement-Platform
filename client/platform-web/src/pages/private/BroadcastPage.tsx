@@ -66,7 +66,34 @@ function renderTemplatePreview(template: WhatsAppTemplate, variables: Record<str
   });
 }
 
-function statusBadge(status: BroadcastJob["status"]) {
+function statusBadge(
+  status: BroadcastJob["status"],
+  opts?: { scheduled?: boolean; paused?: boolean; cancelled?: boolean },
+) {
+  if (opts?.cancelled) {
+    return (
+      <span className="inline-flex items-center gap-1.5 rounded-full border border-red-500/20 bg-red-500/10 px-2.5 py-0.5 text-xs font-medium text-red-600 dark:text-red-400">
+        <XIcon className="h-3 w-3" />
+        Cancelled
+      </span>
+    );
+  }
+  if (opts?.paused) {
+    return (
+      <span className="inline-flex items-center gap-1.5 rounded-full border border-amber-500/20 bg-amber-500/10 px-2.5 py-0.5 text-xs font-medium text-amber-700 dark:text-amber-400">
+        <Pause className="h-3 w-3" />
+        Paused
+      </span>
+    );
+  }
+  if (opts?.scheduled && status === "pending") {
+    return (
+      <span className="inline-flex items-center gap-1.5 rounded-full border border-amber-500/20 bg-amber-500/10 px-2.5 py-0.5 text-xs font-medium text-amber-700 dark:text-amber-400">
+        <CalendarClock className="h-3 w-3" />
+        Scheduled
+      </span>
+    );
+  }
   const cfg = {
     pending: {
       label: "Sending",
@@ -93,10 +120,20 @@ function statusBadge(status: BroadcastJob["status"]) {
   const Icon = c.Icon;
   return (
     <span className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-xs font-medium ${c.cls}`}>
-      <Icon className={`h-3 w-3 ${status === "pending" ? "animate-spin" : ""}`} />
+      <Icon className={`h-3 w-3 ${status === "pending" && !opts?.scheduled ? "animate-spin" : ""}`} />
       {c.label}
     </span>
   );
+}
+
+function recipientStatusLabel(r: {
+  status: string;
+  deliveredAt?: string | null;
+}) {
+  if (r.status === "failed") return { label: "Failed", cls: "text-red-600", dot: "bg-red-500" };
+  if (r.status === "sent" || r.status === "delivered" || r.deliveredAt)
+    return { label: "Sent", cls: "text-emerald-600", dot: "bg-emerald-500" };
+  return { label: "Queued", cls: "text-muted-foreground", dot: "bg-muted-foreground/40" };
 }
 
 function WhatsAppBubblePreview({
@@ -116,7 +153,9 @@ function WhatsAppBubblePreview({
       <div className="max-w-[280px]">
         <div className="overflow-hidden rounded-lg rounded-tl-none bg-white shadow-sm dark:bg-[#202c33]">
           {header?.text && (
-            <p className="px-3 pt-2 text-sm font-semibold text-[#111b21] dark:text-[#e9edef]">{header.text}</p>
+            <p className="px-3 pt-2 text-sm font-semibold text-[#111b21] dark:text-[#e9edef]">
+              {header.text}
+            </p>
           )}
           <p className="whitespace-pre-wrap px-3 py-2 text-sm leading-relaxed text-[#111b21] dark:text-[#e9edef]">
             {preview || <span className="italic opacity-50">Fill variables to preview…</span>}
@@ -150,145 +189,187 @@ function WhatsAppBubblePreview({
 function HistoryJobRow({ job }: { job: BroadcastJob }) {
   const [expanded, setExpanded] = useState(false);
   const [noReplyJobId, setNoReplyJobId] = useState<string | null>(null);
-  const deliveredCount = job.recipients.filter(
-    (r) => r.status === "delivered" || r.deliveredAt || r.readAt,
-  ).length;
-  const readCount = job.recipients.filter((r) => r.readAt).length;
+  const sentCount = Math.max(
+    job.succeeded ?? 0,
+    job.recipients.filter((r) => r.status === "sent" || r.status === "delivered" || !!r.deliveredAt)
+      .length,
+  );
 
   const pauseBroadcast = usePauseBroadcast();
   const cancelBroadcast = useCancelBroadcast();
   const { data: noReplyData, isLoading: noReplyLoading } = useBroadcastNoReply(noReplyJobId as string);
 
-  const isScheduled = job.scheduledAt && new Date(job.scheduledAt) > new Date();
+  const isScheduled = Boolean(job.scheduledAt && new Date(job.scheduledAt) > new Date());
   const isPaused = Boolean(job.pausedAt);
   const isCancelled = Boolean(job.cancelledAt);
+  const canControl =
+    job.status === "pending" && !isPaused && !isCancelled;
 
   return (
     <div className="overflow-hidden rounded-xl border border-border bg-card">
-      <button
-        type="button"
-        className="flex w-full items-center justify-between px-5 py-4 text-left transition-colors hover:bg-muted/30"
-        onClick={() => setExpanded((p) => !p)}
-      >
-        <div className="flex min-w-0 items-center gap-4">
-          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-primary/10">
-            {job.status === "pending" && !isPaused ? (
+      <div className="flex items-start gap-3 px-4 py-3.5 sm:items-center sm:px-5">
+        <button
+          type="button"
+          className="flex min-w-0 flex-1 items-start gap-3 text-left sm:items-center"
+          onClick={() => setExpanded((p) => !p)}
+        >
+          <div className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-primary/10 sm:mt-0">
+            {job.status === "pending" && !isPaused && !isScheduled ? (
               <Loader2 className="h-4 w-4 animate-spin text-primary" />
+            ) : isScheduled ? (
+              <CalendarClock className="h-4 w-4 text-amber-600" />
             ) : (
               <Radio className="h-4 w-4 text-primary" />
             )}
           </div>
-          <div className="min-w-0">
-            <p className="truncate font-medium text-foreground">{job.templateName}</p>
-            <p className="text-xs text-muted-foreground">
+          <div className="min-w-0 flex-1">
+            <div className="flex flex-wrap items-center gap-2">
+              <p className="truncate font-medium text-foreground">{job.templateName}</p>
+              {statusBadge(job.status, {
+                scheduled: isScheduled,
+                paused: isPaused,
+                cancelled: isCancelled,
+              })}
+            </div>
+            <p className="mt-0.5 text-xs text-muted-foreground">
               {isScheduled ? (
-                <span className="flex items-center gap-1 text-amber-600">
-                  <CalendarClock className="h-3 w-3" />
-                  Scheduled for {new Date(job.scheduledAt!).toLocaleString()}
+                <span className="text-amber-700 dark:text-amber-400">
+                  Starts {new Date(job.scheduledAt!).toLocaleString()}
+                  {job.recurrence && job.recurrence !== "none"
+                    ? ` · repeats ${job.recurrence}`
+                    : " · one-time"}
                 </span>
               ) : (
-                <>{new Date(job.createdAt).toLocaleString()} · {job.total} recipient{job.total !== 1 ? "s" : ""}</>
+                <>
+                  {new Date(job.createdAt).toLocaleString()} · {job.total} recipient
+                  {job.total !== 1 ? "s" : ""}
+                </>
               )}
             </p>
-          </div>
-        </div>
-        <div className="flex shrink-0 items-center gap-3 sm:gap-4">
-          {isPaused && (
-            <span className="inline-flex items-center gap-1 rounded-full border border-amber-300 bg-amber-50 dark:bg-amber-900/20 px-2 py-0.5 text-xs font-medium text-amber-700 dark:text-amber-400">
-              <Pause className="h-3 w-3" /> Paused
-            </span>
-          )}
-          {isCancelled && (
-            <span className="inline-flex items-center gap-1 rounded-full border border-red-300 bg-red-50 dark:bg-red-900/20 px-2 py-0.5 text-xs font-medium text-red-700 dark:text-red-400">
-              <XIcon className="h-3 w-3" /> Cancelled
-            </span>
-          )}
-          {!isPaused && !isCancelled && statusBadge(job.status)}
-          <div className="hidden items-center gap-3 border-l border-border pl-3 sm:flex">
-            <div className="flex flex-col items-center">
-              <span className="text-xs font-semibold text-emerald-600 dark:text-emerald-400">{job.succeeded}</span>
-              <span className="text-[10px] uppercase tracking-wider text-muted-foreground">Sent</span>
-            </div>
-            <div className="flex flex-col items-center">
-              <span className="text-xs font-semibold text-blue-600 dark:text-blue-400">{deliveredCount}</span>
-              <span className="text-[10px] uppercase tracking-wider text-muted-foreground">Dlvrd</span>
-            </div>
-            <div className="flex flex-col items-center">
-              <span className="text-xs font-semibold text-violet-600 dark:text-violet-400">{readCount}</span>
-              <span className="text-[10px] uppercase tracking-wider text-muted-foreground">Read</span>
-            </div>
-            <div className="flex flex-col items-center">
-              <span className="text-xs font-semibold text-red-600 dark:text-red-400">{job.failed}</span>
-              <span className="text-[10px] uppercase tracking-wider text-muted-foreground">Fail</span>
+            <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-[11px] text-muted-foreground sm:hidden">
+              <span>
+                <strong className="text-emerald-600">{sentCount}</strong> sent
+              </span>
+              <span>
+                <strong className="text-red-600">{job.failed}</strong> failed
+              </span>
             </div>
           </div>
-          {expanded ? <ChevronUp className="h-4 w-4 text-muted-foreground" /> : <ChevronDown className="h-4 w-4 text-muted-foreground" />}
+        </button>
+
+        <div className="flex shrink-0 flex-col items-end gap-2 sm:flex-row sm:items-center sm:gap-3">
+          <div className="hidden items-center gap-3 text-center sm:flex">
+            <div>
+              <p className="text-xs font-semibold tabular-nums text-emerald-600">{sentCount}</p>
+              <p className="text-[10px] uppercase tracking-wide text-muted-foreground">Sent</p>
+            </div>
+            <div>
+              <p className="text-xs font-semibold tabular-nums text-red-600">{job.failed}</p>
+              <p className="text-[10px] uppercase tracking-wide text-muted-foreground">Fail</p>
+            </div>
+          </div>
+
+          {canControl && (
+            <div className="flex items-center gap-1.5">
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="h-8 gap-1.5 px-2.5 text-xs"
+                disabled={pauseBroadcast.isPending}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  void pauseBroadcast
+                    .mutateAsync(job.id)
+                    .catch((err: any) => toast.error(err.message ?? "Pause failed"));
+                }}
+              >
+                <Pause className="h-3 w-3" />
+                Pause
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="h-8 gap-1.5 px-2.5 text-xs text-destructive hover:bg-destructive/10 hover:text-destructive"
+                disabled={cancelBroadcast.isPending}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  void cancelBroadcast
+                    .mutateAsync(job.id)
+                    .catch((err: any) => toast.error(err.message ?? "Cancel failed"));
+                }}
+              >
+                <XIcon className="h-3 w-3" />
+                Cancel
+              </Button>
+            </div>
+          )}
+
+          <button
+            type="button"
+            className="rounded-md p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground"
+            onClick={() => setExpanded((p) => !p)}
+            aria-label={expanded ? "Collapse" : "Expand"}
+          >
+            {expanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+          </button>
         </div>
-      </button>
+      </div>
 
       {expanded && (
         <div className="border-t border-border">
-          {/* Actions */}
-          {(job.status === "pending" && !isPaused && !isCancelled) && (
-            <div className="flex items-center gap-2 px-5 py-3 bg-muted/30">
-              <button
-                type="button"
-                onClick={() => void pauseBroadcast.mutateAsync(job.id).catch((e: any) => toast.error(e.message ?? "Pause failed"))}
-                disabled={pauseBroadcast.isPending}
-                className="inline-flex items-center gap-1.5 rounded-lg border border-amber-300 bg-amber-50 dark:bg-amber-900/20 px-3 py-1.5 text-xs font-medium text-amber-700 dark:text-amber-400 hover:bg-amber-100 transition-colors disabled:opacity-50"
-              >
-                <Pause className="h-3 w-3" /> Pause
-              </button>
-              <button
-                type="button"
-                onClick={() => void cancelBroadcast.mutateAsync(job.id).catch((e: any) => toast.error(e.message ?? "Cancel failed"))}
-                disabled={cancelBroadcast.isPending}
-                className="inline-flex items-center gap-1.5 rounded-lg border border-red-300 bg-red-50 dark:bg-red-900/20 px-3 py-1.5 text-xs font-medium text-red-700 dark:text-red-400 hover:bg-red-100 transition-colors disabled:opacity-50"
-              >
-                <XIcon className="h-3 w-3" /> Cancel
-              </button>
-            </div>
-          )}
-
-          {/* No-reply section */}
           {(job.status === "completed" || job.status === "partial") && (
-            <div className="px-5 py-3 bg-muted/20">
+            <div className="border-b border-border px-4 py-3 sm:px-5">
               {noReplyJobId !== job.id ? (
                 <button
                   type="button"
                   onClick={() => setNoReplyJobId(job.id)}
-                  className="inline-flex items-center gap-1.5 text-xs font-medium text-muted-foreground hover:text-foreground transition-colors"
+                  className="inline-flex items-center gap-1.5 text-xs font-medium text-muted-foreground hover:text-foreground"
                 >
                   <MessageSquareOff className="h-3.5 w-3.5" />
-                  View "Didn't Reply" list
+                  View &quot;Didn&apos;t Reply&quot; list
                 </button>
               ) : (
                 <div className="space-y-2">
                   <div className="flex items-center justify-between">
-                    <p className="text-xs font-semibold text-foreground flex items-center gap-1.5">
+                    <p className="flex items-center gap-1.5 text-xs font-semibold text-foreground">
                       <MessageSquareOff className="h-3.5 w-3.5 text-muted-foreground" />
-                      Didn't Reply
+                      Didn&apos;t Reply
                       {noReplyData && (
-                        <span className="ml-1 rounded-full bg-muted px-1.5 py-0.5 text-[10px] font-semibold">{noReplyData.total}</span>
+                        <span className="ml-1 rounded-full bg-muted px-1.5 py-0.5 text-[10px] font-semibold">
+                          {noReplyData.total}
+                        </span>
                       )}
                     </p>
-                    <button type="button" onClick={() => setNoReplyJobId(null)} className="text-xs text-muted-foreground hover:text-foreground">
+                    <button
+                      type="button"
+                      onClick={() => setNoReplyJobId(null)}
+                      className="text-xs text-muted-foreground hover:text-foreground"
+                    >
                       Close
                     </button>
                   </div>
                   {noReplyLoading ? (
-                    <div className="flex items-center gap-2 py-2 text-xs text-muted-foreground"><Loader2 className="h-3 w-3 animate-spin" /> Loading…</div>
+                    <div className="flex items-center gap-2 py-2 text-xs text-muted-foreground">
+                      <Loader2 className="h-3 w-3 animate-spin" /> Loading…
+                    </div>
                   ) : noReplyData?.contacts.length === 0 ? (
-                    <p className="text-xs text-emerald-600 py-1">All recipients have replied ✓</p>
+                    <p className="py-1 text-xs text-emerald-600">All recipients have replied ✓</p>
                   ) : (
-                    <div className="max-h-48 overflow-y-auto divide-y divide-border rounded-lg border border-border">
+                    <div className="max-h-48 divide-y divide-border overflow-y-auto rounded-lg border border-border">
                       {noReplyData?.contacts.map((c: any) => (
-                        <div key={c.recipientId} className="flex items-center justify-between gap-3 px-3 py-2">
-                          <span className="text-xs truncate text-foreground">{c.customerName || c.customerId}</span>
+                        <div
+                          key={c.recipientId}
+                          className="flex items-center justify-between gap-3 px-3 py-2"
+                        >
+                          <span className="truncate text-xs text-foreground">
+                            {c.customerName || c.customerId}
+                          </span>
                           {c.conversationId && (
                             <a
                               href="/inbox"
-                              className="text-[10px] text-primary hover:underline shrink-0"
+                              className="shrink-0 text-[10px] text-primary hover:underline"
                             >
                               Open Conversation
                             </a>
@@ -302,38 +383,33 @@ function HistoryJobRow({ job }: { job: BroadcastJob }) {
             </div>
           )}
 
-          {/* Recipient details */}
           <div className="max-h-64 divide-y divide-border overflow-y-auto">
             {job.recipients.length === 0 ? (
-              <p className="px-5 py-4 text-sm text-muted-foreground">
-                {job.status === "pending" ? "Recipients updating as messages send…" : "No recipient details"}
+              <p className="px-4 py-4 text-sm text-muted-foreground sm:px-5">
+                {isScheduled
+                  ? "Recipients will be processed when the send time arrives."
+                  : job.status === "pending"
+                    ? "Waiting for recipients…"
+                    : "No recipient details"}
               </p>
             ) : (
               job.recipients.map((r) => {
-                const isDelivered = r.status === "delivered" || !!r.deliveredAt;
-                const isRead = !!r.readAt;
+                const st = recipientStatusLabel(r);
                 return (
-                  <div key={r.id} className="flex items-center gap-3 px-5 py-2.5">
-                    <div
-                      className={`h-2 w-2 shrink-0 rounded-full ${
-                        r.status === "failed"
-                          ? "bg-red-500"
-                          : isRead
-                            ? "bg-violet-500"
-                            : isDelivered
-                              ? "bg-blue-500"
-                              : "bg-emerald-500"
-                      }`}
-                    />
-                    <span className="min-w-0 flex-1 truncate text-sm">{r.customerName || r.customerId}</span>
+                  <div key={r.id} className="flex items-center gap-3 px-4 py-2.5 sm:px-5">
+                    <div className={`h-2 w-2 shrink-0 rounded-full ${st.dot}`} />
+                    <span className="min-w-0 flex-1 truncate text-sm">
+                      {r.customerName || r.customerId}
+                    </span>
                     {r.error && (
-                      <span className="max-w-[180px] truncate text-xs text-red-500" title={r.error}>
+                      <span
+                        className="max-w-[160px] truncate text-xs text-red-500"
+                        title={r.error}
+                      >
                         {r.error}
                       </span>
                     )}
-                    <span className="shrink-0 text-xs font-medium text-muted-foreground">
-                      {r.status === "failed" ? "Failed" : isRead ? "Read" : isDelivered ? "Delivered" : "Sent"}
-                    </span>
+                    <span className={`shrink-0 text-xs font-medium ${st.cls}`}>{st.label}</span>
                   </div>
                 );
               })
@@ -385,8 +461,9 @@ export function BroadcastPage() {
   // Scheduled send
   const [useSchedule, setUseSchedule] = useState(false);
   const [scheduledAt, setScheduledAt] = useState("");
-  // Recurring
-  const [recurrence, setRecurrence] = useState<"none" | "weekly" | "monthly">("none");
+  /** When scheduling: one-shot vs repeating job */
+  const [scheduleMode, setScheduleMode] = useState<"once" | "repeat">("once");
+  const [recurrence, setRecurrence] = useState<"weekly" | "monthly">("weekly");
   const [suppressionDays, setSuppressionDays] = useState<number | "">("");
 
   const [historySearch, setHistorySearch] = useState("");
@@ -508,8 +585,10 @@ export function BroadcastPage() {
         ...(includeTags.length > 0 ? { includeTags } : {}),
         ...(excludeTags.length > 0 ? { excludeTags } : {}),
         ...(useSchedule && scheduledAt ? { scheduledAt: new Date(scheduledAt).toISOString() } : {}),
-        ...(recurrence !== "none" ? { recurrence } : {}),
-        ...(suppressionDays !== "" ? { suppressionDays: Number(suppressionDays) } : {}),
+        ...(useSchedule && scheduleMode === "repeat" ? { recurrence } : { recurrence: "none" }),
+        ...(useSchedule && scheduleMode === "repeat" && suppressionDays !== ""
+          ? { suppressionDays: Number(suppressionDays) }
+          : {}),
       });
       setConfirmOpen(false);
       setSelectedContactIds(new Set());
@@ -517,13 +596,16 @@ export function BroadcastPage() {
       setExcludeTags([]);
       setUseSchedule(false);
       setScheduledAt("");
-      setRecurrence("none");
+      setScheduleMode("once");
+      setRecurrence("weekly");
       setSuppressionDays("");
       setStep(1);
       setActiveTab("history");
       toast.success(
         useSchedule && scheduledAt
-          ? `Broadcast scheduled for ${new Date(scheduledAt).toLocaleString()}`
+          ? scheduleMode === "repeat"
+            ? `Repeating broadcast scheduled (${recurrence}) starting ${new Date(scheduledAt).toLocaleString()}`
+            : `Broadcast scheduled once for ${new Date(scheduledAt).toLocaleString()}`
           : res.status === "pending"
           ? `Broadcast queued for ${res.total} contacts`
           : `Broadcast finished: ${res.succeeded}/${res.total} sent`,
@@ -541,6 +623,11 @@ export function BroadcastPage() {
     setContactSearch("");
     setTemplateSearch("");
     setTagFilter("");
+    setUseSchedule(false);
+    setScheduledAt("");
+    setScheduleMode("once");
+    setRecurrence("weekly");
+    setSuppressionDays("");
     setStep(1);
   };
 
@@ -584,12 +671,40 @@ export function BroadcastPage() {
     <div className="flex h-full flex-1 flex-col overflow-hidden bg-background">
       <ConfirmDialog
         open={confirmOpen}
-        title="Send broadcast?"
+        title={
+          useSchedule
+            ? scheduleMode === "repeat"
+              ? "Schedule repeating broadcast?"
+              : "Schedule one-time broadcast?"
+            : "Send broadcast?"
+        }
         description={
           <>
-            Send <strong>{selectedTemplate?.name}</strong> to{" "}
-            <strong>{selectedContactIds.size}</strong> contact
-            {selectedContactIds.size !== 1 ? "s" : ""}. Meta template messaging charges may apply.
+            {useSchedule && scheduledAt ? (
+              scheduleMode === "repeat" ? (
+                <>
+                  Schedule <strong>{selectedTemplate?.name}</strong> to{" "}
+                  <strong>{selectedContactIds.size}</strong> contact
+                  {selectedContactIds.size !== 1 ? "s" : ""}, first send{" "}
+                  <strong>{new Date(scheduledAt).toLocaleString()}</strong>, then every{" "}
+                  <strong>{recurrence === "weekly" ? "week" : "month"}</strong>.
+                </>
+              ) : (
+                <>
+                  Schedule <strong>{selectedTemplate?.name}</strong> once to{" "}
+                  <strong>{selectedContactIds.size}</strong> contact
+                  {selectedContactIds.size !== 1 ? "s" : ""} on{" "}
+                  <strong>{new Date(scheduledAt).toLocaleString()}</strong>.
+                </>
+              )
+            ) : (
+              <>
+                Send <strong>{selectedTemplate?.name}</strong> to{" "}
+                <strong>{selectedContactIds.size}</strong> contact
+                {selectedContactIds.size !== 1 ? "s" : ""}. Meta template messaging charges may
+                apply.
+              </>
+            )}
           </>
         }
         confirmLabel={sendBroadcast.isPending ? "Sending…" : "Send now"}
@@ -1082,7 +1197,7 @@ export function BroadcastPage() {
                         )}
                       </dl>
 
-                      {/* Scheduled send toggle */}
+                      {/* Scheduled send */}
                       <div className="mt-4 rounded-xl border border-border bg-muted/20 p-4 space-y-3">
                         <label className="flex items-center justify-between cursor-pointer">
                           <span className="flex items-center gap-2 text-sm font-medium">
@@ -1093,7 +1208,17 @@ export function BroadcastPage() {
                             type="button"
                             role="switch"
                             aria-checked={useSchedule}
-                            onClick={() => setUseSchedule((p) => !p)}
+                            onClick={() => {
+                              setUseSchedule((p) => {
+                                const next = !p;
+                                if (!next) {
+                                  setScheduleMode("once");
+                                  setScheduledAt("");
+                                  setSuppressionDays("");
+                                }
+                                return next;
+                              });
+                            }}
                             className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors ${
                               useSchedule ? "bg-primary" : "bg-muted-foreground/30"
                             }`}
@@ -1106,52 +1231,105 @@ export function BroadcastPage() {
                           </button>
                         </label>
                         {useSchedule && (
-                          <div>
-                            <input
-                              type="datetime-local"
-                              value={scheduledAt}
-                              min={new Date(Date.now() + 60_000).toISOString().slice(0, 16)}
-                              onChange={(e) => setScheduledAt(e.target.value)}
-                              className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/20"
-                            />
-                            {scheduledAt && (
-                              <p className="mt-1.5 text-xs text-amber-600">
-                                Will send on {new Date(scheduledAt).toLocaleString()} (server time)
-                              </p>
-                            )}
-
-                            {/* Recurring options (only visible if scheduled) */}
-                            <div className="mt-4 border-t border-border/50 pt-4 space-y-4">
-                              <div className="space-y-1.5">
-                                <label className="text-sm font-medium">Recurrence</label>
-                                <select
-                                  value={recurrence}
-                                  onChange={(e) => setRecurrence(e.target.value as any)}
-                                  className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/20"
+                          <div className="space-y-4">
+                            <div className="space-y-1.5">
+                              <p className="text-sm font-medium">How should it run?</p>
+                              <div className="grid grid-cols-2 gap-2">
+                                <button
+                                  type="button"
+                                  onClick={() => setScheduleMode("once")}
+                                  className={`rounded-lg border px-3 py-2.5 text-left text-sm transition-colors ${
+                                    scheduleMode === "once"
+                                      ? "border-primary bg-primary/5 text-foreground"
+                                      : "border-border bg-background text-muted-foreground hover:bg-muted/40"
+                                  }`}
                                 >
-                                  <option value="none">Does not repeat</option>
-                                  <option value="weekly">Weekly</option>
-                                  <option value="monthly">Monthly</option>
-                                </select>
+                                  <span className="block font-medium text-foreground">Send once</span>
+                                  <span className="mt-0.5 block text-[11px] leading-snug">
+                                    One send at the date and time below
+                                  </span>
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => setScheduleMode("repeat")}
+                                  className={`rounded-lg border px-3 py-2.5 text-left text-sm transition-colors ${
+                                    scheduleMode === "repeat"
+                                      ? "border-primary bg-primary/5 text-foreground"
+                                      : "border-border bg-background text-muted-foreground hover:bg-muted/40"
+                                  }`}
+                                >
+                                  <span className="block font-medium text-foreground">Repeat</span>
+                                  <span className="mt-0.5 block text-[11px] leading-snug">
+                                    First send then weekly or monthly
+                                  </span>
+                                </button>
                               </div>
+                            </div>
 
-                              {recurrence !== "none" && (
+                            <div>
+                              <label className="mb-1.5 block text-sm font-medium">
+                                {scheduleMode === "repeat" ? "First send at" : "Send at"}
+                              </label>
+                              <input
+                                type="datetime-local"
+                                value={scheduledAt}
+                                min={new Date(Date.now() + 60_000).toISOString().slice(0, 16)}
+                                onChange={(e) => setScheduledAt(e.target.value)}
+                                className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/20"
+                              />
+                              {scheduledAt && scheduleMode === "once" && (
+                                <p className="mt-1.5 text-xs text-amber-600">
+                                  Will send once on {new Date(scheduledAt).toLocaleString()} (server
+                                  time)
+                                </p>
+                              )}
+                              {scheduledAt && scheduleMode === "repeat" && (
+                                <p className="mt-1.5 text-xs text-amber-600">
+                                  First send {new Date(scheduledAt).toLocaleString()}, then{" "}
+                                  {recurrence}
+                                </p>
+                              )}
+                            </div>
+
+                            {scheduleMode === "repeat" && (
+                              <div className="space-y-4 border-t border-border/50 pt-4">
                                 <div className="space-y-1.5">
-                                  <label className="text-sm font-medium">Suppression window (days)</label>
+                                  <label className="text-sm font-medium">Repeat every</label>
+                                  <select
+                                    value={recurrence}
+                                    onChange={(e) =>
+                                      setRecurrence(e.target.value as "weekly" | "monthly")
+                                    }
+                                    className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/20"
+                                  >
+                                    <option value="weekly">Week</option>
+                                    <option value="monthly">Month</option>
+                                  </select>
+                                </div>
+
+                                <div className="space-y-1.5">
+                                  <label className="text-sm font-medium">
+                                    Skip if contacted recently (days)
+                                  </label>
                                   <input
                                     type="number"
                                     min="0"
-                                    placeholder="e.g. 14 (Skip if contacted recently)"
+                                    placeholder="Optional — e.g. 14"
                                     value={suppressionDays}
-                                    onChange={(e) => setSuppressionDays(e.target.value ? Number(e.target.value) : "")}
+                                    onChange={(e) =>
+                                      setSuppressionDays(
+                                        e.target.value ? Number(e.target.value) : "",
+                                      )
+                                    }
                                     className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/20"
                                   />
                                   <p className="text-xs text-muted-foreground">
-                                    If a contact received this broadcast within the last N days, they will be skipped.
+                                    On later runs, skip contacts who already got this broadcast
+                                    within that window.
                                   </p>
                                 </div>
-                              )}
-                            </div>
+                              </div>
+                            )}
                           </div>
                         )}
                       </div>
@@ -1171,7 +1349,11 @@ export function BroadcastPage() {
                           onClick={() => setConfirmOpen(true)}
                         >
                           {useSchedule ? <CalendarClock className="h-4 w-4" /> : <Send className="h-4 w-4" />}
-                          {useSchedule ? "Schedule" : "Send"} to {selectedContactIds.size} contact
+                          {useSchedule
+                            ? scheduleMode === "repeat"
+                              ? `Schedule repeating to ${selectedContactIds.size} contact`
+                              : `Schedule once to ${selectedContactIds.size} contact`
+                            : `Send to ${selectedContactIds.size} contact`}
                           {selectedContactIds.size !== 1 ? "s" : ""}
                         </Button>
                       </div>

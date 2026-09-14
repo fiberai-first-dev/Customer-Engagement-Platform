@@ -26,7 +26,8 @@ export function parseConversationId(id: string): ParsedConversationId {
   const parts = id.split(":");
   const customerId = parts[0];
   const channelType = parts[1] as ChannelType;
-  if (!customerId || !["whatsapp", "instagram", "email"].includes(channelType ?? "")) {
+  const allowed: ChannelType[] = ["whatsapp", "instagram", "facebook", "email", "web_chat"];
+  if (!customerId || !allowed.includes(channelType)) {
     throw new Error("invalid conversation id");
   }
 

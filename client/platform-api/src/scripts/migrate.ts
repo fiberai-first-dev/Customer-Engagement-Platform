@@ -170,7 +170,62 @@ async function applyPendingMigrations(prisma: PrismaClient, folders: string[]) {
   }
   if (appliedCount === 0) {
     console.log("[migrate] No pending migrations — schema up to date");
+  } else {
+    console.log(`[migrate] Applied ${appliedCount} pending migration(s)`);
   }
+}
+
+/**
+ * Idempotent safety nets for columns/tables that break the app if missing.
+ * Covers deploys where a migration folder was delayed or partially applied.
+ */
+async function ensureCriticalSchema(prisma: PrismaClient) {
+  const patches: Array<{ name: string; sql: string }> = [
+    {
+      name: "messages.pinned",
+      sql: `ALTER TABLE "messages" ADD COLUMN IF NOT EXISTS "pinned" BOOLEAN NOT NULL DEFAULT false`,
+    },
+    {
+      name: "customers.custom_fields",
+      sql: `ALTER TABLE "customers" ADD COLUMN IF NOT EXISTS "custom_fields" JSONB`,
+    },
+  ];
+
+  for (const patch of patches) {
+    try {
+      await prisma.$executeRawUnsafe(patch.sql);
+    } catch (err) {
+      // Table may not exist yet on a brand-new DB before base migrations — ignore.
+      console.warn(
+        `[migrate] safety net skipped (${patch.name}):`,
+        err instanceof Error ? err.message : err,
+      );
+    }
+  }
+
+  // conversation_pins / handover_notes — create if missing (same as latest migration)
+  try {
+    await prisma.$executeRawUnsafe(`
+      CREATE TABLE IF NOT EXISTS "conversation_pins" (
+        "id" TEXT NOT NULL,
+        "user_id" TEXT NOT NULL,
+        "conversation_id" TEXT NOT NULL,
+        "pinned_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        CONSTRAINT "conversation_pins_pkey" PRIMARY KEY ("id")
+      )
+    `);
+    await prisma.$executeRawUnsafe(`
+      CREATE UNIQUE INDEX IF NOT EXISTS "conversation_pins_user_id_conversation_id_key"
+        ON "conversation_pins"("user_id", "conversation_id")
+    `);
+  } catch (err) {
+    console.warn(
+      "[migrate] safety net skipped (conversation_pins):",
+      err instanceof Error ? err.message : err,
+    );
+  }
+
+  console.log("[migrate] Critical schema checks complete");
 }
 
 function redactDbHost(url: string): string {
@@ -187,6 +242,7 @@ export async function runDatabaseMigrations(): Promise<void> {
   process.env.PLATFORM_DATABASE_URL = databaseUrl;
   process.env.DATABASE_URL = databaseUrl;
 
+  console.log("[migrate] Auto-migrate on API startup");
   console.log(`[migrate] migrations dir: ${migrationsDir}`);
   console.log(`[migrate] connecting → ${redactDbHost(databaseUrl)}`);
 
@@ -211,6 +267,7 @@ export async function runDatabaseMigrations(): Promise<void> {
     );
 
     await applyPendingMigrations(prisma, folders);
+    await ensureCriticalSchema(prisma);
   } finally {
     await prisma.$disconnect();
   }
