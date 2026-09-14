@@ -413,41 +413,35 @@ function WebChatSetupModal({ open, onClose }: { open: boolean; onClose: () => vo
                 <div>
                   <label className="text-sm font-medium">Authorized domains</label>
                   <p className="mt-0.5 text-xs text-muted-foreground">
-                    Only these sites can load the widget. CEP preview is always allowed.
+                    Sites allowed to load the widget. CEP preview is always allowed.
                   </p>
                 </div>
 
-                <div className="overflow-hidden rounded-lg border border-border">
-                  {domains.length === 0 ? (
-                    <p className="px-3 py-6 text-center text-sm text-muted-foreground">
-                      No domains yet. Add your website below.
-                    </p>
-                  ) : (
-                    <ul className="divide-y divide-border">
-                      {domains.map((origin) => (
-                        <li
-                          key={origin}
-                          className="flex items-center gap-3 px-3 py-2.5"
+                {domains.length > 0 && (
+                  <ul className="overflow-hidden rounded-lg border border-border divide-y divide-border">
+                    {domains.map((origin) => (
+                      <li
+                        key={origin}
+                        className="flex items-center gap-3 px-3 py-2.5"
+                      >
+                        <span className="min-w-0 flex-1 truncate font-mono text-xs text-foreground">
+                          {origin}
+                        </span>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon"
+                          className="h-8 w-8 shrink-0 text-muted-foreground hover:text-destructive"
+                          disabled={busy}
+                          title="Remove domain"
+                          onClick={() => removeDomain(origin)}
                         >
-                          <span className="min-w-0 flex-1 truncate font-mono text-xs text-foreground">
-                            {origin}
-                          </span>
-                          <Button
-                            type="button"
-                            variant="ghost"
-                            size="icon"
-                            className="h-8 w-8 shrink-0 text-muted-foreground hover:text-destructive"
-                            disabled={busy}
-                            title="Remove domain"
-                            onClick={() => removeDomain(origin)}
-                          >
-                            <Trash2 className="h-3.5 w-3.5" />
-                          </Button>
-                        </li>
-                      ))}
-                    </ul>
-                  )}
-                </div>
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </Button>
+                      </li>
+                    ))}
+                  </ul>
+                )}
 
                 <div className="flex gap-2">
                   <Input
@@ -459,7 +453,7 @@ function WebChatSetupModal({ open, onClose }: { open: boolean; onClose: () => vo
                     onKeyDown={(e) => {
                       if (e.key === "Enter") {
                         e.preventDefault();
-                        addDomain();
+                        if (newDomain.trim()) addDomain();
                       }
                     }}
                   />

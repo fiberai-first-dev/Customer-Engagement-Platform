@@ -16,8 +16,6 @@ type Props = {
   channelFilter?: "all" | ChannelType;
   /** Optimistically cleared unread (contact + channel scope). */
   readScopeKeys?: ReadonlySet<string>;
-  /** First-load placeholder rows instead of a blank spinner. */
-  loading?: boolean;
 };
 
 export function listReadScopeKey(
@@ -25,34 +23,6 @@ export function listReadScopeKey(
   channelFilter: "all" | ChannelType,
 ): string {
   return `${contactId}:${channelFilter}`;
-}
-
-function ConversationListSkeleton() {
-  return (
-    <div className="flex-1 overflow-hidden" aria-busy="true" aria-label="Loading conversations">
-      {Array.from({ length: 8 }).map((_, i) => (
-        <div
-          key={i}
-          className="flex items-center gap-2 border-b border-border px-3 py-2.5"
-        >
-          <div className="h-8 w-8 shrink-0 animate-pulse rounded-full bg-muted" />
-          <div className="min-w-0 flex-1 space-y-1.5">
-            <div className="flex items-center justify-between gap-2">
-              <div
-                className="h-3 animate-pulse rounded bg-muted"
-                style={{ width: `${46 + (i % 3) * 12}%` }}
-              />
-              <div className="h-2.5 w-8 shrink-0 animate-pulse rounded bg-muted" />
-            </div>
-            <div
-              className="h-2.5 animate-pulse rounded bg-muted/70"
-              style={{ width: `${58 + (i % 4) * 8}%` }}
-            />
-          </div>
-        </div>
-      ))}
-    </div>
-  );
 }
 
 function contactHasUnread(
@@ -102,12 +72,7 @@ export function ConversationList({
   emptyHint,
   channelFilter = "all",
   readScopeKeys,
-  loading = false,
 }: Props) {
-  if (loading) {
-    return <ConversationListSkeleton />;
-  }
-
   if (conversations.length === 0) {
     return (
       <div className="flex flex-1 flex-col items-center justify-center gap-2 p-8 text-center">

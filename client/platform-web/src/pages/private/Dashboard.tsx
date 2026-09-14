@@ -10,9 +10,8 @@ import {
   UserX,
   MessagesSquare,
   Mail,
-  AlertCircle,
 } from "lucide-react";
-import { useDashboardMetrics, useFeatureFlag, type ChannelType } from "../../api";
+import { useDashboardMetrics, type ChannelType } from "../../api";
 import { formatDistanceToNow } from "date-fns";
 import { cn } from "../../utils/utils";
 import { useNavigate } from "react-router-dom";
@@ -75,22 +74,9 @@ const TICKET_STATUS_TEXT: Record<string, string> = {
 };
 
 export function DashboardPage() {
-  const { data: dashFlag, isFetched: flagFetched } = useFeatureFlag("dashboard_enabled");
   const { data: dashboard, isLoading, isError, error } = useDashboardMetrics();
   const navigate = useNavigate();
   const [agingExpanded, setAgingExpanded] = useState(false);
-
-  if (flagFetched && dashFlag?.enabled === false) {
-    return (
-      <div className="flex h-full flex-1 flex-col items-center justify-center gap-3 bg-background px-6 text-center">
-        <AlertCircle className="h-8 w-8 text-muted-foreground" />
-        <h1 className="text-lg font-semibold text-foreground">Dashboard disabled</h1>
-        <p className="max-w-sm text-sm text-muted-foreground">
-          Ask an admin to enable the dashboard feature for this workspace.
-        </p>
-      </div>
-    );
-  }
 
   const totalTickets = Object.values(dashboard?.ticketsByStatus ?? {}).reduce(
     (a, b) => a + b,

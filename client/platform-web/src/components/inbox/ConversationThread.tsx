@@ -579,10 +579,7 @@ export function ConversationThread({
     activeTab === "email" &&
     (composingNewEmail || selectedConversation?.id.endsWith(":email:new"));
   const showChatMenu =
-    Boolean(selectedConversation) &&
-    !selecting &&
-    !isNewEmailCompose &&
-    (Boolean(onDeleteMessages && hasMessages) || Boolean(onClearChat));
+    Boolean(selectedConversation) && !selecting && !isNewEmailCompose;
 
   useEffect(() => {
     setPendingFile(null);
@@ -740,15 +737,14 @@ export function ConversationThread({
     <div className="flex h-full min-w-0 flex-1 flex-col bg-background">
       <ConfirmDialog
         open={blockConfirmOpen}
-        title="Block this customer?"
+        title="Block contact?"
         description={
           <>
-            Incoming messages from this customer will be ignored on{" "}
-            <strong>all channels</strong> (WhatsApp, Instagram, Facebook, Email, Web
-            Chat). You can unblock them later from Contacts → Blocked.
+            New messages from this contact will no longer appear in your inbox.
+            You can unblock them anytime from Contacts → Blocked.
           </>
         }
-        confirmLabel="Block customer"
+        confirmLabel="Block"
         cancelLabel="Cancel"
         destructive
         confirming={blockCustomer.isPending}
@@ -762,11 +758,11 @@ export function ConversationThread({
             { customerId },
             {
               onSuccess: () => {
-                toast.success("Customer blocked");
+                toast.success("Contact blocked");
                 setBlockConfirmOpen(false);
               },
               onError: (err) => {
-                toast.error(err.message || "Failed to block customer");
+                toast.error(err.message || "Failed to block contact");
               },
             },
           );
@@ -787,29 +783,6 @@ export function ConversationThread({
         </div>
 
         <div className="flex shrink-0 items-center gap-1.5">
-          {selectedConversation && (
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() =>
-                toggleContactPin.mutate(selectedConversation.id, {
-                  onSuccess: (res) =>
-                    toast.success(res.pinned ? "Contact pinned" : "Contact unpinned"),
-                  onError: (err) => toast.error(err.message || "Could not update pin"),
-                })
-              }
-              disabled={toggleContactPin.isPending}
-              className="gap-2"
-              title={selectedConversation.pinned ? "Unpin contact" : "Pin contact to top"}
-            >
-              <Pin
-                className={cn(
-                  "h-4 w-4",
-                  selectedConversation.pinned && "fill-primary text-primary",
-                )}
-              />
-            </Button>
-          )}
           {selectedConversation && needsAttentionHere && !selecting && (
             <Button
               variant="outline"
@@ -887,6 +860,31 @@ export function ConversationThread({
                   role="menu"
                   className="absolute right-0 top-full z-30 mt-1 w-52 overflow-hidden rounded-lg border border-border bg-card py-1 shadow-lg"
                 >
+                  {selectedConversation && (
+                    <button
+                      type="button"
+                      role="menuitem"
+                      className="flex w-full items-center gap-2.5 px-3 py-2.5 text-left text-sm text-foreground hover:bg-muted"
+                      disabled={toggleContactPin.isPending}
+                      onClick={() => {
+                        setMenuOpen(false);
+                        toggleContactPin.mutate(selectedConversation.id, {
+                          onSuccess: (res) =>
+                            toast.success(res.pinned ? "Pinned to top" : "Unpinned"),
+                          onError: (err) =>
+                            toast.error(err.message || "Could not update pin"),
+                        });
+                      }}
+                    >
+                      <Pin
+                        className={cn(
+                          "h-4 w-4 text-muted-foreground",
+                          selectedConversation.pinned && "fill-primary text-primary",
+                        )}
+                      />
+                      {selectedConversation.pinned ? "Unpin contact" : "Pin contact"}
+                    </button>
+                  )}
                   {isAdmin && onDeleteMessages && hasMessages && (
                     <button
                       type="button"
@@ -928,7 +926,7 @@ export function ConversationThread({
                       }}
                     >
                       <Ban className="h-4 w-4" />
-                      Block customer
+                      Block contact
                     </button>
                   )}
                   {onClearChat && isAdmin && (

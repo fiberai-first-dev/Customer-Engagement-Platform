@@ -713,46 +713,46 @@ export function BroadcastPage() {
         onCancel={() => setConfirmOpen(false)}
       />
 
-      <div className="mx-auto flex w-full max-w-6xl flex-1 flex-col overflow-hidden px-6 pt-8 sm:px-8">
-        <div className="flex flex-wrap items-start justify-between gap-4 shrink-0">
-          <div>
-            <h1 className="text-lg font-semibold text-foreground leading-tight">Broadcast</h1>
-            <p className="text-xs text-muted-foreground">
-              Send an approved WhatsApp template to many contacts at once.
-            </p>
-          </div>
-          <div className="flex rounded-xl bg-muted/40 p-1">
-            <button
-              type="button"
-              onClick={() => setActiveTab("new")}
-              className={`flex items-center gap-1.5 rounded-lg px-4 py-1.5 text-sm font-medium transition-all ${
-                activeTab === "new"
-                  ? "bg-background text-foreground shadow-sm"
-                  : "text-muted-foreground hover:text-foreground"
-              }`}
-            >
-              <Send className="h-3.5 w-3.5" />
-              New
-            </button>
-            <button
-              type="button"
-              onClick={() => setActiveTab("history")}
-              className={`flex items-center gap-1.5 rounded-lg px-4 py-1.5 text-sm font-medium transition-all ${
-                activeTab === "history"
-                  ? "bg-background text-foreground shadow-sm"
-                  : "text-muted-foreground hover:text-foreground"
-              }`}
-            >
-              <BarChart3 className="h-3.5 w-3.5" />
-              History
-              {broadcastJobs.length > 0 && (
-                <span className="ml-0.5 text-xs opacity-60">{broadcastJobs.length}</span>
-              )}
-            </button>
-          </div>
+      <div className="flex shrink-0 flex-wrap items-start justify-between gap-4 border-b border-border bg-card/50 px-6 py-6 sm:px-8">
+        <div>
+          <h1 className="text-lg font-semibold leading-tight text-foreground">Broadcast</h1>
+          <p className="text-xs text-muted-foreground">
+            Send WhatsApp templates to multiple contacts.
+          </p>
         </div>
+        <div className="flex rounded-xl bg-muted/40 p-1">
+          <button
+            type="button"
+            onClick={() => setActiveTab("new")}
+            className={`flex items-center gap-1.5 rounded-lg px-4 py-1.5 text-sm font-medium transition-all ${
+              activeTab === "new"
+                ? "bg-background text-foreground shadow-sm"
+                : "text-muted-foreground hover:text-foreground"
+            }`}
+          >
+            <Send className="h-3.5 w-3.5" />
+            New
+          </button>
+          <button
+            type="button"
+            onClick={() => setActiveTab("history")}
+            className={`flex items-center gap-1.5 rounded-lg px-4 py-1.5 text-sm font-medium transition-all ${
+              activeTab === "history"
+                ? "bg-background text-foreground shadow-sm"
+                : "text-muted-foreground hover:text-foreground"
+            }`}
+          >
+            <BarChart3 className="h-3.5 w-3.5" />
+            History
+            {broadcastJobs.length > 0 && (
+              <span className="ml-0.5 text-xs opacity-60">{broadcastJobs.length}</span>
+            )}
+          </button>
+        </div>
+      </div>
 
-        <div className="mt-6 min-h-0 flex-1 overflow-y-auto pb-8">
+      <div className="min-h-0 flex-1 overflow-y-auto px-6 py-6 sm:px-8">
+        <div className="pb-8">
           {activeTab === "new" && (
             <div className="space-y-6">
               {/* Stepper */}

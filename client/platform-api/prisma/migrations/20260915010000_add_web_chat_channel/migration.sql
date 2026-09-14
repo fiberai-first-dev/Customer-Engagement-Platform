@@ -1,3 +1,6 @@
+-- Ensure ChannelType includes web_chat before channel_config / inbox rows use it.
+ALTER TYPE "ChannelType" ADD VALUE IF NOT EXISTS 'web_chat';
+
 -- CreateTable
 CREATE TABLE IF NOT EXISTS "web_chat_channel" (
     "id" TEXT NOT NULL,

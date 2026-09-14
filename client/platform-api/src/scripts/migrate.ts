@@ -180,6 +180,18 @@ async function applyPendingMigrations(prisma: PrismaClient, folders: string[]) {
  * Covers deploys where a migration folder was delayed or partially applied.
  */
 async function ensureCriticalSchema(prisma: PrismaClient) {
+  // Enum value must exist before any query uses channelType: "web_chat"
+  try {
+    await prisma.$executeRawUnsafe(
+      `ALTER TYPE "ChannelType" ADD VALUE IF NOT EXISTS 'web_chat'`,
+    );
+  } catch (err) {
+    console.warn(
+      "[migrate] safety net skipped (ChannelType.web_chat):",
+      err instanceof Error ? err.message : err,
+    );
+  }
+
   const patches: Array<{ name: string; sql: string }> = [
     {
       name: "messages.pinned",

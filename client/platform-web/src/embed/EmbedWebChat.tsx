@@ -5,7 +5,7 @@ export type EmbedWebChatProps = {
   apiBase: string;
   /** Header title */
   title?: string;
-  /** Accent color */
+  /** Accent color override (defaults to FyBud lavender) */
   color?: string;
   /** localStorage namespace so multiple tenants on one browser don't collide */
   storageKey?: string;
@@ -18,7 +18,23 @@ type ChatMessage = {
   createdAt: string;
 };
 
-const DEFAULT_COLOR = "#0f766e";
+/** FyBud portfolio palette — navy + lavender */
+const FYBUD = {
+  navy: "#12122b",
+  navyDeep: "#0a0918",
+  navyMid: "#1c1b35",
+  accent: "#8b7df0",
+  accentLight: "#b8a7f5",
+  accentDim: "#7c66d9",
+  accentDeep: "#5c4db5",
+  accentSurface: "#ebe8f8",
+  offWhite: "#f6f5fb",
+  muted: "#6f6a86",
+  border: "#e6e2f0",
+  ink: "#12122b",
+} as const;
+
+const DEFAULT_COLOR = FYBUD.accent;
 
 function normalizeApiBase(raw: string) {
   return raw.replace(/\/$/, "");
@@ -27,6 +43,26 @@ function normalizeApiBase(raw: string) {
 function isValidWhatsApp(raw: string) {
   const digits = raw.replace(/\D/g, "");
   return digits.length >= 10 && digits.length <= 15;
+}
+
+function FyBudMark({ size = 18 }: { size?: number }) {
+  return (
+    <span
+      style={{
+        fontFamily: '"Space Grotesk", ui-sans-serif, system-ui, sans-serif',
+        fontWeight: 700,
+        fontSize: size,
+        letterSpacing: "-0.04em",
+        lineHeight: 1,
+        display: "inline-flex",
+        alignItems: "baseline",
+      }}
+      aria-label="FyBud"
+    >
+      <span style={{ color: "#fff" }}>Fy</span>
+      <span className="cep-wc-grad-text">Bud</span>
+    </span>
+  );
 }
 
 export function EmbedWebChat({
@@ -157,16 +193,36 @@ export function EmbedWebChat({
 
   const cssVars = {
     ["--cep-wc-color" as string]: color,
+    ["--cep-wc-navy" as string]: FYBUD.navy,
+    ["--cep-wc-accent" as string]: color,
+    ["--cep-wc-accent-light" as string]: FYBUD.accentLight,
   } as CSSProperties;
+
+  const primaryBtn: CSSProperties = {
+    ...primaryBtnStyle,
+    background: `linear-gradient(135deg, ${FYBUD.accentDeep} 0%, ${color} 50%, ${FYBUD.accentLight} 100%)`,
+    backgroundSize: "200% 200%",
+  };
 
   return (
     <div style={{ ...rootStyle, ...cssVars }} data-cep-webchat>
+      <style>{WIDGET_CSS}</style>
       {open ? (
         <div style={panelStyle}>
           <div style={headerStyle}>
-            <div>
-              <div style={{ fontWeight: 600, fontSize: 15 }}>{title}</div>
-              <div style={{ fontSize: 11, opacity: 0.85, marginTop: 2 }}>
+            <div style={{ minWidth: 0 }}>
+              <FyBudMark size={20} />
+              <div
+                style={{
+                  fontWeight: 600,
+                  fontSize: 13,
+                  marginTop: 8,
+                  color: "rgba(246, 245, 251, 0.92)",
+                }}
+              >
+                {title}
+              </div>
+              <div style={{ fontSize: 11, opacity: 0.72, marginTop: 2, color: FYBUD.accentLight }}>
                 We typically reply within minutes
               </div>
             </div>
@@ -182,7 +238,7 @@ export function EmbedWebChat({
 
           {!externalId ? (
             <div style={formWrapStyle}>
-              <p style={{ margin: 0, fontSize: 13, color: "#475569", lineHeight: 1.45 }}>
+              <p style={{ margin: 0, fontSize: 13, color: FYBUD.muted, lineHeight: 1.5 }}>
                 Enter your name and WhatsApp number so we can help you in one place —
                 even if you message us on WhatsApp later.
               </p>
@@ -210,9 +266,10 @@ export function EmbedWebChat({
               {formError && <p style={errorStyle}>{formError}</p>}
               <button
                 type="button"
+                className="cep-wc-btn"
                 onClick={() => void startSession()}
                 disabled={booting}
-                style={primaryBtnStyle}
+                style={{ ...primaryBtn, opacity: booting ? 0.7 : 1 }}
               >
                 {booting ? "Connecting…" : "Start chat"}
               </button>
@@ -221,7 +278,14 @@ export function EmbedWebChat({
             <>
               <div style={messagesStyle}>
                 {messages.length === 0 && (
-                  <p style={{ textAlign: "center", fontSize: 12, color: "#94a3b8", marginTop: 24 }}>
+                  <p
+                    style={{
+                      textAlign: "center",
+                      fontSize: 12,
+                      color: FYBUD.muted,
+                      marginTop: 24,
+                    }}
+                  >
                     Say hello — send your first message.
                   </p>
                 )}
@@ -238,9 +302,14 @@ export function EmbedWebChat({
                       <div
                         style={{
                           ...bubbleStyle,
-                          background: isVisitor ? color : "#fff",
-                          color: isVisitor ? "#fff" : "#0f172a",
-                          border: isVisitor ? "none" : "1px solid #e2e8f0",
+                          background: isVisitor
+                            ? `linear-gradient(135deg, ${FYBUD.accentDeep}, ${color})`
+                            : "#fff",
+                          color: isVisitor ? "#fff" : FYBUD.ink,
+                          border: isVisitor ? "none" : `1px solid ${FYBUD.border}`,
+                          boxShadow: isVisitor
+                            ? "0 8px 20px -10px rgba(92, 77, 181, 0.55)"
+                            : "none",
                         }}
                       >
                         {msg.content}
@@ -259,11 +328,12 @@ export function EmbedWebChat({
                 />
                 <button
                   type="submit"
+                  className="cep-wc-btn"
                   disabled={!input.trim() || sending}
                   style={{
-                    ...primaryBtnStyle,
+                    ...primaryBtn,
                     width: "auto",
-                    padding: "10px 14px",
+                    padding: "10px 16px",
                     opacity: !input.trim() || sending ? 0.5 : 1,
                   }}
                 >
@@ -277,6 +347,7 @@ export function EmbedWebChat({
         <button
           type="button"
           aria-label="Open chat"
+          className="cep-wc-fab"
           onClick={() => setOpen(true)}
           style={fabStyle}
         >
@@ -295,10 +366,56 @@ export function EmbedWebChat({
   );
 }
 
+/** Scoped CSS — portfolio GradientText sweep + FAB shimmer (no framer-motion in embed). */
+const WIDGET_CSS = `
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Space+Grotesk:wght@600;700&display=swap');
+
+@keyframes cep-wc-grad-shift {
+  0% { background-position: 0% center; }
+  100% { background-position: 200% center; }
+}
+@keyframes cep-wc-fab-shift {
+  0% { background-position: 0% 50%; }
+  50% { background-position: 100% 50%; }
+  100% { background-position: 0% 50%; }
+}
+@keyframes cep-wc-glow {
+  0%, 100% { box-shadow: 0 12px 32px -8px rgba(92, 77, 181, 0.55), 0 0 0 0 rgba(184, 167, 245, 0.35); }
+  50% { box-shadow: 0 16px 40px -6px rgba(139, 125, 240, 0.7), 0 0 0 6px rgba(184, 167, 245, 0.18); }
+}
+
+[data-cep-webchat] .cep-wc-grad-text {
+  display: inline-block;
+  background: linear-gradient(110deg, #b8a7f5 0%, #ffffff 45%, #8b7df0 70%, #b8a7f5 100%);
+  background-size: 200% auto;
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  -webkit-text-fill-color: transparent;
+  animation: cep-wc-grad-shift 4.5s linear infinite;
+}
+
+[data-cep-webchat] .cep-wc-fab {
+  background: linear-gradient(135deg, #5c4db5 0%, #8b7df0 40%, #b8a7f5 70%, #8b7df0 100%) !important;
+  background-size: 220% 220% !important;
+  animation: cep-wc-fab-shift 5s ease infinite, cep-wc-glow 3.2s ease-in-out infinite;
+}
+
+[data-cep-webchat] .cep-wc-btn:hover:not(:disabled) {
+  filter: brightness(1.06);
+}
+[data-cep-webchat] .cep-wc-btn:disabled {
+  cursor: not-allowed;
+}
+[data-cep-webchat] input:focus {
+  border-color: #8b7df0 !important;
+  box-shadow: 0 0 0 3px rgba(139, 125, 240, 0.22);
+}
+`;
+
 const rootStyle: CSSProperties = {
   all: "initial",
-  fontFamily:
-    'ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif',
+  fontFamily: 'Inter, ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif',
   position: "fixed",
   right: 20,
   bottom: 20,
@@ -312,12 +429,10 @@ const fabStyle: CSSProperties = {
   borderRadius: 999,
   border: "none",
   cursor: "pointer",
-  background: "var(--cep-wc-color, #0f766e)",
   color: "#fff",
   display: "flex",
   alignItems: "center",
   justifyContent: "center",
-  boxShadow: "0 10px 30px rgba(15, 23, 42, 0.25)",
 };
 
 const panelStyle: CSSProperties = {
@@ -325,19 +440,19 @@ const panelStyle: CSSProperties = {
   maxWidth: "calc(100vw - 24px)",
   height: 520,
   maxHeight: "calc(100vh - 40px)",
-  background: "#fff",
-  borderRadius: 16,
+  background: FYBUD.offWhite,
+  borderRadius: 18,
   overflow: "hidden",
   display: "flex",
   flexDirection: "column",
-  boxShadow: "0 20px 50px rgba(15, 23, 42, 0.28)",
-  border: "1px solid #e2e8f0",
+  boxShadow: "0 32px 80px -36px rgba(18, 18, 43, 0.45)",
+  border: `1px solid ${FYBUD.border}`,
 };
 
 const headerStyle: CSSProperties = {
-  background: "var(--cep-wc-color, #0f766e)",
+  background: `radial-gradient(ellipse 90% 120% at 10% -20%, rgba(184, 167, 245, 0.35), transparent 55%), linear-gradient(160deg, ${FYBUD.navyDeep} 0%, ${FYBUD.navy} 55%, ${FYBUD.navyMid} 100%)`,
   color: "#fff",
-  padding: "14px 16px",
+  padding: "16px 18px",
   display: "flex",
   alignItems: "flex-start",
   justifyContent: "space-between",
@@ -345,23 +460,24 @@ const headerStyle: CSSProperties = {
 };
 
 const iconBtnStyle: CSSProperties = {
-  background: "transparent",
-  border: "none",
+  background: "rgba(255,255,255,0.08)",
+  border: "1px solid rgba(255,255,255,0.12)",
+  borderRadius: 999,
   color: "#fff",
   cursor: "pointer",
-  fontSize: 16,
+  fontSize: 14,
   lineHeight: 1,
-  padding: 4,
-  opacity: 0.9,
+  padding: "6px 8px",
+  opacity: 0.95,
 };
 
 const formWrapStyle: CSSProperties = {
-  padding: 16,
+  padding: 18,
   display: "flex",
   flexDirection: "column",
   gap: 12,
   flex: 1,
-  background: "#f8fafc",
+  background: FYBUD.offWhite,
 };
 
 const labelStyle: CSSProperties = {
@@ -370,42 +486,44 @@ const labelStyle: CSSProperties = {
   gap: 6,
   fontSize: 12,
   fontWeight: 600,
-  color: "#334155",
+  color: FYBUD.ink,
 };
 
 const inputStyle: CSSProperties = {
-  border: "1px solid #cbd5e1",
+  border: `1px solid ${FYBUD.border}`,
   borderRadius: 10,
   padding: "10px 12px",
   fontSize: 14,
   outline: "none",
   background: "#fff",
-  color: "#0f172a",
+  color: FYBUD.ink,
+  fontFamily: "inherit",
 };
 
 const primaryBtnStyle: CSSProperties = {
   border: "none",
   borderRadius: 10,
   padding: "12px 14px",
-  background: "var(--cep-wc-color, #0f766e)",
   color: "#fff",
   fontWeight: 600,
   fontSize: 14,
   cursor: "pointer",
   width: "100%",
+  fontFamily: "inherit",
+  boxShadow: "0 12px 28px -12px rgba(92, 77, 181, 0.65)",
 };
 
 const errorStyle: CSSProperties = {
   margin: 0,
   fontSize: 12,
-  color: "#b91c1c",
+  color: "#b42318",
 };
 
 const messagesStyle: CSSProperties = {
   flex: 1,
   overflowY: "auto",
   padding: 16,
-  background: "#f1f5f9",
+  background: `linear-gradient(180deg, ${FYBUD.accentSurface} 0%, ${FYBUD.offWhite} 40%)`,
   display: "flex",
   flexDirection: "column",
   gap: 10,
@@ -425,6 +543,6 @@ const composerStyle: CSSProperties = {
   display: "flex",
   gap: 8,
   padding: 12,
-  borderTop: "1px solid #e2e8f0",
+  borderTop: `1px solid ${FYBUD.border}`,
   background: "#fff",
 };

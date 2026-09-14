@@ -159,7 +159,7 @@ export const emailChannelMedia: ChannelMediaHandler = {
 
     const raw = buildRawEmailWithAttachment({
       to,
-      subject: message.subject || "Message from FiberAI",
+      subject: message.subject || "Message from FyBud",
       content: message.content ?? "",
       inReplyTo,
       references,

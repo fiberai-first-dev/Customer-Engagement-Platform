@@ -45,12 +45,55 @@ function extractRequestOrigin(request: FastifyRequest): string | null {
   return null;
 }
 
+/** CEP app hosts are always allowed (preview + in-app widget) — no allowlist entry needed. */
+function isCepPlatformOrigin(requestOrigin: string): boolean {
+  const webBase = normalizeOrigin(env.webBaseUrl);
+  if (webBase && requestOrigin === webBase) return true;
+
+  let reqHost: string;
+  try {
+    reqHost = new URL(requestOrigin).hostname.toLowerCase();
+  } catch {
+    return false;
+  }
+
+  // Local preview
+  if (reqHost === "localhost" || reqHost === "127.0.0.1") return true;
+
+  // api.cep-demo.fybud.com → allow https://cep-demo.fybud.com (+ www)
+  const apiBase = normalizeOrigin(env.apiBaseUrl);
+  if (apiBase) {
+    try {
+      const apiHost = new URL(apiBase).hostname.toLowerCase();
+      if (apiHost.startsWith("api.")) {
+        const appHost = apiHost.slice(4);
+        if (reqHost === appHost || reqHost === `www.${appHost}`) return true;
+      }
+      if (reqHost === apiHost) return true;
+    } catch {
+      /* ignore */
+    }
+  }
+
+  // Also accept www / apex variants of PLATFORM_WEB_BASE_URL
+  if (webBase) {
+    try {
+      const webHost = new URL(webBase).hostname.toLowerCase();
+      if (reqHost === webHost || reqHost === `www.${webHost}`) return true;
+      if (webHost.startsWith("www.") && reqHost === webHost.slice(4)) return true;
+    } catch {
+      /* ignore */
+    }
+  }
+
+  return false;
+}
+
 function isOriginAllowed(requestOrigin: string | null, allowedOrigins: string[]): boolean {
   if (!requestOrigin) return false;
 
-  const webBase = normalizeOrigin(env.webBaseUrl);
-  // CEP /chat preview is always allowed.
-  if (webBase && requestOrigin === webBase) return true;
+  // CEP /chat preview and platform web app — always allowed.
+  if (isCepPlatformOrigin(requestOrigin)) return true;
 
   const normalizedAllowed = allowedOrigins
     .map((o) => normalizeOrigin(o))
@@ -60,6 +103,14 @@ function isOriginAllowed(requestOrigin: string | null, allowedOrigins: string[])
   if (normalizedAllowed.length === 0) return false;
 
   return normalizedAllowed.includes(requestOrigin);
+}
+
+function isMissingWebChatEnumError(err: unknown): boolean {
+  const msg = err instanceof Error ? err.message : String(err ?? "");
+  return (
+    msg.includes('invalid input value for enum "ChannelType"') &&
+    msg.includes("web_chat")
+  );
 }
 
 /** Ensure web_chat ChannelConfig exists. */
@@ -126,27 +177,41 @@ export async function assertWebChatWidgetAccess(
   request: FastifyRequest,
   reply: FastifyReply,
 ): Promise<boolean> {
-  const featureOn = await isFeatureEnabled("web_chat_channel", false);
-  if (!featureOn) {
-    void reply.code(403).send({ error: "Web chat is not enabled for this workspace" });
-    return false;
-  }
+  try {
+    const featureOn = await isFeatureEnabled("web_chat_channel", false);
+    if (!featureOn) {
+      void reply.code(403).send({ error: "Web chat is not enabled for this workspace" });
+      return false;
+    }
 
-  const cfg = await ensureWebChatChannelConfig();
-  if (!cfg.enabled) {
-    void reply.code(403).send({ error: "Web chat is disabled" });
-    return false;
-  }
+    const cfg = await ensureWebChatChannelConfig();
+    if (!cfg.enabled) {
+      void reply.code(403).send({ error: "Web chat is disabled" });
+      return false;
+    }
 
-  const parsed = parseWebChatConfig(cfg.channelConfig);
-  const requestOrigin = extractRequestOrigin(request);
-  if (!isOriginAllowed(requestOrigin, parsed.allowedOrigins ?? [])) {
-    void reply.code(403).send({
-      error:
-        "Origin not allowed. Add this site’s domain under Settings → Web Chat.",
+    const parsed = parseWebChatConfig(cfg.channelConfig);
+    const requestOrigin = extractRequestOrigin(request);
+    if (!isOriginAllowed(requestOrigin, parsed.allowedOrigins ?? [])) {
+      void reply.code(403).send({
+        error:
+          "Origin not allowed. Add this site’s domain under Settings → Web Chat.",
+      });
+      return false;
+    }
+
+    return true;
+  } catch (err) {
+    if (isMissingWebChatEnumError(err)) {
+      void reply.code(503).send({
+        error:
+          "Web Chat is not ready on this database yet. Restart the API so migrations can add ChannelType.web_chat, then try again.",
+      });
+      return false;
+    }
+    void reply.code(500).send({
+      error: err instanceof Error ? err.message : "Web chat access check failed",
     });
     return false;
   }
-
-  return true;
 }

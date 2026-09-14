@@ -382,20 +382,18 @@ export function ContactsPage() {
             ) : (
               <div className="min-w-0">
                 <div className="flex items-center gap-3 border-b border-border bg-muted/50 px-4 py-3 text-sm font-medium text-muted-foreground sm:gap-4 sm:px-5">
-                  <div className="min-w-0 flex-1 basis-40">Name</div>
+                  <div className="min-w-0 flex-1">Name</div>
                   {showEmail && (
-                    <div className="hidden min-w-0 flex-1 basis-36 truncate lg:block">
-                      Email
-                    </div>
+                    <div className="hidden min-w-0 flex-1 truncate lg:block">Email</div>
                   )}
                   {showWa && (
-                    <div className="hidden w-40 shrink-0 sm:block">WhatsApp</div>
+                    <div className="hidden min-w-0 flex-1 sm:block">WhatsApp</div>
                   )}
                   {showIg && (
-                    <div className="hidden w-36 shrink-0 md:block">Instagram</div>
+                    <div className="hidden min-w-0 flex-1 md:block">Instagram</div>
                   )}
                   {showFb && (
-                    <div className="hidden w-36 shrink-0 xl:block">Facebook</div>
+                    <div className="hidden min-w-0 flex-1 xl:block">Facebook</div>
                   )}
                   <div className="w-10 shrink-0" aria-hidden />
                 </div>
@@ -420,7 +418,7 @@ export function ContactsPage() {
                         onClick={() => openChat(c)}
                         className="relative flex cursor-pointer items-center gap-3 px-4 py-3.5 transition-colors hover:bg-muted/30 sm:gap-4 sm:px-5"
                       >
-                        <div className="flex min-w-0 flex-1 basis-40 items-center gap-3">
+                        <div className="flex min-w-0 flex-1 items-center gap-3">
                           <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-primary/10 text-xs font-medium text-primary">
                             {c.name
                               ? c.name
@@ -435,12 +433,12 @@ export function ContactsPage() {
                           </span>
                         </div>
                         {showEmail && (
-                          <div className="hidden min-w-0 flex-1 basis-36 truncate text-sm text-muted-foreground lg:block">
+                          <div className="hidden min-w-0 flex-1 truncate text-sm text-muted-foreground lg:block">
                             {joinList(c.email, c.emails)}
                           </div>
                         )}
                         {showWa && (
-                          <div className="hidden w-40 shrink-0 truncate text-sm text-muted-foreground sm:block">
+                          <div className="hidden min-w-0 flex-1 truncate text-sm text-muted-foreground sm:block">
                             {joinWhatsApp(
                               c.whatsappId ?? c.identifiers?.whatsapp,
                               c.whatsappIds,
@@ -448,12 +446,12 @@ export function ContactsPage() {
                           </div>
                         )}
                         {showIg && (
-                          <div className="hidden w-36 shrink-0 truncate text-sm text-muted-foreground md:block">
+                          <div className="hidden min-w-0 flex-1 truncate text-sm text-muted-foreground md:block">
                             {instagramUsernameForTable(c)}
                           </div>
                         )}
                         {showFb && (
-                          <div className="hidden w-36 shrink-0 truncate text-sm text-muted-foreground xl:block">
+                          <div className="hidden min-w-0 flex-1 truncate text-sm text-muted-foreground xl:block">
                             {c.facebookDetails?.senderName ||
                               c.facebookId ||
                               c.identifiers?.facebook ||

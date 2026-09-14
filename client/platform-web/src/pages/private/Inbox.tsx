@@ -4,7 +4,6 @@ import {
   useMemo,
   useRef,
   useState,
-  useDeferredValue,
   type ComponentType,
 } from "react";
 import { toast } from "sonner";
@@ -25,7 +24,6 @@ import {
   type Conversation,
   type TicketStatus,
   useSendWhatsAppTemplate,
-  useSearchMessages,
 } from "../../api";
 import { useNavigate } from "react-router-dom";
 import { useAppStore } from "../../store";
@@ -47,7 +45,6 @@ import {
   pickPrimaryConversation,
   pickPrimaryEmailThread,
 } from "../../components/inbox";
-import { MessageSearchResults } from "../../components/inbox/MessageSearchResults";
 import { ConfirmDialog } from "../../components/ui/confirm-dialog";
 import { CreateTicketModal } from "../../components/tickets/CreateTicketModal";
 import { KeyboardShortcutsOverlay } from "../../components/ui/KeyboardShortcutsOverlay";
@@ -118,8 +115,6 @@ const CHANNEL_FILTER_ICONS: Record<ChannelType, ComponentType<{ className?: stri
 
 export function InboxPage() {
   const [searchQuery, setSearchQuery] = useState("");
-  const [searchMode, setSearchMode] = useState<"contacts" | "messages">("contacts");
-  const deferredSearch = useDeferredValue(searchQuery.trim());
   const [statusFilter, setStatusFilter] = useState<"active" | "all">("active");
   const [channelFilter, setChannelFilter] = useState<ChannelFilter>("all");
   const [activeTab, setActiveTab] = useState<ChannelType>("whatsapp");
@@ -149,18 +144,6 @@ export function InboxPage() {
   const deleteMessages = useDeleteMessages();
   const { enabledChannels, channelsReady } = useEnabledChannelTypes();
   const enabledSet = useMemo(() => new Set(enabledChannels), [enabledChannels]);
-
-  const messageSearchEnabled = searchMode === "messages" && deferredSearch.length > 1;
-  const {
-    data: messageSearchData,
-    isFetching: messageSearchFetching,
-    isPending: messageSearchPending,
-  } = useSearchMessages(messageSearchEnabled ? deferredSearch : "");
-  const messageSearchResults = messageSearchData?.results ?? [];
-  const messageSearchLoading =
-    messageSearchEnabled && (messageSearchPending || messageSearchFetching);
-
-  const showInitialListLoader = conversationsPending && conversations === undefined;
 
   /** Channel threads grouped by contact — status lives per channel conversation. */
   const conversationsByContact = useMemo(() => {
@@ -624,35 +607,6 @@ export function InboxPage() {
     }
   };
 
-  const handleSelectMessageSearch = (
-    contactId: string,
-    channelType: string,
-    _channelId: string,
-    conversationId?: string,
-  ) => {
-    focusedContactRef.current = contactId;
-    setSelectedContactId(contactId);
-    setComposingNewEmail(false);
-    const tab = (["whatsapp", "instagram", "facebook", "email", "web_chat"] as ChannelType[]).includes(
-      channelType as ChannelType,
-    )
-      ? (channelType as ChannelType)
-      : "whatsapp";
-    setActiveTab(tab);
-    if (tab === "email" && conversationId) {
-      setSelectedEmailThreadId(conversationId);
-    } else {
-      setSelectedEmailThreadId(null);
-    }
-    const scopeKey = listReadScopeKey(contactId, channelFilter);
-    setReadScopeKeys((prev) => {
-      if (prev.has(scopeKey)) return prev;
-      const next = new Set(prev);
-      next.add(scopeKey);
-      return next;
-    });
-  };
-
   const handleSend = async (
     content: string,
     subject?: string,
@@ -942,42 +896,11 @@ export function InboxPage() {
               type="text"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder={
-                searchMode === "messages"
-                  ? "Search message text…"
-                  : "Search contacts…"
-              }
+              placeholder="Search contacts…"
               className="h-9 w-full rounded-md border border-border bg-background py-0 pl-9 pr-3 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-primary"
             />
           </div>
-          <div className="flex h-7 items-center rounded-md border border-border p-0.5">
-            <button
-              type="button"
-              onClick={() => setSearchMode("contacts")}
-              className={cn(
-                "h-full flex-1 rounded px-2 text-[11px] font-medium leading-none",
-                searchMode === "contacts"
-                  ? "bg-muted text-foreground"
-                  : "text-muted-foreground hover:text-foreground",
-              )}
-            >
-              Contacts
-            </button>
-            <button
-              type="button"
-              onClick={() => setSearchMode("messages")}
-              className={cn(
-                "h-full flex-1 rounded px-2 text-[11px] font-medium leading-none",
-                searchMode === "messages"
-                  ? "bg-muted text-foreground"
-                  : "text-muted-foreground hover:text-foreground",
-              )}
-            >
-              Messages
-            </button>
-          </div>
-          {searchMode === "contacts" ? (
-          channelFilterOptions.length > 0 ? (
+          {channelFilterOptions.length > 0 ? (
           <div
             className="flex gap-1 overflow-x-auto scrollbar-hide"
             role="tablist"
@@ -1016,39 +939,18 @@ export function InboxPage() {
               );
             })}
           </div>
-          ) : null
-          ) : (
-            <p className="text-[11px] text-muted-foreground">
-              Searches message body across all conversations (min 2 characters).
-            </p>
-          )}
+          ) : null}
         </div>
 
-        {searchMode === "messages" ? (
-          deferredSearch.length < 2 ? (
-            <div className="flex flex-1 items-center justify-center px-6 text-center text-sm text-muted-foreground">
-              Type at least 2 characters to search messages
-            </div>
-          ) : (
-            <MessageSearchResults
-              query={deferredSearch}
-              results={messageSearchResults}
-              isLoading={messageSearchLoading}
-              onSelect={handleSelectMessageSearch}
-            />
-          )
-        ) : (
-          <ConversationList
-            conversations={listConversations}
-            channelConversationsByContact={conversationsByContact}
-            selectedContactId={selectedContactId}
-            onSelect={handleSelectConversation}
-            emptyHint={listEmptyHint}
-            channelFilter={channelFilter}
-            readScopeKeys={readScopeKeys}
-            loading={showInitialListLoader}
-          />
-        )}
+        <ConversationList
+          conversations={listConversations}
+          channelConversationsByContact={conversationsByContact}
+          selectedContactId={selectedContactId}
+          onSelect={handleSelectConversation}
+          emptyHint={listEmptyHint}
+          channelFilter={channelFilter}
+          readScopeKeys={readScopeKeys}
+        />
       </Panel>
 
       <PanelResizeHandle className="w-1.5 flex items-center justify-center bg-border/50 hover:bg-primary/50 transition-colors cursor-col-resize z-10">

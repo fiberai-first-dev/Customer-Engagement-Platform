@@ -11,7 +11,6 @@ import {
   TicketIcon,
   Building2,
   ShieldCheck,
-  UserRound,
   LayoutTemplate,
   Radio,
   LayoutDashboard,
@@ -102,8 +101,13 @@ export function DashboardLayout() {
     <div className="flex h-screen w-full overflow-hidden bg-background">
       <aside className="z-10 flex w-[4.75rem] shrink-0 flex-col border-r border-border bg-card">
         <div className="flex flex-col items-center gap-2 border-b border-border px-2 py-4">
-          <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-primary text-primary-foreground shadow-sm">
-            <UserRound className="h-5 w-5" />
+          <div
+            className="flex h-9 w-9 items-center justify-center rounded-lg bg-[#12122b] text-[11px] font-bold tracking-tight text-white shadow-sm"
+            title="FyBud"
+            aria-label="FyBud"
+          >
+            <span>Fy</span>
+            <span className="text-[#b8a7f5]">B</span>
           </div>
           {user && (
             <span

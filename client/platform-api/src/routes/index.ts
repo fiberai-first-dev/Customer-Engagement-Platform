@@ -117,13 +117,8 @@ export async function registerRoutes(app: FastifyInstance) {
   app.register(contactsRoutes, { prefix: "/api/v1/contacts" });
   app.register(webChatRoutes, { prefix: "/api/v1/web-chat" });
   app.register(searchRoutes, { prefix: "/api/v1/search" });
-  app.register(
-    async (sub) => {
-      sub.addHook("preHandler", requireFeatureEnabled("dashboard_enabled", "Dashboard", true));
-      sub.register(dashboardRoutes);
-    },
-    { prefix: "/api/v1/dashboard" },
-  );
+  // Dashboard is always available — no feature flag.
+  app.register(dashboardRoutes, { prefix: "/api/v1/dashboard" });
   // Shopify is always available when shopify_config has credentials — no feature flag.
   app.register(orderRoutes, { prefix: "/api/v1/orders" });
   app.register(emailRoutes, { prefix: "/api/v1/email" });
@@ -338,7 +333,7 @@ const PRIVACY_POLICY_HTML = `<!DOCTYPE html>
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>FiberAI CEP — Privacy Policy</title>
+  <title>FyBud CEP — Privacy Policy</title>
   <style>
     body{font-family:Georgia,serif;max-width:42rem;margin:2rem auto;padding:0 1.25rem 3rem;line-height:1.55;color:#1a1a1a}
     h1{font-size:1.75rem;margin-bottom:.25rem} h2{font-size:1.15rem;margin-top:1.75rem}
@@ -347,8 +342,8 @@ const PRIVACY_POLICY_HTML = `<!DOCTYPE html>
 </head>
 <body>
   <h1>Privacy Policy</h1>
-  <p class="meta">FiberAI Customer Engagement Platform (CEP)<br/>Last updated: August 6, 2026</p>
-  <p>This Privacy Policy describes how FiberAI (“we”, “us”) collects, uses, and shares information when you use our Customer Engagement Platform and related messaging integrations (WhatsApp, Instagram, Email/Gmail).</p>
+  <p class="meta">FyBud Customer Engagement Platform (CEP)<br/>Last updated: August 6, 2026</p>
+  <p>This Privacy Policy describes how FyBud (“we”, “us”) collects, uses, and shares information when you use our Customer Engagement Platform and related messaging integrations (WhatsApp, Instagram, Email/Gmail).</p>
   <h2>1. Information we collect</h2>
   <ul>
     <li>Account information you provide (such as admin credentials for our dashboard).</li>

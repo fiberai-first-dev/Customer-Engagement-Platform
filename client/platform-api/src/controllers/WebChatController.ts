@@ -181,7 +181,17 @@ export class WebChatController {
         name,
       });
     } catch (err: any) {
-      return reply.code(500).send({ error: err.message });
+      const msg = String(err?.message || "");
+      if (
+        msg.includes('invalid input value for enum "ChannelType"') &&
+        msg.includes("web_chat")
+      ) {
+        return reply.code(503).send({
+          error:
+            "Web Chat is not ready on this database yet. Restart the API so migrations can add ChannelType.web_chat, then try again.",
+        });
+      }
+      return reply.code(500).send({ error: err.message || "Internal Server Error" });
     }
   }
 
