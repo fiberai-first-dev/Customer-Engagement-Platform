@@ -140,6 +140,9 @@ export async function findIdentityByExternalId(
   if (channelType === "facebook") {
     return prisma.facebookChannel.findUnique({ where: { externalId } });
   }
+  if (channelType === "web_chat") {
+    return prisma.webChatChannel.findUnique({ where: { externalId } });
+  }
   const email = normalizeEmail(externalId) ?? externalId;
   return prisma.emailChannel.findUnique({ where: { externalId: email } });
 }
@@ -162,6 +165,12 @@ export async function getMostRecentIdentity(
   }
   if (channelType === "facebook") {
     return prisma.facebookChannel.findFirst({
+      where: { customerId },
+      orderBy: [{ lastMessageAt: "desc" }, { updatedAt: "desc" }],
+    });
+  }
+  if (channelType === "web_chat") {
+    return prisma.webChatChannel.findFirst({
       where: { customerId },
       orderBy: [{ lastMessageAt: "desc" }, { updatedAt: "desc" }],
     });
@@ -209,6 +218,17 @@ async function createIdentity(input: {
   }
   if (input.channelType === "facebook") {
     return prisma.facebookChannel.create({
+      data: {
+        id,
+        customerId: input.customerId,
+        externalId: input.externalId,
+        resolved: input.resolved ?? false,
+        metadata,
+      },
+    });
+  }
+  if (input.channelType === "web_chat") {
+    return prisma.webChatChannel.create({
       data: {
         id,
         customerId: input.customerId,
@@ -599,6 +619,32 @@ async function touchIdentityLastMessageAt(
     }
     return;
   }
+
+  if (channelType === "web_chat") {
+    const row = await prisma.webChatChannel.findUnique({
+      where: { id: identityId },
+      select: { lastMessageAt: true, lastCustomerMessageAt: true },
+    });
+
+    const updateData: Record<string, Date> = {};
+    if (!row?.lastMessageAt || row.lastMessageAt.getTime() < when.getTime()) {
+      updateData.lastMessageAt = when;
+    }
+    if (
+      isIncoming &&
+      (!row?.lastCustomerMessageAt || row.lastCustomerMessageAt.getTime() < when.getTime())
+    ) {
+      updateData.lastCustomerMessageAt = when;
+    }
+
+    if (Object.keys(updateData).length > 0) {
+      await prisma.webChatChannel.update({
+        where: { id: identityId },
+        data: updateData,
+      });
+    }
+    return;
+  }
   
   const row = await prisma.emailChannel.findUnique({
     where: { id: identityId },
@@ -835,6 +881,23 @@ export async function ingestInboundMessages(input: {
     if (alreadyStored) continue;
 
     const direction = inbound.direction === "outgoing" ? "outgoing" : "incoming";
+
+    // Fast-path: if we already know this sender and they're blocked, drop inbound
+    // before findOrCreate side effects (name enrich, unresolved flips, etc.).
+    if (direction === "incoming") {
+      const { isCustomerBlocked } = await import("./BlockedContactService.js");
+      const senderKey =
+        channelCfg.channelType === "email"
+          ? normalizeEmail(inbound.senderId) ?? inbound.senderId
+          : channelCfg.channelType === "whatsapp"
+            ? normalizeWhatsAppId(inbound.senderId) ?? inbound.senderId
+            : inbound.senderId;
+      const existingId = await findIdentityByExternalId(channelCfg.channelType, senderKey);
+      if (existingId && (await isCustomerBlocked(existingId.customerId))) {
+        continue;
+      }
+    }
+
     const link =
       direction === "outgoing"
         ? await resolveIdentityForOutgoing({
@@ -846,6 +909,14 @@ export async function ingestInboundMessages(input: {
             inbound,
           });
     if (!link) continue;
+
+    // Safety net after resolve/create (e.g. WA match moved customer).
+    if (direction === "incoming") {
+      const { isCustomerBlocked } = await import("./BlockedContactService.js");
+      if (await isCustomerBlocked(link.customerId)) {
+        continue;
+      }
+    }
 
     const receivedAt = inbound.occurredAt instanceof Date ? inbound.occurredAt : new Date();
 
@@ -1189,11 +1260,13 @@ export function shapeCustomer(customer: {
   instagramIdentities?: Array<{ id: string; externalId: string; resolved: boolean; metadata: unknown; lastMessageAt: Date | null }>;
   facebookIdentities?: Array<{ id: string; externalId: string; resolved: boolean; metadata: unknown; lastMessageAt: Date | null }>;
   emailIdentities?: Array<{ id: string; externalId: string; resolved: boolean; metadata: unknown; lastMessageAt: Date | null }>;
+  webChatIdentities?: Array<{ id: string; externalId: string; resolved: boolean; metadata: unknown; lastMessageAt: Date | null }>;
 }) {
   const wa = customer.whatsappIdentities ?? [];
   const ig = customer.instagramIdentities ?? [];
   const fb = customer.facebookIdentities ?? [];
   const em = customer.emailIdentities ?? [];
+  const wc = customer.webChatIdentities ?? [];
   const whatsappIds = wa.map((i) => formatWhatsAppStorage(i.externalId) ?? i.externalId);
   const emails = em.map((i) => i.externalId);
   const identities = [
@@ -1249,6 +1322,16 @@ export function shapeCustomer(customer: {
       channel: "email" as const,
       externalId: i.externalId,
       displayId: i.externalId,
+      metadata: asMeta(i.metadata as Prisma.JsonValue),
+      enabled: true,
+      resolved: i.resolved,
+      lastMessageAt: i.lastMessageAt,
+    })),
+    ...wc.map((i) => ({
+      id: i.id,
+      channel: "web_chat" as const,
+      externalId: i.externalId,
+      displayId: "Web Chat",
       metadata: asMeta(i.metadata as Prisma.JsonValue),
       enabled: true,
       resolved: i.resolved,

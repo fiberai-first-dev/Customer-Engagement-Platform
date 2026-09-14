@@ -71,7 +71,15 @@ export function MessageSearchResults({
               </div>
               <div className="flex shrink-0 items-center gap-1.5">
                 <span className="rounded bg-muted px-1 py-0.5 text-[9px] font-bold uppercase tracking-wider text-muted-foreground">
-                  {msg.channelType === "whatsapp" ? "WA" : msg.channelType === "instagram" ? "IG" : msg.channelType === "facebook" ? "FB" : "Email"}
+                  {msg.channelType === "whatsapp"
+                    ? "WA"
+                    : msg.channelType === "instagram"
+                      ? "IG"
+                      : msg.channelType === "facebook"
+                        ? "FB"
+                        : msg.channelType === "web_chat"
+                          ? "Web"
+                          : "Email"}
                 </span>
                 <span className="text-[10px] text-muted-foreground whitespace-nowrap">
                   {formatDistanceToNow(new Date(msg.createdAt), { addSuffix: true })}

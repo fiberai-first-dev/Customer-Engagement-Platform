@@ -12,12 +12,14 @@ import { TeamsPage } from "../pages/private/TeamsPage";
 import { TemplatesPage } from "../pages/private/TemplatesPage";
 import { BroadcastPage } from "../pages/private/BroadcastPage";
 import { LoginPage } from "../pages/public/Login";
+import { WebChatPage } from "../pages/public/WebChatPage";
 
 export function AppRoutes() {
   return (
     <BrowserRouter>
       <Routes>
         <Route path="/login" element={<LoginPage />} />
+        <Route path="/chat" element={<WebChatPage />} />
 
         <Route element={<ProtectedRoute />}>
           <Route path="/" element={<DashboardLayout />}>

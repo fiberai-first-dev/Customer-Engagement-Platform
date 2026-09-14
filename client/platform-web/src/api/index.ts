@@ -22,12 +22,14 @@ export class ApiError extends Error {
 export async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const token = useAuthStore.getState().token;
   const hasBody = init?.body != null && init.body !== "";
+  const isFormData = typeof FormData !== "undefined" && init?.body instanceof FormData;
 
   const res = await fetch(`${API_BASE}${path}`, {
     ...init,
     headers: {
       // Fastify rejects empty body when Content-Type is application/json
-      ...(hasBody ? { "Content-Type": "application/json" } : {}),
+      // FormData must set its own multipart boundary — do not force JSON
+      ...(hasBody && !isFormData ? { "Content-Type": "application/json" } : {}),
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
       ...(init?.headers ?? {}),
     },
@@ -1437,7 +1439,8 @@ export interface TimelineEvent {
 export const useSearchMessages = (query: string) => {
   return useQuery({
     queryKey: ["messages", "search", query],
-    queryFn: () => request<any>(`/api/v1/conversations/search?q=${encodeURIComponent(query)}`),
+    queryFn: () =>
+      request<{ results: any[] }>(`/api/v1/search?q=${encodeURIComponent(query)}`),
     enabled: query.length > 1,
   });
 };
@@ -1483,7 +1486,8 @@ export const useMediaAssets = () => {
 export const useUploadMediaAsset = () => {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (data: FormData) => request(`/api/v1/media-assets`, { method: 'POST', body: data as any }),
+    mutationFn: (data: FormData) =>
+      request(`/api/v1/media-assets/upload`, { method: "POST", body: data }),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["mediaAssets"] })
   });
 };
@@ -1523,15 +1527,100 @@ export const useBroadcastNoReply = (id: string) => {
 export const useReactToMessage = () => {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (data: any) => request('/api/v1/conversations/messages/react', { method: 'POST', body: JSON.stringify(data) }),
+    mutationFn: (data: { conversationId: string; messageId: string; emoji: string }) =>
+      request(
+        `/api/v1/conversations/${encodeURIComponent(data.conversationId)}/messages/${data.messageId}/react`,
+        { method: "POST", body: JSON.stringify({ emoji: data.emoji }) },
+      ),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["messages"] })
+  });
+};
+
+export type BlockedContactRow = {
+  id: string;
+  customerId: string;
+  reason: string | null;
+  blockedBy: string | null;
+  createdAt: string;
+  customer: {
+    id: string;
+    name?: string | null;
+    email?: string | null;
+    whatsappId?: string | null;
+  };
+};
+
+export const useBlockedContacts = () => {
+  return useQuery({
+    queryKey: ["blockedContacts"],
+    queryFn: () => request<BlockedContactRow[]>("/api/v1/blocked-contacts"),
+  });
+};
+
+export const useBlockCustomer = () => {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (data: { customerId: string; reason?: string }) =>
+      request("/api/v1/blocked-contacts", {
+        method: "POST",
+        body: JSON.stringify(data),
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["blockedContacts"] });
+      queryClient.invalidateQueries({ queryKey: ["contacts"] });
+      queryClient.invalidateQueries({ queryKey: ["conversations"] });
+    },
+  });
+};
+
+export const useUnblockCustomer = () => {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (customerId: string) =>
+      request(`/api/v1/blocked-contacts/${encodeURIComponent(customerId)}`, {
+        method: "DELETE",
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["blockedContacts"] });
+      queryClient.invalidateQueries({ queryKey: ["contacts"] });
+      queryClient.invalidateQueries({ queryKey: ["conversations"] });
+    },
+  });
+};
+
+export type WebChatWidgetSettings = {
+  enabled: boolean;
+  widgetKey: string;
+  allowedOrigins: string[];
+};
+
+export const useWebChatSettings = () => {
+  return useQuery({
+    queryKey: ["webChatSettings"],
+    queryFn: () => request<WebChatWidgetSettings>("/api/v1/web-chat/settings"),
+  });
+};
+
+export const useUpdateWebChatSettings = () => {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (data: { allowedOrigins?: string[]; rotateKey?: boolean }) =>
+      request<WebChatWidgetSettings>("/api/v1/web-chat/settings", {
+        method: "PATCH",
+        body: JSON.stringify(data),
+      }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["webChatSettings"] }),
   });
 };
 
 export const useTogglePin = () => {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (id: string) => request(`/api/v1/conversations/messages/${id}/pin`, { method: 'POST' }),
+    mutationFn: (data: { conversationId: string; messageId: string }) =>
+      request(
+        `/api/v1/conversations/${encodeURIComponent(data.conversationId)}/messages/${data.messageId}/pin`,
+        { method: "POST" },
+      ),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["messages"] })
   });
 };
@@ -1539,26 +1628,58 @@ export const useTogglePin = () => {
 export const useToggleStar = () => {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (id: string) => request(`/api/v1/conversations/messages/${id}/star`, { method: 'POST' }),
+    mutationFn: (conversationId: string) =>
+      request(`/api/v1/conversations/${encodeURIComponent(conversationId)}/star`, {
+        method: "POST",
+      }),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["messages"] })
   });
 };
 
-export const downloadTranscript = async (_conversationId: string) => {
-  // dummy
+export const downloadTranscript = async (conversationId: string) => {
+  const token = useAuthStore.getState().token;
+  const res = await fetch(
+    `${API_BASE}/api/v1/conversations/${encodeURIComponent(conversationId)}/transcript.pdf`,
+    {
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+    },
+  );
+  if (!res.ok) {
+    const body = await res.text();
+    throw new ApiError(body || "Failed to download transcript", res.status);
+  }
+  const blob = await res.blob();
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `transcript-${conversationId.replace(/[^a-zA-Z0-9_-]/g, "_").slice(0, 40)}.pdf`;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
 };
 
 export const useContactTimeline = (contactId: string) => {
   return useQuery({
     queryKey: ["timeline", contactId],
-    queryFn: () => request<TimelineEvent[]>(`/api/v1/contacts/${contactId}/timeline`),
+    queryFn: () =>
+      request<{ events: TimelineEvent[]; customFields: Record<string, string> }>(
+        `/api/v1/contacts/${contactId}/timeline`,
+      ),
     enabled: !!contactId
   });
 };
 export const useUpdateContactCustomFields = () => {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: ({ id, fields }: { id: string; fields: any }) => request(`/api/v1/contacts/${id}/custom-fields`, { method: 'PATCH', body: JSON.stringify(fields) }),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["contacts"] })
+    mutationFn: ({ id, fields }: { id: string; fields: Record<string, string | null> }) =>
+      request<{ customFields: Record<string, string> }>(
+        `/api/v1/contacts/${id}/custom-fields`,
+        { method: "PATCH", body: JSON.stringify(fields) },
+      ),
+    onSuccess: (_data, vars) => {
+      queryClient.invalidateQueries({ queryKey: ["contacts"] });
+      queryClient.invalidateQueries({ queryKey: ["timeline", vars.id] });
+    }
   });
 };

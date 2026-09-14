@@ -4,6 +4,8 @@ import { MediaController } from "../../controllers/MediaController.js";
 
 export async function conversationRoutes(app: FastifyInstance) {
   app.get("/", ConversationController.listConversations);
+  // Must be registered before /:id so "search" is not treated as an id
+  app.get("/search", ConversationController.searchMessages);
   app.get("/:id", ConversationController.getConversation);
   app.patch("/:id", ConversationController.updateStatus);
   app.post("/:id/suppress", ConversationController.suppress);

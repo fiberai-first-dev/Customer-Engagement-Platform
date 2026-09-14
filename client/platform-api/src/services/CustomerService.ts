@@ -33,6 +33,7 @@ export async function loadCustomerShaped(id: string) {
       instagramIdentities: true,
       facebookIdentities: true,
       emailIdentities: true,
+      webChatIdentities: true,
     },
   });
   return customer ? shapeCustomer(customer) : null;
@@ -106,6 +107,7 @@ export async function findMatchingCustomers(input: {
       instagramIdentities: true,
       facebookIdentities: true,
       emailIdentities: true,
+      webChatIdentities: true,
     },
   });
   return customers.map(shapeCustomer);
@@ -373,6 +375,7 @@ async function absorbCustomer(sourceId: string, targetId: string) {
       instagramIdentities: true,
       facebookIdentities: true,
       emailIdentities: true,
+      webChatIdentities: true,
     },
   });
   if (!source) return;

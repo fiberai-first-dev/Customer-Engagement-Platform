@@ -34,8 +34,8 @@ export function getMessagingWindow(
   const instagramHumanAgentEnabled = options.instagramHumanAgentEnabled ?? false;
 
   if (!lastCustomerMessageAt) {
-    if (channel === "email") {
-      return activeEmailWindow();
+    if (channel === "email" || channel === "web_chat") {
+      return activeOpenWindow(channel);
     }
 
     return {
@@ -54,8 +54,8 @@ export function getMessagingWindow(
   const msgTime = lastCustomerMessageAt.getTime();
   const diff = now - msgTime;
 
-  if (channel === "email") {
-    return activeEmailWindow(lastCustomerMessageAt);
+  if (channel === "email" || channel === "web_chat") {
+    return activeOpenWindow(channel, lastCustomerMessageAt);
   }
 
   if (channel === "whatsapp") {
@@ -187,9 +187,12 @@ export function serializeConversationWindow(window: ConversationWindow) {
   };
 }
 
-function activeEmailWindow(lastCustomerMessageAt: Date | null = null): ConversationWindow {
+function activeOpenWindow(
+  channel: ChannelType,
+  lastCustomerMessageAt: Date | null = null,
+): ConversationWindow {
   return {
-    channel: "email",
+    channel,
     state: "ACTIVE",
     lastCustomerMessageAt,
     expiresAt: null,

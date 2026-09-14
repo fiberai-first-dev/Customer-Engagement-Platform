@@ -191,14 +191,100 @@ export class ConversationController {
     }
   }
 
-  static async reactToMessage(request: FastifyRequest<{ Params: { id: string, messageId: string }, Body: { emoji: string } }>, reply: FastifyReply) {
-    // Dummy implementation to satisfy build
-    return reply.send({ success: true });
+  static async reactToMessage(
+    request: FastifyRequest<{
+      Params: { id: string; messageId: string };
+      Body: { emoji: string };
+    }>,
+    reply: FastifyReply,
+  ) {
+    try {
+      const emoji = request.body?.emoji?.trim();
+      if (!emoji) return reply.code(400).send({ error: "emoji required" });
+
+      const user = request.user;
+      const reactorKey = user?.id ?? "agent";
+
+      const message = await prisma.message.findUnique({
+        where: { id: request.params.messageId },
+      });
+      if (!message) return reply.code(404).send({ error: "Message not found" });
+
+      const reactions =
+        message.reactions && typeof message.reactions === "object" && !Array.isArray(message.reactions)
+          ? { ...(message.reactions as Record<string, string[]>) }
+          : {};
+
+      const existing = new Set(reactions[emoji] ?? []);
+      if (existing.has(reactorKey)) existing.delete(reactorKey);
+      else existing.add(reactorKey);
+      reactions[emoji] = [...existing];
+      if (reactions[emoji].length === 0) delete reactions[emoji];
+
+      const updated = await prisma.message.update({
+        where: { id: message.id },
+        data: { reactions },
+      });
+
+      return reply.send({ success: true, reactions: updated.reactions });
+    } catch (err: any) {
+      return reply.code(500).send({ error: err.message });
+    }
   }
 
-  static async downloadTranscript(request: FastifyRequest<{ Params: { id: string } }>, reply: FastifyReply) {
-    // Dummy implementation to satisfy build
-    return reply.send("Transcript download not implemented yet");
+  static async downloadTranscript(
+    request: FastifyRequest<{ Params: { id: string } }>,
+    reply: FastifyReply,
+  ) {
+    try {
+      const PDFDocument = (await import("pdfkit")).default;
+      const messages = await ConversationService.listMessages(request.params.id);
+      const { customerId, channelType } = ConversationService.parseConversationId(
+        request.params.id,
+      );
+      const customer = await prisma.customer.findUnique({ where: { id: customerId } });
+
+      const doc = new PDFDocument({ margin: 50 });
+      const chunks: Buffer[] = [];
+      doc.on("data", (c: Buffer) => chunks.push(c));
+
+      const done = new Promise<Buffer>((resolve, reject) => {
+        doc.on("end", () => resolve(Buffer.concat(chunks)));
+        doc.on("error", reject);
+      });
+
+      doc.fontSize(16).text("Conversation transcript", { underline: true });
+      doc.moveDown(0.5);
+      doc.fontSize(10).fillColor("#444");
+      doc.text(`Contact: ${customer?.name ?? customerId}`);
+      doc.text(`Channel: ${channelType}`);
+      doc.text(`Generated: ${new Date().toISOString()}`);
+      doc.moveDown();
+      doc.fillColor("#000");
+
+      for (const m of messages) {
+        const when = new Date(m.createdAt).toISOString();
+        const who = m.direction === "incoming" ? "Customer" : "Agent";
+        doc.fontSize(9).fillColor("#666").text(`${when} · ${who}`);
+        doc.fontSize(11).fillColor("#000").text(m.content || "[attachment]", {
+          width: 500,
+        });
+        doc.moveDown(0.6);
+      }
+
+      doc.end();
+      const pdf = await done;
+
+      return reply
+        .header("Content-Type", "application/pdf")
+        .header(
+          "Content-Disposition",
+          `attachment; filename="transcript-${channelType}-${customerId.slice(0, 8)}.pdf"`,
+        )
+        .send(pdf);
+    } catch (err: any) {
+      return reply.code(500).send({ error: err.message });
+    }
   }
 
   static async togglePin(request: FastifyRequest<{ Params: { id: string, messageId: string } }>, reply: FastifyReply) {

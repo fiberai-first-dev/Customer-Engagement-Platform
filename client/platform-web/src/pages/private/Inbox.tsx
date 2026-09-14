@@ -1,4 +1,3 @@
-import { MessageSearchResults } from "../../components/inbox/MessageSearchResults";
 import {
   useEffect,
   useLayoutEffect,
@@ -8,12 +7,11 @@ import {
   type ComponentType,
 } from "react";
 import { toast } from "sonner";
-import { Loader2, Mail, MessageCircle, Search } from "lucide-react";
+import { Loader2, Mail, MessageCircle, Search, TicketIcon, Plus } from "lucide-react";
 import {
   useAccounts,
   useContacts,
   useConversations,
-  useSearchMessages,
   useDeleteMessages,
   useEnabledChannelTypes,
   useMessages,
@@ -49,7 +47,8 @@ import {
 } from "../../components/inbox";
 import { ConfirmDialog } from "../../components/ui/confirm-dialog";
 import { CreateTicketModal } from "../../components/tickets/CreateTicketModal";
-import { TicketIcon, Plus } from "lucide-react";
+import { KeyboardShortcutsOverlay } from "../../components/ui/KeyboardShortcutsOverlay";
+import { useInboxKeyboardShortcuts } from "../../hooks/useInboxKeyboardShortcuts";
 import { Panel, PanelGroup, PanelResizeHandle } from "react-resizable-panels";
 
 type ChannelFilter = "all" | ChannelType;
@@ -126,6 +125,7 @@ export function InboxPage() {
   const [readScopeKeys, setReadScopeKeys] = useState<Set<string>>(() => new Set());
   const [createTicketConv, setCreateTicketConv] = useState<{conversationId: string; channel: string; customerId?: string} | null>(null);
   const [confirmCreateAnother, setConfirmCreateAnother] = useState(false);
+  const [shortcutsOpen, setShortcutsOpen] = useState(false);
   const focusedContactRef = useRef<string | null>(null);
   const navigate = useNavigate();
 
@@ -134,7 +134,6 @@ export function InboxPage() {
     isPending: conversationsPending,
     isFetching: conversationsFetching,
   } = useConversations("all");
-  const searchResults = useSearchMessages(searchQuery);
   const { selectedContactId, setSelectedContactId } = useAppStore();
   const { data: accounts } = useAccounts();
   const { data: directoryContacts } = useContacts(accounts?.[0]?.id);
@@ -269,7 +268,7 @@ export function InboxPage() {
       if (channelsReady && !enabledSet.has(conversation.channelType)) return false;
       return true;
     });
-    for (const type of ["whatsapp", "instagram", "facebook", "email"] as ChannelType[]) {
+    for (const type of ["whatsapp", "instagram", "facebook", "email", "web_chat"] as ChannelType[]) {
       const scoped = rows.filter((c) => c.channelType === type);
       if (!scoped.length) continue;
       if (type === "email") {
@@ -689,6 +688,33 @@ export function InboxPage() {
     );
   };
 
+  useInboxKeyboardShortcuts({
+    enabled: true,
+    onToggleShortcuts: () => setShortcutsOpen((v) => !v),
+    onNextConversation: () => {
+      if (!listConversations.length) return;
+      const idx = listConversations.findIndex((c) => c.contactId === selectedContactId);
+      const next = listConversations[(idx < 0 ? -1 : idx) + 1];
+      if (next) setSelectedContactId(next.contactId);
+    },
+    onPrevConversation: () => {
+      if (!listConversations.length) return;
+      const idx = listConversations.findIndex((c) => c.contactId === selectedContactId);
+      const prev = listConversations[idx <= 0 ? listConversations.length - 1 : idx - 1];
+      if (prev) setSelectedContactId(prev.contactId);
+    },
+    onFocusReply: () => {
+      const el = document.querySelector<HTMLTextAreaElement>(
+        "textarea[placeholder*='Reply'], textarea[placeholder*='Message'], textarea[placeholder*='email']",
+      );
+      el?.focus();
+    },
+    onResolve: handleResolve,
+    onAssignToSelf: () => {
+      toast.message("Assign from ticket detail — inbox claim is not enabled yet");
+    },
+  });
+
   const handleClearChat = () => {
     if (!selectedConversation || !selectedContactId) return;
     setPendingDelete({
@@ -856,7 +882,7 @@ export function InboxPage() {
               type="text"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="Search messages or contacts..."
+              placeholder="Search contacts…"
               className="h-9 w-full rounded-md border border-border bg-background py-0 pl-9 pr-3 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-primary"
             />
           </div>
@@ -900,18 +926,7 @@ export function InboxPage() {
           </div>
         </div>
 
-        {searchQuery.length > 1 ? (
-          <MessageSearchResults
-            query={searchQuery}
-            results={searchResults.data?.results || []}
-            isLoading={searchResults.isLoading}
-            onSelect={(contactId: string, channelType: string, channelId: string) => {
-              const convs = Object.values(conversationsByContact).flat().filter(Boolean);
-              const conv = convs.find((c: any) => c.contactId === contactId && c.channelType === channelType && c.channelId === channelId);
-              if (conv) handleSelectConversation(conv as any);
-            }}
-          />
-        ) : showInitialListLoader ? (
+        {showInitialListLoader ? (
           <div className="flex flex-1 items-center justify-center">
             <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
           </div>
@@ -1045,6 +1060,8 @@ export function InboxPage() {
           onClose={() => setCreateTicketConv(null)}
         />
       )}
+
+      <KeyboardShortcutsOverlay open={shortcutsOpen} onClose={() => setShortcutsOpen(false)} />
     </div>
   );
 }

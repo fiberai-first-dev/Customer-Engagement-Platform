@@ -6,6 +6,14 @@ import { Button } from "../ui/button";
 import { toast } from "sonner";
 import { cn } from "./utils";
 
+const API_BASE = import.meta.env.VITE_API_BASE_URL ?? "";
+
+function assetSrc(url: string) {
+  if (!url) return url;
+  if (url.startsWith("http://") || url.startsWith("https://")) return url;
+  return `${API_BASE.replace(/\/$/, "")}${url.startsWith("/") ? url : `/${url}`}`;
+}
+
 interface Props {
   onInsert: (url: string) => void;
   onClose: () => void;
@@ -29,22 +37,20 @@ export function MediaAssetLibrary({ onInsert, onClose }: Props) {
     const file = e.target.files?.[0];
     if (!file) return;
 
-    // Validate type
     if (!file.type.startsWith("image/") && file.type !== "application/pdf") {
       toast.error("Only images and PDFs are supported.");
       return;
     }
 
-    // Validate size (e.g., max 10MB)
     if (file.size > 10 * 1024 * 1024) {
       toast.error("File is too large (max 10MB).");
       return;
     }
 
     try {
-       const fd = new FormData();
+      const fd = new FormData();
       fd.append("file", file);
-      uploadAsset.mutate(fd as any);
+      await uploadAsset.mutateAsync(fd);
       toast.success("Asset uploaded");
     } catch (err: any) {
       toast.error(err.message || "Upload failed");
@@ -121,19 +127,16 @@ export function MediaAssetLibrary({ onInsert, onClose }: Props) {
           <div className="grid grid-cols-2 gap-2">
             {filtered.map((asset) => {
               const isImage = asset.mimeType.startsWith("image/");
+              const src = assetSrc(asset.url);
               return (
                 <div
                   key={asset.id}
                   className="group relative border border-border/50 rounded-lg overflow-hidden bg-muted/10 hover:border-primary/50 transition-colors cursor-pointer"
-                  onClick={() => onInsert(asset.url)}
+                  onClick={() => onInsert(src)}
                 >
                   <div className="aspect-video bg-muted flex items-center justify-center relative">
                     {isImage ? (
-                      <img
-                        src={asset.url}
-                        alt={asset.name}
-                        className="w-full h-full object-cover"
-                      />
+                      <img src={src} alt={asset.name} className="w-full h-full object-cover" />
                     ) : (
                       <FileText className="w-8 h-8 text-muted-foreground opacity-50" />
                     )}

@@ -4,13 +4,15 @@ import { Input } from "../../components/ui/input";
 import { ConfirmDialog } from "../../components/ui/confirm-dialog";
 import { useState, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
-import { Search, MoreHorizontal, Plus, Edit2, Trash2, Loader2, MessageSquare, Upload } from "lucide-react";
+import { Search, MoreHorizontal, Plus, Edit2, Trash2, Loader2, MessageSquare, Upload, Ban } from "lucide-react";
 import { toast } from "sonner";
 import {
   useAccounts,
   useContacts,
   useDeleteContact,
   useEnabledChannelTypes,
+  useBlockedContacts,
+  useUnblockCustomer,
 } from "../../api";
 import { ContactModal, type ContactFormData } from "../../components/contacts/ContactModal";
 import { ContactCsvImportModal } from "../../components/contacts/ContactCsvImportModal";
@@ -106,12 +108,15 @@ export function ContactsPage() {
   const { data: contacts, isLoading: contactsLoading } = useContacts(accountId);
   const { enabledChannels, channelsReady } = useEnabledChannelTypes();
   const deleteContact = useDeleteContact();
+  const { data: blockedRows, isLoading: blockedLoading } = useBlockedContacts();
+  const unblockCustomer = useUnblockCustomer();
   const { selectedContactId, setSelectedContactId } = useAppStore();
   const showEmail = !channelsReady || enabledChannels.includes("email");
   const showWa = !channelsReady || enabledChannels.includes("whatsapp");
   const showIg = !channelsReady || enabledChannels.includes("instagram");
   const showFb = !channelsReady || enabledChannels.includes("facebook");
   const [searchQuery, setSearchQuery] = useState("");
+  const [listMode, setListMode] = useState<"all" | "blocked">("all");
   const [openDropdownId, setOpenDropdownId] = useState<string | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isImportOpen, setIsImportOpen] = useState(false);
@@ -121,7 +126,10 @@ export function ContactsPage() {
     name: string;
   } | null>(null);
 
-  const isLoading = accountsLoading || (!!accountId && contactsLoading);
+  const isLoading =
+    listMode === "blocked"
+      ? blockedLoading
+      : accountsLoading || (!!accountId && contactsLoading);
   const colCount = 2 + Number(showEmail) + Number(showWa) + Number(showIg) + Number(showFb);
 
   const filteredContacts = useMemo(() => {
@@ -145,6 +153,17 @@ export function ContactsPage() {
       ),
     );
   }, [contacts, searchQuery]);
+
+  const filteredBlocked = useMemo(() => {
+    if (!blockedRows) return [];
+    if (!searchQuery.trim()) return blockedRows;
+    return blockedRows.filter((row) =>
+      matchesSearch(
+        [row.customerId, row.customer?.name, row.customer?.email, row.customer?.whatsappId, row.reason],
+        searchQuery,
+      ),
+    );
+  }, [blockedRows, searchQuery]);
 
   const openCreate = () => {
     setEditingContact(null);
@@ -227,13 +246,37 @@ export function ContactsPage() {
             <p className="text-xs text-muted-foreground">
               People you talk to across channels.
             </p>
+            <div className="mt-3 flex gap-1 rounded-lg border border-border bg-muted/40 p-0.5">
+              <button
+                type="button"
+                className={`rounded-md px-3 py-1.5 text-xs font-medium transition-colors ${
+                  listMode === "all"
+                    ? "bg-background text-foreground shadow-sm"
+                    : "text-muted-foreground hover:text-foreground"
+                }`}
+                onClick={() => setListMode("all")}
+              >
+                All
+              </button>
+              <button
+                type="button"
+                className={`rounded-md px-3 py-1.5 text-xs font-medium transition-colors ${
+                  listMode === "blocked"
+                    ? "bg-background text-foreground shadow-sm"
+                    : "text-muted-foreground hover:text-foreground"
+                }`}
+                onClick={() => setListMode("blocked")}
+              >
+                Blocked{blockedRows?.length ? ` (${blockedRows.length})` : ""}
+              </button>
+            </div>
           </div>
           <div className="flex items-center gap-2">
             <Button
               variant="outline"
               className="h-10 shrink-0 gap-2"
               onClick={() => setIsImportOpen(true)}
-              disabled={!accountId || accountsLoading}
+              disabled={!accountId || accountsLoading || listMode === "blocked"}
             >
               <Upload className="h-4 w-4" />
               Import CSV
@@ -241,7 +284,7 @@ export function ContactsPage() {
             <Button
               className="h-10 shrink-0 gap-2"
               onClick={openCreate}
-              disabled={!accountId || accountsLoading}
+              disabled={!accountId || accountsLoading || listMode === "blocked"}
             >
               <Plus className="h-4 w-4" />
               Add contact
@@ -263,6 +306,77 @@ export function ContactsPage() {
       <div className="flex-1 overflow-y-auto scrollbar-hide bg-muted/20 px-6 py-6 sm:px-8">
         <Card className="shadow-sm">
           <CardContent className="overflow-visible p-0">
+            {listMode === "blocked" ? (
+              <table className="w-full table-fixed text-left text-sm">
+                <thead className="bg-muted/50 text-muted-foreground">
+                  <tr>
+                    <th className="border-b border-border px-5 py-3 font-medium">Name</th>
+                    <th className="border-b border-border px-5 py-3 font-medium">Blocked</th>
+                    <th className="border-b border-border px-5 py-3 font-medium">Reason</th>
+                    <th className="w-36 border-b border-border px-5 py-3" />
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-border">
+                  {isLoading && (
+                    <tr>
+                      <td colSpan={4} className="px-5 py-12 text-center text-muted-foreground">
+                        <Loader2 className="mx-auto h-5 w-5 animate-spin" />
+                      </td>
+                    </tr>
+                  )}
+                  {!isLoading && filteredBlocked.length === 0 && (
+                    <tr>
+                      <td colSpan={4} className="px-5 py-10 text-center text-muted-foreground">
+                        {searchQuery.trim()
+                          ? "No blocked contacts match your search"
+                          : "No blocked customers"}
+                      </td>
+                    </tr>
+                  )}
+                  {!isLoading &&
+                    filteredBlocked.map((row) => (
+                      <tr key={row.id} className="transition-colors hover:bg-muted/30">
+                        <td className="px-5 py-3.5 align-middle">
+                          <div className="flex items-center gap-3">
+                            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-destructive/10 text-xs font-medium text-destructive">
+                              <Ban className="h-4 w-4" />
+                            </div>
+                            <span className="truncate font-medium">
+                              {row.customer?.name || "—"}
+                            </span>
+                          </div>
+                        </td>
+                        <td className="px-5 py-3.5 align-middle text-muted-foreground">
+                          {row.createdAt
+                            ? new Date(row.createdAt).toLocaleString()
+                            : "—"}
+                        </td>
+                        <td className="px-5 py-3.5 align-middle text-muted-foreground">
+                          {row.reason || "—"}
+                        </td>
+                        <td className="px-5 py-3.5 align-middle text-right">
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            className="h-8"
+                            disabled={unblockCustomer.isPending}
+                            onClick={() => {
+                              unblockCustomer.mutate(row.customerId, {
+                                onSuccess: () => toast.success("Customer unblocked"),
+                                onError: (err) =>
+                                  toast.error(err.message || "Failed to unblock"),
+                              });
+                            }}
+                          >
+                            Unblock
+                          </Button>
+                        </td>
+                      </tr>
+                    ))}
+                </tbody>
+              </table>
+            ) : (
               <table className="w-full table-fixed text-left text-sm">
                 <thead className="bg-muted/50 text-muted-foreground">
                   <tr>
@@ -395,6 +509,7 @@ export function ContactsPage() {
                     ))}
                 </tbody>
               </table>
+            )}
           </CardContent>
         </Card>
       </div>

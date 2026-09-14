@@ -14,7 +14,7 @@ import { webChatRoutes } from "./v1/web-chat.routes.js";
 import { searchRoutes } from "./v1/search.routes.js";
 import { emailRoutes } from "./v1/email.routes.js";
 import { authRoutes } from "./v1/auth.routes.js";
-import { contactsRoutes } from "./v1/contacts.routes.js";
+
 import { dashboardRoutes } from "./v1/dashboard.routes.js";
 import { orderRoutes } from "./v1/orders.routes.js";
 import { shopifyConfigRoutes } from "./v1/shopify.routes.js";
@@ -23,7 +23,8 @@ import { oauthConnectRoutes } from "./v1/oauth-connect.routes.js";
 import { ticketRoutes } from "./v1/ticket.routes.js";
 import { mediaRoutes } from "./v1/media.routes.js";
 import { mediaAssetRoutes } from "./v1/media-assets.routes.js";
-import { cannedReplyRoutes } from "./v1/canned-replies.routes.js";
+// import { cannedReplyRoutes } from "./v1/canned-replies.routes.js"; // disabled
+import { blockedContactRoutes } from "./v1/blocked-contacts.routes.js";
 import { teamRoutes } from "./v1/teams.routes.js";
 import { userRoutes } from "./v1/users.routes.js";
 import { healthRoutes } from "./v1/health.routes.js";
@@ -91,9 +92,16 @@ export async function registerRoutes(app: FastifyInstance) {
       reqPath === "/docs/channel-setup-guide.pdf" ||
       reqPath.startsWith("/webhooks/") ||
       reqPath.startsWith("/oauth/") ||
-      reqPath === "/api/v1/auth/google" || 
+      reqPath === "/api/v1/auth/google" ||
       reqPath.includes("/telemetry") ||
-      reqPath === "/api/v1/features"
+      reqPath === "/api/v1/features" ||
+      // Public web-chat embed APIs only — /settings stays authenticated
+      reqPath === "/api/v1/web-chat" ||
+      reqPath === "/api/v1/web-chat/session" ||
+      reqPath === "/api/v1/web-chat/config" ||
+      reqPath === "/api/v1/web-chat/messages" ||
+      reqPath.startsWith("/uploads/assets/") ||
+      reqPath.startsWith("/embed/")
     ) {
       return;
     }
@@ -123,7 +131,8 @@ export async function registerRoutes(app: FastifyInstance) {
   app.register(ticketRoutes, { prefix: "/api/v1/tickets" });
   app.register(mediaRoutes, { prefix: "/api/v1/media" });
   app.register(mediaAssetRoutes, { prefix: "/api/v1/media-assets" });
-  app.register(cannedReplyRoutes, { prefix: "/api/v1/canned-replies" });
+  // app.register(cannedReplyRoutes, { prefix: "/api/v1/canned-replies" }); // disabled
+  app.register(blockedContactRoutes, { prefix: "/api/v1/blocked-contacts" });
   app.register(teamRoutes, { prefix: "/api/v1/teams" });
   app.register(userRoutes, { prefix: "/api/v1/users" });
   app.register(healthRoutes, { prefix: "/api/v1/health" });
@@ -165,6 +174,67 @@ export async function registerRoutes(app: FastifyInstance) {
   app.register(emailRoutes, { prefix: "/api/v1/gmail" });
   app.register(oauthConnectRoutes, { prefix: "/api/v1/oauth" });
   app.register(webhookRoutes, { prefix: "/webhooks" });
+
+  // Local media asset library files (public read; upload still requires auth)
+  app.get<{ Params: { file: string } }>("/uploads/assets/:file", async (request, reply) => {
+    const file = request.params.file;
+    if (!file || file.includes("..") || file.includes("/") || file.includes("\\")) {
+      return reply.code(400).send({ error: "Invalid file" });
+    }
+    const here = nodePath.dirname(fileURLToPath(import.meta.url));
+    const candidates = [
+      nodePath.resolve(process.cwd(), "uploads", "assets", file),
+      nodePath.resolve(here, "../../uploads/assets", file),
+    ];
+    for (const filePath of candidates) {
+      try {
+        const buf = await fs.readFile(filePath);
+        const ext = nodePath.extname(filePath).toLowerCase();
+        const type =
+          ext === ".png"
+            ? "image/png"
+            : ext === ".jpg" || ext === ".jpeg"
+              ? "image/jpeg"
+              : ext === ".gif"
+                ? "image/gif"
+                : ext === ".webp"
+                  ? "image/webp"
+                  : ext === ".pdf"
+                    ? "application/pdf"
+                    : "application/octet-stream";
+        return reply.header("Content-Type", type).send(buf);
+      } catch {
+        /* try next */
+      }
+    }
+    return reply.code(404).send({ error: "Asset not found" });
+  });
+
+  // Third-party web chat embed script (IIFE). Hosted on the API origin so
+  // <script src="https://api.cep-*.fybud.com/embed/webchat.js"> auto-binds that tenant.
+  app.get("/embed/webchat.js", async (_request, reply) => {
+    const here = nodePath.dirname(fileURLToPath(import.meta.url));
+    const candidates = [
+      nodePath.resolve(process.cwd(), "public/embed/webchat.js"),
+      nodePath.resolve(here, "../../public/embed/webchat.js"),
+    ];
+    for (const filePath of candidates) {
+      try {
+        const buf = await fs.readFile(filePath);
+        return reply
+          .header("Content-Type", "application/javascript; charset=utf-8")
+          .header("Cache-Control", "public, max-age=300")
+          .header("Access-Control-Allow-Origin", "*")
+          .send(buf);
+      } catch {
+        /* try next */
+      }
+    }
+    return reply.code(404).send({
+      error:
+        "webchat.js not found. Build the embed: cd platform-web && npm run build:embed",
+    });
+  });
 
   const { default: telemetryRoutes } = await import('./v1/telemetry.routes.js');
   app.register(telemetryRoutes, { prefix: "/api/v1/telemetry" });

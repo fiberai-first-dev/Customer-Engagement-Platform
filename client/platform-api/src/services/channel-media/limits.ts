@@ -33,6 +33,13 @@ export const CHANNEL_MEDIA_LIMITS: Record<
     audio: 25 * MB,
     document: 25 * MB,
   },
+  web_chat: {
+    default: 25 * MB,
+    image: 25 * MB,
+    video: 25 * MB,
+    audio: 25 * MB,
+    document: 25 * MB,
+  }
 };
 
 export function getChannelMediaLimit(channelType: ChannelType, mimeType: string): number {

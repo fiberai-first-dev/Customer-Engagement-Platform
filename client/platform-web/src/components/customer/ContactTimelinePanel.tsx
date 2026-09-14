@@ -1,5 +1,5 @@
 // @ts-nocheck
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import {
   MessageSquare,
   TicketIcon,
@@ -160,6 +160,11 @@ function CustomFieldsEditor({
   const [editing, setEditing] = useState<string | null>(null);
   const [editVal, setEditVal] = useState("");
   const updateFields = useUpdateContactCustomFields();
+
+  // Sync when timeline payload loads
+  useEffect(() => {
+    setFields(initial ?? {});
+  }, [contactId, JSON.stringify(initial)]);
 
   const save = async (patch: Record<string, string | null>) => {
     try {

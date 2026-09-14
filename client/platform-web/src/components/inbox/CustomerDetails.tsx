@@ -18,6 +18,7 @@ import {
   type CustomerOrder,
   type OrderStats,
 } from "../../services/order.service";
+import { ContactTimelinePanel } from "../customer/ContactTimelinePanel";
 import { Badge } from "../ui/badge";
 import { Button } from "../ui/button";
 import {
@@ -37,10 +38,11 @@ type Props = {
   onClose: () => void;
 };
 
-type TabId = "profile" | "stats" | "orders";
+type TabId = "profile" | "timeline" | "stats" | "orders";
 
 const TABS: { id: TabId; label: string }[] = [
   { id: "profile", label: "Profile" },
+  { id: "timeline", label: "Timeline" },
   { id: "stats", label: "Order stats" },
   { id: "orders", label: "Recent orders" },
 ];
@@ -190,14 +192,14 @@ export function CustomerDetails({ contact, onClose }: Props) {
           </div>
         </div>
 
-        <div className="mt-4 grid grid-cols-3 gap-1 rounded-xl bg-muted p-1">
+        <div className="mt-4 grid grid-cols-4 gap-1 rounded-xl bg-muted p-1">
           {TABS.map((item) => (
             <button
               key={item.id}
               type="button"
               onClick={() => setTab(item.id)}
               className={cn(
-                "rounded-lg px-2 py-2 text-[11px] font-semibold transition-all",
+                "rounded-lg px-1.5 py-2 text-[10px] font-semibold transition-all",
                 tab === item.id
                   ? "bg-background text-foreground shadow-sm"
                   : "text-muted-foreground hover:text-foreground",
@@ -210,6 +212,12 @@ export function CustomerDetails({ contact, onClose }: Props) {
       </div>
 
       <div className="flex-1 overflow-y-auto scrollbar-thin bg-background px-4 py-4">
+        {tab === "timeline" && contact ? (
+          <div className="-mx-4 -my-4 h-full min-h-[320px]">
+            <ContactTimelinePanel contact={contact} />
+          </div>
+        ) : (
+          <>
         {!canLookup && (
           <p className="mb-3 rounded-lg border border-dashed border-border px-3 py-3 text-xs text-muted-foreground">
             Add an email or WhatsApp number to look up Shopify orders.
@@ -242,14 +250,16 @@ export function CustomerDetails({ contact, onClose }: Props) {
             )}
           </div>
         )}
+          </>
+        )}
       </div>
 
       <div className="border-t border-border bg-card px-4 py-2.5">
         <p className="text-center text-[10px] text-muted-foreground">
-          {commerce.provider === "shopify"
-            ? "Order data from Shopify"
-            : commerce.provider === "mock"
-              ? "Sample order data"
+          {tab === "timeline"
+            ? "Messages, tickets, and broadcasts"
+            : commerce.provider === "shopify"
+              ? "Order data from Shopify"
               : "Shopify is not connected"}
         </p>
       </div>

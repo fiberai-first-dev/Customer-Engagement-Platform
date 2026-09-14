@@ -3,10 +3,13 @@ import { prisma } from "../config/db.js";
 import { ulid } from "ulid";
 
 export class HandoverController {
-  static async listNotes(request: FastifyRequest<{ Params: { conversationId: string } }>, reply: FastifyReply) {
-    const { conversationId } = request.params;
+  static async listNotes(
+    request: FastifyRequest<{ Params: { contactId: string } }>,
+    reply: FastifyReply,
+  ) {
+    const { contactId } = request.params;
     const notes = await prisma.handoverNote.findMany({
-      where: { conversationId },
+      where: { conversationId: contactId },
       include: {
         author: { select: { id: true, username: true, name: true } },
       },
@@ -16,26 +19,29 @@ export class HandoverController {
   }
 
   static async addNote(
-    request: FastifyRequest<{ Params: { conversationId: string }; Body: { note: string } }>,
-    reply: FastifyReply
+    request: FastifyRequest<{
+      Params: { contactId: string };
+      Body: { content?: string; note?: string; body?: string };
+    }>,
+    reply: FastifyReply,
   ) {
-    const { conversationId } = request.params;
-    const { note } = request.body ?? {};
-    const user = (request as any).user;
+    const { contactId } = request.params;
+    const raw = request.body?.content ?? request.body?.note ?? request.body?.body;
+    const user = (request as { user?: { id: string } }).user;
 
-    if (!note?.trim()) {
+    if (!user?.id) {
+      return reply.code(401).send({ error: "Unauthorized" });
+    }
+    if (!raw?.trim()) {
       return reply.code(400).send({ error: "Note content is required" });
     }
-
-    // Conversation object doesn't exist in Prisma directly (it's derived from contact/messages).
-    // We just assume conversationId is valid if passed.
 
     const newNote = await prisma.handoverNote.create({
       data: {
         id: ulid(),
-        conversationId,
+        conversationId: contactId,
         authorId: user.id,
-        body: note.trim(),
+        body: raw.trim(),
       },
       include: {
         author: { select: { id: true, username: true, name: true } },
@@ -46,28 +52,30 @@ export class HandoverController {
   }
 
   static async deleteNote(
-    request: FastifyRequest<{ Params: { conversationId: string; noteId: string } }>,
-    reply: FastifyReply
+    request: FastifyRequest<{ Params: { noteId: string } }>,
+    reply: FastifyReply,
   ) {
-    const { conversationId, noteId } = request.params;
-    const user = (request as any).user;
+    const { noteId } = request.params;
+    const user = (request as { user?: { id: string; role?: string } }).user;
 
-    const note = await prisma.handoverNote.findUnique({
-      where: { id: noteId },
-    });
+    if (!user?.id) {
+      return reply.code(401).send({ error: "Unauthorized" });
+    }
 
+    const note = await prisma.handoverNote.findUnique({ where: { id: noteId } });
     if (!note) {
       return reply.code(404).send({ error: "Note not found" });
     }
 
-    if (note.authorId !== user.id && user.role !== "ADMIN" && user.role !== "SUPER_ADMIN") {
+    if (
+      note.authorId !== user.id &&
+      user.role !== "ADMIN" &&
+      user.role !== "SUPER_ADMIN"
+    ) {
       return reply.code(403).send({ error: "Only the author or an admin can delete this note" });
     }
 
-    await prisma.handoverNote.delete({
-      where: { id: noteId },
-    });
-
+    await prisma.handoverNote.delete({ where: { id: noteId } });
     return reply.send({ success: true });
   }
 }

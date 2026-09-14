@@ -1,4 +1,4 @@
-import { Fragment, useEffect, useRef, useState } from "react";
+import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import {
   AlertCircle,
   CheckCircle2,
@@ -13,19 +13,23 @@ import {
   Square,
   Trash2,
   X,
-  FileImage,
   FileVideo,
   FileAudio,
   FileText,
+  FileImage,
+  Ban,
   AlertTriangle,
   Quote,
   TicketIcon,
   Plus,
   Pin,
   Star,
+  Search,
+  ChevronUp,
+  ChevronDown,
 } from "lucide-react";
 import type { ChannelType, Conversation, Message } from "../../api";
-import { useFeatureFlag, downloadTranscript, useReactToMessage, useTogglePin, useToggleStar } from "../../api";
+import { useFeatureFlag, downloadTranscript, useTogglePin, useToggleStar, useBlockCustomer } from "../../api";
 import { resolveConversationWindow } from "../../lib/messagingWindow";
 import {
   uploadConversationAttachment,
@@ -43,8 +47,11 @@ import {
 } from "./ConversationWindowBanner";
 import { WhatsAppTemplateSelector } from "./WhatsAppTemplateSelector";
 import { HandoverNotes } from "./HandoverNotes";
-import { CannedReplyPicker } from "./CannedReplyPicker";
+// Canned replies + asset library disabled
+// import { CannedReplyPicker } from "./CannedReplyPicker";
+// import { MediaAssetLibrary } from "./MediaAssetLibrary";
 import { Button } from "../ui/button";
+import { ConfirmDialog } from "../ui/confirm-dialog";
 import { toast } from "sonner";
 import {
   CHANNELS,
@@ -449,6 +456,11 @@ export function ConversationThread({
   const { draft, setDraft, clearDraft } = useDraft(selectedConversation?.id);
   const [subject, setSubject] = useState("");
   const [pendingFile, setPendingFile] = useState<File | null>(null);
+  const [chatSearchOpen, setChatSearchOpen] = useState(false);
+  const [chatSearchQuery, setChatSearchQuery] = useState("");
+  const [chatSearchIndex, setChatSearchIndex] = useState(0);
+  const chatSearchInputRef = useRef<HTMLInputElement>(null);
+  const messageRefs = useRef<Map<string, HTMLDivElement>>(new Map());
   const [fileError, setFileError] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -456,10 +468,8 @@ export function ConversationThread({
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [menuOpen, setMenuOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
-  const reactToMessage = useReactToMessage();
-  
-  // Canned reply slash command state
-  const [slashSearch, setSlashSearch] = useState<string | null>(null);
+  const blockCustomer = useBlockCustomer();
+  const [blockConfirmOpen, setBlockConfirmOpen] = useState(false);
 
   const { data: featureFlag } = useFeatureFlag("whatsapp_templates_enabled");
   const { data: instagramHumanAgentFlag } = useFeatureFlag("instagram_human_agent_enabled");
@@ -489,6 +499,28 @@ export function ConversationThread({
 
   const togglePin = useTogglePin();
   const toggleStar = useToggleStar();
+
+  const chatSearchMatches = useMemo(() => {
+    const q = chatSearchQuery.trim().toLowerCase();
+    if (!q || q.length < 1) return [] as Message[];
+    return (messages ?? []).filter((m) => (m.content ?? "").toLowerCase().includes(q));
+  }, [messages, chatSearchQuery]);
+
+  useEffect(() => {
+    setChatSearchIndex(0);
+  }, [chatSearchQuery, selectedConversation?.id]);
+
+  useEffect(() => {
+    if (!chatSearchOpen) return;
+    chatSearchInputRef.current?.focus();
+  }, [chatSearchOpen]);
+
+  useEffect(() => {
+    const match = chatSearchMatches[chatSearchIndex];
+    if (!match) return;
+    const el = messageRefs.current.get(match.id);
+    el?.scrollIntoView({ behavior: "smooth", block: "center" });
+  }, [chatSearchIndex, chatSearchMatches]);
 
   const startRecording = async () => {
     if (isRecording) return;
@@ -734,6 +766,41 @@ export function ConversationThread({
 
   return (
     <div className="flex h-full min-w-0 flex-1 flex-col bg-background">
+      <ConfirmDialog
+        open={blockConfirmOpen}
+        title="Block this customer?"
+        description={
+          <>
+            Incoming messages from this customer will be ignored on{" "}
+            <strong>all channels</strong> (WhatsApp, Instagram, Facebook, Email, Web
+            Chat). You can unblock them later from Contacts → Blocked.
+          </>
+        }
+        confirmLabel="Block customer"
+        cancelLabel="Cancel"
+        destructive
+        confirming={blockCustomer.isPending}
+        onConfirm={() => {
+          const customerId = selectedConversation?.contactId;
+          if (!customerId) {
+            setBlockConfirmOpen(false);
+            return;
+          }
+          blockCustomer.mutate(
+            { customerId },
+            {
+              onSuccess: () => {
+                toast.success("Customer blocked");
+                setBlockConfirmOpen(false);
+              },
+              onError: (err) => {
+                toast.error(err.message || "Failed to block customer");
+              },
+            },
+          );
+        }}
+        onCancel={() => setBlockConfirmOpen(false)}
+      />
       <div className="flex h-14 shrink-0 items-center justify-between gap-3 border-b border-border bg-card px-4">
         <div className="flex min-w-0 items-center gap-3">
           <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-primary/10 text-sm font-semibold text-primary">
@@ -836,6 +903,20 @@ export function ConversationThread({
                   role="menu"
                   className="absolute right-0 top-full z-30 mt-1 w-52 overflow-hidden rounded-lg border border-border bg-card py-1 shadow-lg"
                 >
+                  {hasMessages && (
+                    <button
+                      type="button"
+                      role="menuitem"
+                      className="flex w-full items-center gap-2.5 px-3 py-2.5 text-left text-sm text-foreground hover:bg-muted"
+                      onClick={() => {
+                        setMenuOpen(false);
+                        setChatSearchOpen(true);
+                      }}
+                    >
+                      <Search className="h-4 w-4 text-muted-foreground" />
+                      Search in chat
+                    </button>
+                  )}
                   {isAdmin && onDeleteMessages && hasMessages && (
                     <button
                       type="button"
@@ -857,11 +938,27 @@ export function ConversationThread({
                       className="flex w-full items-center gap-2.5 px-3 py-2.5 text-left text-sm text-foreground hover:bg-muted"
                       onClick={() => {
                         setMenuOpen(false);
-                        downloadTranscript(selectedConversation.id);
+                        void downloadTranscript(selectedConversation.id).catch((err) => {
+                          toast.error(err?.message || "Failed to download transcript");
+                        });
                       }}
                     >
                       <FileText className="h-4 w-4 text-muted-foreground" />
                       Download transcript
+                    </button>
+                  )}
+                  {selectedConversation && (
+                    <button
+                      type="button"
+                      role="menuitem"
+                      className="flex w-full items-center gap-2.5 px-3 py-2.5 text-left text-sm text-destructive hover:bg-destructive/10"
+                      onClick={() => {
+                        setMenuOpen(false);
+                        setBlockConfirmOpen(true);
+                      }}
+                    >
+                      <Ban className="h-4 w-4" />
+                      Block customer
                     </button>
                   )}
                   {onClearChat && isAdmin && (
@@ -889,6 +986,73 @@ export function ConversationThread({
           )}
         </div>
       </div>
+
+      {chatSearchOpen && (
+        <div className="flex shrink-0 items-center gap-2 border-b border-border bg-muted/40 px-4 py-2">
+          <Search className="h-4 w-4 shrink-0 text-muted-foreground" />
+          <input
+            ref={chatSearchInputRef}
+            type="text"
+            value={chatSearchQuery}
+            onChange={(e) => setChatSearchQuery(e.target.value)}
+            placeholder={`Search in this ${channelLabel(activeTab)} chat…`}
+            className="h-8 min-w-0 flex-1 rounded-md border border-border bg-background px-2.5 text-sm outline-none focus:ring-1 focus:ring-primary"
+          />
+          <span className="shrink-0 text-[11px] tabular-nums text-muted-foreground">
+            {chatSearchQuery.trim()
+              ? chatSearchMatches.length === 0
+                ? "0 / 0"
+                : `${chatSearchIndex + 1} / ${chatSearchMatches.length}`
+              : ""}
+          </span>
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
+            className="h-8 w-8"
+            disabled={chatSearchMatches.length === 0}
+            title="Previous match"
+            onClick={() =>
+              setChatSearchIndex((i) =>
+                chatSearchMatches.length === 0
+                  ? 0
+                  : (i - 1 + chatSearchMatches.length) % chatSearchMatches.length,
+              )
+            }
+          >
+            <ChevronUp className="h-4 w-4" />
+          </Button>
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
+            className="h-8 w-8"
+            disabled={chatSearchMatches.length === 0}
+            title="Next match"
+            onClick={() =>
+              setChatSearchIndex((i) =>
+                chatSearchMatches.length === 0 ? 0 : (i + 1) % chatSearchMatches.length,
+              )
+            }
+          >
+            <ChevronDown className="h-4 w-4" />
+          </Button>
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
+            className="h-8 w-8"
+            title="Close search"
+            onClick={() => {
+              setChatSearchOpen(false);
+              setChatSearchQuery("");
+              setChatSearchIndex(0);
+            }}
+          >
+            <X className="h-4 w-4" />
+          </Button>
+        </div>
+      )}
 
       {selectedConversation && (
         <HandoverNotes contactId={selectedConversation.contactId} />
@@ -1124,6 +1288,12 @@ export function ConversationThread({
               const dayLabel = showDaySeparator
                 ? formatDaySeparator(message.createdAt)
                 : null;
+              const isSearchHit =
+                chatSearchOpen &&
+                chatSearchQuery.trim().length > 0 &&
+                chatSearchMatches.some((m) => m.id === message.id);
+              const isActiveSearchHit =
+                isSearchHit && chatSearchMatches[chatSearchIndex]?.id === message.id;
               return (
                 <Fragment key={message.id}>
                   {dayLabel && (
@@ -1134,9 +1304,15 @@ export function ConversationThread({
                     </div>
                   )}
                   <div
+                    ref={(el) => {
+                      if (el) messageRefs.current.set(message.id, el);
+                      else messageRefs.current.delete(message.id);
+                    }}
                     className={cn(
-                      "flex w-fit max-w-[min(100%,48rem)] items-end group",
-                      incoming ? "mr-auto" : "ml-auto flex-row-reverse"
+                      "flex w-fit max-w-[min(100%,48rem)] items-end group rounded-lg",
+                      incoming ? "mr-auto" : "ml-auto flex-row-reverse",
+                      isActiveSearchHit && "ring-2 ring-amber-400 ring-offset-2 ring-offset-background",
+                      isSearchHit && !isActiveSearchHit && "ring-1 ring-amber-300/70",
                     )}
                   >
                   <div
@@ -1274,31 +1450,17 @@ export function ConversationThread({
                         size="icon"
                         className="h-7 w-7 rounded-full text-muted-foreground hover:text-foreground"
                         title={message.pinned ? "Unpin message" : "Pin message"}
-                        onClick={() => togglePin.mutate(message.id)}
+                        onClick={() => {
+                          if (selectedConversation) {
+                            togglePin.mutate({
+                              conversationId: selectedConversation.id,
+                              messageId: message.id,
+                            });
+                          }
+                        }}
                       >
                         <Pin className={cn("h-3.5 w-3.5", message.pinned ? "fill-primary text-primary" : "")} />
                       </Button>
-
-                      <div className="h-4 w-px bg-border/50 mx-0.5" />
-                      
-                      {["👍", "❤️", "😂"].map((emoji) => (
-                        <button
-                          key={emoji}
-                          type="button"
-                          className="h-7 w-7 flex items-center justify-center rounded-full hover:bg-muted text-sm transition-colors"
-                          onClick={() => {
-                            if (selectedConversation) {
-                              reactToMessage.mutate({
-                                conversationId: selectedConversation.id,
-                                messageId: message.id,
-                                emoji
-                              });
-                            }
-                          }}
-                        >
-                          {emoji}
-                        </button>
-                      ))}
                     </div>
                   </div>
                 </div>
@@ -1498,24 +1660,8 @@ export function ConversationThread({
                     <div className="relative flex-1">
                       <textarea
                         value={draft}
-                        onChange={(e) => {
-                          const val = e.target.value;
-                          setDraft(val);
-                          // Check for slash command
-                          const match = val.match(/(?:^|\n)\/([a-zA-Z0-9_-]*)$/);
-                          if (match) {
-                            setSlashSearch(match[1]);
-                          } else {
-                            setSlashSearch(null);
-                          }
-                        }}
+                        onChange={(e) => setDraft(e.target.value)}
                         onKeyDown={(e) => {
-                          if (slashSearch !== null) {
-                            if (["ArrowUp", "ArrowDown", "Enter", "Tab", "Escape"].includes(e.key)) {
-                              // Let the picker handle these
-                              return;
-                            }
-                          }
                           if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
                             e.preventDefault();
                             handleSend();
@@ -1531,20 +1677,6 @@ export function ConversationThread({
                         rows={1}
                         className="max-h-[120px] min-h-[40px] w-full resize-none bg-transparent px-2 py-2 text-sm leading-relaxed focus:outline-none"
                       />
-                      {slashSearch !== null && (
-                        <CannedReplyPicker
-                          search={slashSearch}
-                          onClose={() => setSlashSearch(null)}
-                          variables={{
-                            name: contactName,
-                            // Could add shopify vars here if needed
-                          }}
-                          onSelect={(body) => {
-                            setDraft((prev) => prev.replace(/(?:^|\n)\/([a-zA-Z0-9_-]*)$/, `\n${body}`).trim());
-                            setSlashSearch(null);
-                          }}
-                        />
-                      )}
                     </div>
                   )}
                   <Button

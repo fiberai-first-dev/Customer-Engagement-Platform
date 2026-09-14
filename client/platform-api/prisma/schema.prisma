@@ -114,6 +114,7 @@ model Customer {
   emailIdentities     EmailChannel[]
   webChatIdentities   WebChatChannel[]
   tickets             Ticket[]
+  blockedContact      BlockedContact?
 
   @@index([resolved])
   @@index([tag])
@@ -536,17 +537,17 @@ model BroadcastRecipient {
   @@map("broadcast_recipients")
 }
 
-/// ─── Spam / Block List ───────────────────────────────────────────────────────
+/// ─── Spam / Block List (per customer, all channels) ──────────────────────────
 
 model BlockedContact {
-  id          String   @id @default(cuid())
-  channelType String   @map("channel_type")
-  externalId  String   @map("external_id")
-  reason      String?
-  blockedBy   String?  @map("blocked_by")
-  createdAt   DateTime @default(now()) @map("created_at")
+  id         String   @id @default(cuid())
+  customerId String   @unique @map("customer_id")
+  reason     String?
+  blockedBy  String?  @map("blocked_by")
+  createdAt  DateTime @default(now()) @map("created_at")
 
-  @@unique([channelType, externalId])
+  customer Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+
   @@map("blocked_contacts")
 }
 

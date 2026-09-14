@@ -16,6 +16,8 @@ import {
   useUpdateShopifyConfig,
   setupGuidePdfUrl,
   useFeatureFlag,
+  useWebChatSettings,
+  useUpdateWebChatSettings,
   type Inbox,
 } from "../../api";
 import { ConfirmDialog } from "../../components/ui/confirm-dialog";
@@ -25,6 +27,8 @@ import {
   EyeOff,
   Loader2,
   X,
+  Copy,
+  Check,
 } from "lucide-react";
 
 type ChannelKey = "whatsapp" | "instagram" | "facebook" | "email" | "shopify";
@@ -270,6 +274,180 @@ function ChannelRow({
         )}
       </div>
     </div>
+  );
+}
+
+function WebChatEmbedCard() {
+  const [copied, setCopied] = useState(false);
+  const [originsDraft, setOriginsDraft] = useState("");
+  const { data: settings, isLoading } = useWebChatSettings();
+  const updateSettings = useUpdateWebChatSettings();
+
+  useEffect(() => {
+    if (settings) {
+      setOriginsDraft((settings.allowedOrigins ?? []).join("\n"));
+    }
+  }, [settings]);
+
+  const webOrigin =
+    typeof window !== "undefined" ? window.location.origin : "https://cep-demo.fybud.com";
+  const apiBase =
+    (import.meta.env.VITE_API_BASE_URL as string | undefined)?.replace(/\/$/, "") || "";
+  const scriptHost = apiBase || webOrigin;
+  const scriptSrc = `${scriptHost}/embed/webchat.js`;
+  const widgetKey = settings?.widgetKey ?? "";
+  const snippet = widgetKey
+    ? `<script src="${scriptSrc}" data-key="${widgetKey}" async></script>`
+    : `<script src="${scriptSrc}" data-key="YOUR_WIDGET_KEY" async></script>`;
+
+  const copy = async () => {
+    try {
+      await navigator.clipboard.writeText(snippet);
+      setCopied(true);
+      toast.success("Embed snippet copied");
+      setTimeout(() => setCopied(false), 2000);
+    } catch {
+      toast.error("Could not copy — select the snippet manually");
+    }
+  };
+
+  const saveOrigins = () => {
+    const allowedOrigins = originsDraft
+      .split(/[\n,]+/)
+      .map((s) => s.trim())
+      .filter(Boolean);
+    updateSettings.mutate(
+      { allowedOrigins },
+      {
+        onSuccess: () => toast.success("Allowed domains saved"),
+        onError: (err) => toast.error(err.message || "Failed to save domains"),
+      },
+    );
+  };
+
+  const rotateKey = () => {
+    updateSettings.mutate(
+      { rotateKey: true },
+      {
+        onSuccess: () => toast.success("Widget key rotated — update your embed snippet"),
+        onError: (err) => toast.error(err.message || "Failed to rotate key"),
+      },
+    );
+  };
+
+  return (
+    <section className="space-y-3">
+      <div>
+        <h2 className="text-base font-semibold leading-none">Web Chat embed</h2>
+        <p className="mt-2 text-sm text-muted-foreground">
+          Paste one script tag on the client website. Visitors enter name + WhatsApp first so
+          they unify with the same contact in your inbox. Each CEP host is its own tenant
+          (e.g. cep-demo vs cep-svasthyaa) — the script URL selects the platform. Require a
+          widget key and optionally restrict which domains may load the chat.
+        </p>
+      </div>
+      <div className="overflow-hidden rounded-xl border border-border bg-card shadow-sm">
+        <div className="space-y-4 p-4">
+          {isLoading ? (
+            <div className="flex items-center gap-2 text-sm text-muted-foreground">
+              <Loader2 className="h-4 w-4 animate-spin" />
+              Loading widget settings…
+            </div>
+          ) : (
+            <>
+              <div className="space-y-2">
+                <label className="text-xs font-medium text-foreground">Widget key</label>
+                <div className="flex flex-wrap items-center gap-2">
+                  <code className="min-w-0 flex-1 truncate rounded-lg bg-muted/60 px-3 py-2 text-[11px]">
+                    {widgetKey || "—"}
+                  </code>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    className="h-9"
+                    disabled={!widgetKey || updateSettings.isPending}
+                    onClick={() => {
+                      void navigator.clipboard.writeText(widgetKey).then(
+                        () => toast.success("Key copied"),
+                        () => toast.error("Could not copy key"),
+                      );
+                    }}
+                  >
+                    Copy key
+                  </Button>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    className="h-9"
+                    disabled={updateSettings.isPending}
+                    onClick={rotateKey}
+                  >
+                    {updateSettings.isPending ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      "Rotate key"
+                    )}
+                  </Button>
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <label className="text-xs font-medium text-foreground">
+                  Allowed domains (one per line)
+                </label>
+                <textarea
+                  value={originsDraft}
+                  onChange={(e) => setOriginsDraft(e.target.value)}
+                  rows={3}
+                  placeholder={"https://www.example.com\nhttps://shop.example.com"}
+                  className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-primary"
+                />
+                <p className="text-[11px] text-muted-foreground">
+                  Leave empty to allow any domain (key still required). CEP preview at{" "}
+                  <code className="text-[10px]">/chat</code> is always allowed.
+                </p>
+                <Button
+                  type="button"
+                  size="sm"
+                  className="h-9"
+                  disabled={updateSettings.isPending}
+                  onClick={saveOrigins}
+                >
+                  Save domains
+                </Button>
+              </div>
+
+              <pre className="overflow-x-auto rounded-lg bg-muted/60 p-3 text-[11px] leading-relaxed text-foreground">
+                {snippet}
+              </pre>
+              <div className="flex flex-wrap items-center gap-2">
+                <Button type="button" size="sm" className="h-9 gap-2" onClick={() => void copy()}>
+                  {copied ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
+                  {copied ? "Copied" : "Copy snippet"}
+                </Button>
+                <Button type="button" size="sm" variant="outline" className="h-9" asChild>
+                  <a
+                    href={widgetKey ? `/chat?key=${encodeURIComponent(widgetKey)}` : "/chat"}
+                    target="_blank"
+                    rel="noreferrer"
+                  >
+                    Preview widget
+                  </a>
+                </Button>
+              </div>
+              <p className="text-xs text-muted-foreground">
+                Required: <code className="text-[10px]">data-key</code>. Optional:{" "}
+                <code className="text-[10px]">data-title</code>,{" "}
+                <code className="text-[10px]">data-color</code>,{" "}
+                <code className="text-[10px]">data-api-base</code>.
+              </p>
+            </>
+          )}
+        </div>
+      </div>
+    </section>
   );
 }
 
@@ -636,7 +814,7 @@ export function SettingsPage() {
           </div>
         </section>
 
-        
+        <WebChatEmbedCard />
 
       </div>
 
