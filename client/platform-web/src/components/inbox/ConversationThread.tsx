@@ -31,6 +31,8 @@ import {
   useTogglePin,
   useToggleContactPin,
   useBlockCustomer,
+  useUnblockCustomer,
+  useBlockedContacts,
 } from "../../api";
 import { resolveConversationWindow } from "../../lib/messagingWindow";
 import {
@@ -463,7 +465,18 @@ export function ConversationThread({
   const [menuOpen, setMenuOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
   const blockCustomer = useBlockCustomer();
+  const unblockCustomer = useUnblockCustomer();
+  const { data: blockedRows } = useBlockedContacts();
   const [blockConfirmOpen, setBlockConfirmOpen] = useState(false);
+
+  const contactCustomerId =
+    contact?.id || selectedConversation?.contactId || selectedConversation?.contact?.id || null;
+  const isContactBlocked =
+    Boolean(contact?.blocked) ||
+    Boolean(selectedConversation?.contact?.blocked) ||
+    (contactCustomerId
+      ? Boolean(blockedRows?.some((row) => row.customerId === contactCustomerId))
+      : false);
 
   const { data: featureFlag } = useFeatureFlag("whatsapp_templates_enabled");
   const { data: instagramHumanAgentFlag } = useFeatureFlag("instagram_human_agent_enabled");
@@ -741,7 +754,6 @@ export function ConversationThread({
         description={
           <>
             New messages from this contact will no longer appear in your inbox.
-            You can unblock them anytime from Contacts → Blocked.
           </>
         }
         confirmLabel="Block"
@@ -775,7 +787,15 @@ export function ConversationThread({
             {initials(contactName)}
           </div>
           <div className="min-w-0">
-            <h2 className="truncate text-sm font-semibold text-foreground">{contactName}</h2>
+            <div className="flex min-w-0 items-center gap-2">
+              <h2 className="truncate text-sm font-semibold text-foreground">{contactName}</h2>
+              {isContactBlocked ? (
+                <span className="inline-flex shrink-0 items-center gap-1 rounded-md border border-destructive/30 bg-destructive/10 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-destructive">
+                  <Ban className="h-3 w-3" />
+                  Blocked
+                </span>
+              ) : null}
+            </div>
             <p className="truncate text-xs text-muted-foreground">
               {identity ? `${channelLabel(activeTab)}: ${identity}` : channelLabel(activeTab)}
             </p>
@@ -915,7 +935,7 @@ export function ConversationThread({
                       Download transcript
                     </button>
                   )}
-                  {selectedConversation && (
+                  {selectedConversation && !isContactBlocked && (
                     <button
                       type="button"
                       role="menuitem"
@@ -927,6 +947,26 @@ export function ConversationThread({
                     >
                       <Ban className="h-4 w-4" />
                       Block contact
+                    </button>
+                  )}
+                  {selectedConversation && isContactBlocked && (
+                    <button
+                      type="button"
+                      role="menuitem"
+                      className="flex w-full items-center gap-2.5 px-3 py-2.5 text-left text-sm text-foreground hover:bg-muted"
+                      disabled={unblockCustomer.isPending}
+                      onClick={() => {
+                        setMenuOpen(false);
+                        if (!contactCustomerId) return;
+                        unblockCustomer.mutate(contactCustomerId, {
+                          onSuccess: () => toast.success("Contact unblocked"),
+                          onError: (err) =>
+                            toast.error(err.message || "Failed to unblock contact"),
+                        });
+                      }}
+                    >
+                      <Ban className="h-4 w-4 text-muted-foreground" />
+                      Unblock contact
                     </button>
                   )}
                   {onClearChat && isAdmin && (
@@ -954,6 +994,19 @@ export function ConversationThread({
           )}
         </div>
       </div>
+
+      {isContactBlocked ? (
+        <div className="flex shrink-0 items-start gap-2 border-b border-destructive/20 bg-destructive/5 px-4 py-2.5">
+          <Ban className="mt-0.5 h-4 w-4 shrink-0 text-destructive" />
+          <div className="min-w-0">
+            <p className="text-xs font-semibold text-destructive">This contact is blocked</p>
+            <p className="text-[11px] text-muted-foreground">
+              Incoming messages are ignored on all channels. Unblock from the menu or Contacts →
+              Blocked.
+            </p>
+          </div>
+        </div>
+      ) : null}
 
       {selecting && (
         <div className="flex shrink-0 items-center justify-between gap-3 border-b border-border bg-muted/40 px-5 py-2">

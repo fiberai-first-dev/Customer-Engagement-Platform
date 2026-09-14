@@ -1,5 +1,6 @@
 import type { ChannelType, Conversation } from "../../api";
-import { Pin } from "lucide-react";
+import { useBlockedContacts } from "../../api";
+import { Ban, Pin } from "lucide-react";
 import {
   cn,
   contactDisplayName,
@@ -25,19 +26,8 @@ export function listReadScopeKey(
   return `${contactId}:${channelFilter}`;
 }
 
-function contactHasUnread(
-  conversation: Conversation,
-  channelFilter: "all" | ChannelType,
-): boolean {
-  if (channelFilter === "all") {
-    return Boolean(conversation.contact.hasUnread);
-  }
-  const n = conversation.contact.unreadByChannel?.[channelFilter] ?? 0;
-  return n > 0;
-}
-
 /** Total unread messages across all channels, or scoped to a specific channel. */
-function getUnreadCount(
+export function getUnreadCount(
   conversation: Conversation,
   channelFilter: "all" | ChannelType,
 ): number {
@@ -47,6 +37,17 @@ function getUnreadCount(
     return byChannel[channelFilter] ?? 0;
   }
   return Object.values(byChannel).reduce<number>((sum, n) => sum + (n ?? 0), 0);
+}
+
+function contactHasUnread(
+  conversation: Conversation,
+  channelFilter: "all" | ChannelType,
+): boolean {
+  if (channelFilter === "all") {
+    return Boolean(conversation.contact.hasUnread);
+  }
+  const n = conversation.contact.unreadByChannel?.[channelFilter] ?? 0;
+  return n > 0;
 }
 
 /** Strip HTML tags and CSS/script blocks so email previews are clean text. */
@@ -73,6 +74,9 @@ export function ConversationList({
   channelFilter = "all",
   readScopeKeys,
 }: Props) {
+  const { data: blockedRows } = useBlockedContacts();
+  const blockedIds = new Set((blockedRows ?? []).map((r) => r.customerId));
+
   if (conversations.length === 0) {
     return (
       <div className="flex flex-1 flex-col items-center justify-center gap-2 p-8 text-center">
@@ -102,12 +106,16 @@ export function ConversationList({
 
         const selected = selectedContactId === conversation.contactId;
         const scopeKey = listReadScopeKey(conversation.contactId, channelFilter);
+        const isBlocked =
+          Boolean(conversation.contact.blocked) || blockedIds.has(conversation.contactId);
         const hasUnread =
+          !isBlocked &&
           contactHasUnread(conversation, channelFilter) &&
           !readScopeKeys?.has(scopeKey);
-        const unreadCount = readScopeKeys?.has(scopeKey)
-          ? 0
-          : getUnreadCount(conversation, channelFilter);
+        const unreadCount =
+          isBlocked || readScopeKeys?.has(scopeKey)
+            ? 0
+            : getUnreadCount(conversation, channelFilter);
 
         return (
           <button
@@ -134,13 +142,24 @@ export function ConversationList({
 
             <div className="min-w-0 flex-1">
               <div className="flex items-center justify-between gap-1.5">
-                <span
-                  className={cn(
-                    "truncate text-[13px] text-foreground",
-                    hasUnread ? "font-semibold" : "font-medium",
-                  )}
-                >
-                  {name}
+                <span className="flex min-w-0 items-center gap-1.5">
+                  <span
+                    className={cn(
+                      "truncate text-[13px] text-foreground",
+                      hasUnread ? "font-semibold" : "font-medium",
+                    )}
+                  >
+                    {name}
+                  </span>
+                  {isBlocked ? (
+                    <span
+                      className="inline-flex shrink-0 items-center gap-0.5 rounded bg-destructive/10 px-1 py-0.5 text-[9px] font-bold uppercase tracking-wide text-destructive"
+                      title="Blocked — inbound messages are ignored"
+                    >
+                      <Ban className="h-2.5 w-2.5" />
+                      Blocked
+                    </span>
+                  ) : null}
                 </span>
                 <div className="flex shrink-0 items-center gap-1.5">
                   {conversation.pinned ? (
@@ -157,10 +176,14 @@ export function ConversationList({
               <p
                 className={cn(
                   "mt-0.5 truncate text-xs",
-                  hasUnread ? "text-foreground/80" : "text-muted-foreground",
+                  isBlocked
+                    ? "text-destructive/80"
+                    : hasUnread
+                      ? "text-foreground/80"
+                      : "text-muted-foreground",
                 )}
               >
-                {preview}
+                {isBlocked ? "Blocked — inbound messages ignored" : preview}
               </p>
             </div>
           </button>

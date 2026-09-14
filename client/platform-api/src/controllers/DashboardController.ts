@@ -238,14 +238,13 @@ export class DashboardController {
           const ageHours = Math.max(1, Math.round((now - ch.last.getTime()) / 36e5));
           if (ch.last <= twoDaysAgo) over48h += 1;
           else over24h += 1;
-          if (agingSamples.length < 12) {
-            agingSamples.push({
-              conversationId: `${c.id}:${ch.type}`,
-              contactName: c.name || "Unknown",
-              channelType: ch.type,
-              ageHours,
-            });
-          }
+          // Full list so the client can filter by feature-enabled + connected channels.
+          agingSamples.push({
+            conversationId: `${c.id}:${ch.type}`,
+            contactName: c.name || "Unknown",
+            channelType: ch.type,
+            ageHours,
+          });
         }
       }
 

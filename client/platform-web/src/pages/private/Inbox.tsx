@@ -32,6 +32,7 @@ import {
   ConversationEmptyState,
   ConversationList,
   listReadScopeKey,
+  getUnreadCount,
   ConversationThread,
   CustomerDetails,
   LivePulse,
@@ -118,11 +119,32 @@ export function InboxPage() {
   const [statusFilter, setStatusFilter] = useState<"active" | "all">("active");
   const [channelFilter, setChannelFilter] = useState<ChannelFilter>("all");
   const [activeTab, setActiveTab] = useState<ChannelType>("whatsapp");
-  const [customerContextOpen, setCustomerContextOpen] = useState(true);
+  const [customerContextOpen, setCustomerContextOpen] = useState(() => {
+    try {
+      const saved = localStorage.getItem("inbox-customer-context-open");
+      if (saved === null) return false; // minimized by default
+      return saved === "true";
+    } catch {
+      return false;
+    }
+  });
+  const setCustomerContextOpenPersisted = (open: boolean | ((prev: boolean) => boolean)) => {
+    setCustomerContextOpen((prev) => {
+      const next = typeof open === "function" ? open(prev) : open;
+      try {
+        localStorage.setItem("inbox-customer-context-open", String(next));
+      } catch {
+        /* private mode */
+      }
+      return next;
+    });
+  };
   const [pendingDelete, setPendingDelete] = useState<PendingDelete | null>(null);
   const [selectedEmailThreadId, setSelectedEmailThreadId] = useState<string | null>(null);
   const [composingNewEmail, setComposingNewEmail] = useState(false);
   const [readScopeKeys, setReadScopeKeys] = useState<Set<string>>(() => new Set());
+  /** Unread totals when a scope was marked read — only re-show badge if count increases. */
+  const readUnreadBaselineRef = useRef<Map<string, number>>(new Map());
   const [createTicketConv, setCreateTicketConv] = useState<{conversationId: string; channel: string; customerId?: string} | null>(null);
   const [confirmCreateAnother, setConfirmCreateAnother] = useState(false);
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
@@ -221,15 +243,15 @@ export function InboxPage() {
     });
   }, [conversationsByContact, statusFilter, channelFilter, searchQuery]);
 
-  /** New inbound while a thread is open — show the unread bar again. */
+  /** New inbound while a thread is open — show the unread bar again only if count rose. */
   useEffect(() => {
     if (!conversations?.length) return;
+    const byContact = new Map<string, Conversation>();
+    for (const c of conversations) {
+      if (!byContact.has(c.contactId)) byContact.set(c.contactId, c);
+    }
     setReadScopeKeys((prev) => {
       if (!prev.size) return prev;
-      const byContact = new Map<string, Conversation>();
-      for (const c of conversations) {
-        if (!byContact.has(c.contactId)) byContact.set(c.contactId, c);
-      }
       const next = new Set(prev);
       let changed = false;
       for (const key of prev) {
@@ -239,19 +261,32 @@ export function InboxPage() {
         const filter = key.slice(sep + 1) as ChannelFilter;
         const conv = byContact.get(contactId);
         if (!conv) continue;
-        const serverUnread =
-          filter === "all"
-            ? Boolean(conv.contact.hasUnread)
-            : (conv.contact.unreadByChannel?.[filter as ChannelType] ?? 0) > 0;
-        if (serverUnread) {
+        const serverCount = getUnreadCount(conv, filter);
+        const baseline = readUnreadBaselineRef.current.get(key) ?? 0;
+        // Pin/refetch must not revive the badge; only a higher unread count means new mail.
+        if (serverCount > baseline) {
           next.delete(key);
+          readUnreadBaselineRef.current.delete(key);
           changed = true;
+        } else {
+          // Keep baseline in sync as server catches up after mark-read (count drops).
+          readUnreadBaselineRef.current.set(key, serverCount);
         }
       }
       return changed ? next : prev;
     });
   }, [conversations]);
 
+  const markScopeRead = (contactId: string, filter: ChannelFilter, conversation: Conversation) => {
+    const scopeKey = listReadScopeKey(contactId, filter);
+    readUnreadBaselineRef.current.set(scopeKey, getUnreadCount(conversation, filter));
+    setReadScopeKeys((prev) => {
+      if (prev.has(scopeKey)) return prev;
+      const next = new Set(prev);
+      next.add(scopeKey);
+      return next;
+    });
+  };
   const channelFilterOptions = useMemo(() => {
     // Don't flash every channel while flags/inboxes load — wait, then only connected+enabled.
     if (!channelsReady) return [];
@@ -486,15 +521,10 @@ export function InboxPage() {
   /** Mark read when opening a channel tab (not only list click). */
   useEffect(() => {
     const id = selectedConversation?.id;
-    if (!id || id.endsWith(":email:new") || !selectedContactId) return;
-    const scopeKey = listReadScopeKey(selectedContactId, channelFilter);
-    setReadScopeKeys((prev) => {
-      if (prev.has(scopeKey)) return prev;
-      const next = new Set(prev);
-      next.add(scopeKey);
-      return next;
-    });
+    if (!id || id.endsWith(":email:new") || !selectedContactId || !selectedConversation) return;
+    markScopeRead(selectedContactId, channelFilter, selectedConversation);
     void markConversationRead(id).catch(() => undefined);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- mark when thread/filter changes
   }, [selectedConversation?.id, selectedContactId, channelFilter]);
 
   useEffect(() => {
@@ -582,13 +612,7 @@ export function InboxPage() {
     focusedContactRef.current = contactId;
     setSelectedContactId(contactId);
 
-    const scopeKey = listReadScopeKey(contactId, channelFilter);
-    setReadScopeKeys((prev) => {
-      if (prev.has(scopeKey)) return prev;
-      const next = new Set(prev);
-      next.add(scopeKey);
-      return next;
-    });
+    markScopeRead(contactId, channelFilter, conversation);
 
     const toMark =
       channelFilter === "all"
@@ -854,8 +878,9 @@ export function InboxPage() {
         }}
         onCancel={() => setConfirmCreateAnother(false)}
       />
-      <PanelGroup direction="horizontal" autoSaveId="inbox-layout-panels" className="flex h-full w-full">
-        <Panel defaultSize={25} minSize={20} maxSize={40} className="flex shrink-0 flex-col border-r border-border bg-card">
+      {/* Outer group keeps the contacts list width stable; customer toggle only affects the inner group. */}
+      <PanelGroup direction="horizontal" autoSaveId="inbox-list-panels-v3" className="flex h-full w-full">
+        <Panel defaultSize={20} minSize={16} maxSize={36} className="flex shrink-0 flex-col border-r border-border bg-card">
         <div className="flex h-14 shrink-0 items-center justify-between gap-2 border-b border-border px-4">
           <div className="flex min-w-0 items-center gap-2.5">
             <h1 className="text-base font-semibold tracking-tight text-foreground">Inbox</h1>
@@ -917,7 +942,11 @@ export function InboxPage() {
                     ? "IG"
                     : option.id === "facebook"
                       ? "FB"
-                      : option.label;
+                      : option.id === "web_chat"
+                        ? "Web"
+                        : option.id === "email"
+                          ? "Email"
+                          : option.label;
               return (
                 <button
                   key={option.id}
@@ -957,45 +986,70 @@ export function InboxPage() {
         <div className="h-6 w-1 rounded-full bg-border group-hover:bg-primary/50 transition-colors" />
       </PanelResizeHandle>
 
-      <Panel defaultSize={50} minSize={30} className="flex flex-col flex-1 min-w-0">
-        {!selectedContactId || !selectedContact ? (
-          <ConversationEmptyState />
-        ) : (
-          <ConversationThread
-          key={selectedConversation?.id ?? selectedContactId}
-          contactName={contactDisplayName(selectedContact)}
-          contact={selectedContact}
-          activeTab={activeTab}
-          onTabChange={setActiveTab}
-          conversationsByChannel={contactConversations}
-          selectedConversation={selectedConversation}
-          emailThreads={emailThreads}
-          composingNewEmail={composingNewEmail}
-          onSelectEmailThread={(id) => {
-            setComposingNewEmail(false);
-            setSelectedEmailThreadId(id);
-          }}
-          onComposeNewEmail={() => {
-            setComposingNewEmail(true);
-            setSelectedEmailThreadId(null);
-          }}
-          messages={showMessagesLoader ? undefined : messages}
-          loadingMessages={showMessagesLoader}
-          onResolve={handleResolve}
-          resolving={updateStatus.isPending}
-          onClearChat={handleClearChat}
-          clearingChat={suppressConversation.isPending}
-          onDeleteMessages={handleDeleteMessages}
-          deletingMessages={deleteMessages.isPending}
-          onSend={handleSend}
-          onSendTemplate={handleSendTemplate}
-          sending={sendMessage.isPending || sendWhatsAppTemplate.isPending}
-          customerContextOpen={customerContextOpen}
-          onToggleCustomerContext={() => setCustomerContextOpen((open) => !open)}
-          enabledChannels={enabledChannels}
-        />
-      )}
+      <Panel defaultSize={80} minSize={40} className="flex min-w-0 flex-1 flex-col">
+        <PanelGroup
+          direction="horizontal"
+          autoSaveId="inbox-thread-customer-v3"
+          className="flex h-full w-full"
+        >
+          <Panel defaultSize={customerContextOpen ? 72 : 100} minSize={40} className="flex min-w-0 flex-1 flex-col">
+            {!selectedContactId || !selectedContact ? (
+              <ConversationEmptyState />
+            ) : (
+              <ConversationThread
+              key={selectedConversation?.id ?? selectedContactId}
+              contactName={contactDisplayName(selectedContact)}
+              contact={selectedContact}
+              activeTab={activeTab}
+              onTabChange={setActiveTab}
+              conversationsByChannel={contactConversations}
+              selectedConversation={selectedConversation}
+              emailThreads={emailThreads}
+              composingNewEmail={composingNewEmail}
+              onSelectEmailThread={(id) => {
+                setComposingNewEmail(false);
+                setSelectedEmailThreadId(id);
+              }}
+              onComposeNewEmail={() => {
+                setComposingNewEmail(true);
+                setSelectedEmailThreadId(null);
+              }}
+              messages={showMessagesLoader ? undefined : messages}
+              loadingMessages={showMessagesLoader}
+              onResolve={handleResolve}
+              resolving={updateStatus.isPending}
+              onClearChat={handleClearChat}
+              clearingChat={suppressConversation.isPending}
+              onDeleteMessages={handleDeleteMessages}
+              deletingMessages={deleteMessages.isPending}
+              onSend={handleSend}
+              onSendTemplate={handleSendTemplate}
+              sending={sendMessage.isPending || sendWhatsAppTemplate.isPending}
+              customerContextOpen={customerContextOpen}
+              onToggleCustomerContext={() => setCustomerContextOpenPersisted((open) => !open)}
+              enabledChannels={enabledChannels}
+            />
+          )}
+          </Panel>
+
+          {customerContextOpen && (
+            <>
+              <PanelResizeHandle className="w-1.5 flex items-center justify-center bg-border/50 hover:bg-primary/50 transition-colors cursor-col-resize z-10">
+                <div className="h-6 w-1 rounded-full bg-border group-hover:bg-primary/50 transition-colors" />
+              </PanelResizeHandle>
+              <Panel defaultSize={28} minSize={18} maxSize={40} className="flex shrink-0 flex-col border-l border-border bg-card">
+                <CustomerDetails
+                  key={selectedContactId ?? "none"}
+                  contact={selectedContact}
+                  conversationsByChannel={contactConversations}
+                  onClose={() => setCustomerContextOpenPersisted(false)}
+                />
+              </Panel>
+            </>
+          )}
+        </PanelGroup>
       </Panel>
+      </PanelGroup>
 
       {/* Ticket CTA — visible when a conversation is selected */}
       {selectedConversation && (
@@ -1044,23 +1098,6 @@ export function InboxPage() {
           </button>
         )
       )}
-
-      {customerContextOpen && (
-        <>
-          <PanelResizeHandle className="w-1.5 flex items-center justify-center bg-border/50 hover:bg-primary/50 transition-colors cursor-col-resize z-10">
-            <div className="h-6 w-1 rounded-full bg-border group-hover:bg-primary/50 transition-colors" />
-          </PanelResizeHandle>
-          <Panel defaultSize={25} minSize={20} maxSize={40} className="flex shrink-0 flex-col border-l border-border bg-card">
-            <CustomerDetails
-              key={selectedContactId ?? "none"}
-              contact={selectedContact}
-              conversationsByChannel={contactConversations}
-              onClose={() => setCustomerContextOpen(false)}
-            />
-          </Panel>
-        </>
-      )}
-      </PanelGroup>
 
       {createTicketConv && (
         <CreateTicketModal

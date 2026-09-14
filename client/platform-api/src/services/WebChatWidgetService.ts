@@ -57,9 +57,6 @@ function isCepPlatformOrigin(requestOrigin: string): boolean {
     return false;
   }
 
-  // Local preview
-  if (reqHost === "localhost" || reqHost === "127.0.0.1") return true;
-
   // api.cep-demo.fybud.com → allow https://cep-demo.fybud.com (+ www)
   const apiBase = normalizeOrigin(env.apiBaseUrl);
   if (apiBase) {

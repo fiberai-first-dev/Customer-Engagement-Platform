@@ -110,6 +110,8 @@ export interface Contact {
   hasUnread?: boolean;
   unreadByChannel?: Partial<Record<ChannelType, number>>;
   channelStatuses?: Partial<Record<ChannelType, ConversationStatus>>;
+  /** True when this customer is on the workspace block list. */
+  blocked?: boolean;
   identifiers?: Record<string, string>;
   identities?: ContactIdentity[];
   resolved?: boolean;
@@ -262,6 +264,9 @@ export const CHANNEL_FLAG_KEYS: Record<ChannelType, string> = {
  * 1. Connected (inbox.enabled === true, not "Not configured/connected"), AND
  * 2. Allowed by the admin channel feature flag (must be explicitly true)
  *
+ * Exception: Web Chat has no OAuth connect step — when the admin flag is on it is
+ * always treated as available (own-domain / CEP preview embed).
+ *
  * While flags/inboxes are loading, `channelsReady` is false and `enabledChannels` is [].
  * Callers must not fall back to "all channels" when !channelsReady — show nothing instead.
  */
@@ -318,6 +323,11 @@ export const useEnabledChannelTypes = (): {
     .map((i) => i.channelType);
 
   const enabledChannels = connectedChannels.filter((ch) => flagAllowed.has(ch));
+
+  // Web Chat: no Meta/Gmail credentials — show whenever the feature flag is on.
+  if (flagAllowed.has("web_chat") && !enabledChannels.includes("web_chat")) {
+    enabledChannels.push("web_chat");
+  }
 
   return {
     enabledChannels,
@@ -1207,7 +1217,7 @@ export const useSendWhatsAppTemplate = () => {
         conversationId?: string;
         message: Message | null;
         result: { ok: boolean; status: string; error?: string };
-      }>(`/api/v1/conversations/${encodeURIComponent(id)}/whatsapp/templates/send`, {
+      }>(`/api/v1/conversations/${encodeURIComponent(id)}/templates/send`, {
         method: "POST",
         body: JSON.stringify({ templateId, variables }),
       }),
@@ -1599,7 +1609,16 @@ export const useBlockCustomer = () => {
         method: "POST",
         body: JSON.stringify(data),
       }),
-    onSuccess: () => {
+    onSuccess: (_data, variables) => {
+      queryClient.setQueriesData<Conversation[]>(
+        { queryKey: ["conversations"] },
+        (list) =>
+          list?.map((c) =>
+            c.contactId === variables.customerId
+              ? { ...c, contact: { ...c.contact, blocked: true } }
+              : c,
+          ),
+      );
       queryClient.invalidateQueries({ queryKey: ["blockedContacts"] });
       queryClient.invalidateQueries({ queryKey: ["contacts"] });
       queryClient.invalidateQueries({ queryKey: ["conversations"] });
@@ -1614,7 +1633,16 @@ export const useUnblockCustomer = () => {
       request(`/api/v1/blocked-contacts/${encodeURIComponent(customerId)}`, {
         method: "DELETE",
       }),
-    onSuccess: () => {
+    onSuccess: (_data, customerId) => {
+      queryClient.setQueriesData<Conversation[]>(
+        { queryKey: ["conversations"] },
+        (list) =>
+          list?.map((c) =>
+            c.contactId === customerId
+              ? { ...c, contact: { ...c.contact, blocked: false } }
+              : c,
+          ),
+      );
       queryClient.invalidateQueries({ queryKey: ["blockedContacts"] });
       queryClient.invalidateQueries({ queryKey: ["contacts"] });
       queryClient.invalidateQueries({ queryKey: ["conversations"] });
@@ -1667,8 +1695,35 @@ export const useToggleContactPin = () => {
         `/api/v1/conversations/${encodeURIComponent(conversationId)}/star`,
         { method: "POST" },
       ),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["conversations"] });
+    onMutate: async (conversationId) => {
+      const contactId = conversationId.split(":")[0] ?? conversationId;
+      await queryClient.cancelQueries({ queryKey: ["conversations"] });
+      const previous = queryClient.getQueriesData<Conversation[]>({
+        queryKey: ["conversations"],
+      });
+      queryClient.setQueriesData<Conversation[]>(
+        { queryKey: ["conversations"] },
+        (list) =>
+          list?.map((c) =>
+            c.contactId === contactId ? { ...c, pinned: !c.pinned } : c,
+          ),
+      );
+      return { previous };
+    },
+    onError: (_err, _id, ctx) => {
+      ctx?.previous?.forEach(([key, data]) => {
+        queryClient.setQueryData(key, data);
+      });
+    },
+    onSuccess: (res, conversationId) => {
+      const contactId = conversationId.split(":")[0] ?? conversationId;
+      queryClient.setQueriesData<Conversation[]>(
+        { queryKey: ["conversations"] },
+        (list) =>
+          list?.map((c) =>
+            c.contactId === contactId ? { ...c, pinned: res.pinned } : c,
+          ),
+      );
     },
   });
 };

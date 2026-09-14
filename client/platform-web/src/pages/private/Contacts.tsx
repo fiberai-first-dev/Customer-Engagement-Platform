@@ -159,7 +159,7 @@ export function ContactsPage() {
     if (!searchQuery.trim()) return blockedRows;
     return blockedRows.filter((row) =>
       matchesSearch(
-        [row.customerId, row.customer?.name, row.customer?.email, row.customer?.whatsappId, row.reason],
+        [row.customerId, row.customer?.name, row.customer?.email, row.customer?.whatsappId],
         searchQuery,
       ),
     );
@@ -319,7 +319,6 @@ export function ContactsPage() {
                 <div className="flex items-center gap-3 border-b border-border bg-muted/50 px-4 py-3 text-sm font-medium text-muted-foreground sm:px-5">
                   <div className="min-w-0 flex-1">Name</div>
                   <div className="hidden w-44 shrink-0 sm:block">Blocked</div>
-                  <div className="hidden min-w-0 flex-1 md:block">Reason</div>
                   <div className="w-24 shrink-0" />
                 </div>
                 <div className="divide-y divide-border">
@@ -353,9 +352,6 @@ export function ContactsPage() {
                           {row.createdAt
                             ? new Date(row.createdAt).toLocaleString()
                             : "—"}
-                        </div>
-                        <div className="hidden min-w-0 flex-1 truncate text-sm text-muted-foreground md:block">
-                          {row.reason || "—"}
                         </div>
                         <div className="w-24 shrink-0 text-right">
                           <Button

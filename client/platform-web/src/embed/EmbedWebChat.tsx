@@ -1,4 +1,9 @@
 import { useEffect, useRef, useState, type CSSProperties, type FormEvent } from "react";
+import {
+  COUNTRY_DIAL_OPTIONS,
+  DEFAULT_WHATSAPP_DIAL,
+  composeWhatsApp,
+} from "../utils/phone";
 
 export type EmbedWebChatProps = {
   /** Tenant API origin, e.g. https://api.cep-demo.fybud.com */
@@ -40,9 +45,9 @@ function normalizeApiBase(raw: string) {
   return raw.replace(/\/$/, "");
 }
 
-function isValidWhatsApp(raw: string) {
-  const digits = raw.replace(/\D/g, "");
-  return digits.length >= 10 && digits.length <= 15;
+function isValidNational(national: string) {
+  const digits = national.replace(/\D/g, "");
+  return digits.length >= 7 && digits.length <= 12;
 }
 
 function FyBudMark({ size = 18 }: { size?: number }) {
@@ -88,7 +93,8 @@ export function EmbedWebChat({
     }
   });
   const [name, setName] = useState("");
-  const [whatsapp, setWhatsapp] = useState("");
+  const [dialCode, setDialCode] = useState(DEFAULT_WHATSAPP_DIAL);
+  const [nationalNumber, setNationalNumber] = useState("");
   const [formError, setFormError] = useState<string | null>(null);
   const [booting, setBooting] = useState(false);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
@@ -116,8 +122,15 @@ export function EmbedWebChat({
       setFormError("Please enter your name");
       return;
     }
-    if (!isValidWhatsApp(whatsapp)) {
-      setFormError("Enter a valid WhatsApp number with country code (e.g. +91 9876543210)");
+    if (!isValidNational(nationalNumber)) {
+      setFormError("Enter a valid WhatsApp number");
+      return;
+    }
+
+    const whatsapp = composeWhatsApp({ dial: dialCode, national: nationalNumber });
+    const fullDigits = whatsapp.replace(/\D/g, "");
+    if (fullDigits.length < 10 || fullDigits.length > 15) {
+      setFormError("Enter a valid WhatsApp number");
       return;
     }
 
@@ -128,7 +141,7 @@ export function EmbedWebChat({
         headers: widgetHeaders(true),
         body: JSON.stringify({
           name: name.trim(),
-          whatsapp: whatsapp.trim(),
+          whatsapp,
           externalId: externalId || undefined,
         }),
       });
@@ -238,10 +251,6 @@ export function EmbedWebChat({
 
           {!externalId ? (
             <div style={formWrapStyle}>
-              <p style={{ margin: 0, fontSize: 13, color: FYBUD.muted, lineHeight: 1.5 }}>
-                Enter your name and WhatsApp number so we can help you in one place —
-                even if you message us on WhatsApp later.
-              </p>
               <label style={labelStyle}>
                 Name
                 <input
@@ -254,14 +263,32 @@ export function EmbedWebChat({
               </label>
               <label style={labelStyle}>
                 WhatsApp number
-                <input
-                  style={inputStyle}
-                  value={whatsapp}
-                  onChange={(e) => setWhatsapp(e.target.value)}
-                  placeholder="+91 9876543210"
-                  inputMode="tel"
-                  autoComplete="tel"
-                />
+                <div style={phoneRowStyle}>
+                  <select
+                    aria-label="Country code"
+                    value={dialCode}
+                    onChange={(e) => setDialCode(e.target.value)}
+                    style={dialSelectStyle}
+                    disabled={booting}
+                  >
+                    {COUNTRY_DIAL_OPTIONS.map((c) => (
+                      <option key={c.dial} value={c.dial}>
+                        {c.label}
+                      </option>
+                    ))}
+                  </select>
+                  <input
+                    style={{ ...inputStyle, flex: 1, minWidth: 0 }}
+                    value={nationalNumber}
+                    onChange={(e) =>
+                      setNationalNumber(e.target.value.replace(/[^\d\s-]/g, ""))
+                    }
+                    placeholder="9876543210"
+                    inputMode="numeric"
+                    autoComplete="tel-national"
+                    disabled={booting}
+                  />
+                </div>
               </label>
               {formError && <p style={errorStyle}>{formError}</p>}
               <button
@@ -269,7 +296,7 @@ export function EmbedWebChat({
                 className="cep-wc-btn"
                 onClick={() => void startSession()}
                 disabled={booting}
-                style={{ ...primaryBtn, opacity: booting ? 0.7 : 1 }}
+                style={{ ...primaryBtn, opacity: booting ? 0.7 : 1, marginTop: 4 }}
               >
                 {booting ? "Connecting…" : "Start chat"}
               </button>
@@ -407,7 +434,8 @@ const WIDGET_CSS = `
 [data-cep-webchat] .cep-wc-btn:disabled {
   cursor: not-allowed;
 }
-[data-cep-webchat] input:focus {
+[data-cep-webchat] input:focus,
+[data-cep-webchat] select:focus {
   border-color: #8b7df0 !important;
   box-shadow: 0 0 0 3px rgba(139, 125, 240, 0.22);
 }
@@ -472,12 +500,15 @@ const iconBtnStyle: CSSProperties = {
 };
 
 const formWrapStyle: CSSProperties = {
-  padding: 18,
+  padding: "20px 18px",
   display: "flex",
   flexDirection: "column",
-  gap: 12,
+  gap: 14,
   flex: 1,
+  justifyContent: "flex-start",
   background: FYBUD.offWhite,
+  boxSizing: "border-box",
+  width: "100%",
 };
 
 const labelStyle: CSSProperties = {
@@ -487,6 +518,32 @@ const labelStyle: CSSProperties = {
   fontSize: 12,
   fontWeight: 600,
   color: FYBUD.ink,
+  width: "100%",
+  boxSizing: "border-box",
+};
+
+const phoneRowStyle: CSSProperties = {
+  display: "flex",
+  gap: 8,
+  width: "100%",
+  alignItems: "stretch",
+};
+
+const dialSelectStyle: CSSProperties = {
+  border: `1px solid ${FYBUD.border}`,
+  borderRadius: 10,
+  padding: "0 8px",
+  fontSize: 13,
+  outline: "none",
+  background: "#fff",
+  color: FYBUD.ink,
+  fontFamily: "inherit",
+  minWidth: 118,
+  maxWidth: 132,
+  flexShrink: 0,
+  cursor: "pointer",
+  height: 42,
+  boxSizing: "border-box",
 };
 
 const inputStyle: CSSProperties = {
@@ -498,6 +555,9 @@ const inputStyle: CSSProperties = {
   background: "#fff",
   color: FYBUD.ink,
   fontFamily: "inherit",
+  width: "100%",
+  boxSizing: "border-box",
+  height: 42,
 };
 
 const primaryBtnStyle: CSSProperties = {

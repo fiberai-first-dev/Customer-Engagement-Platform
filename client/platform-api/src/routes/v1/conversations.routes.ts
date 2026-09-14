@@ -14,6 +14,7 @@ export async function conversationRoutes(app: FastifyInstance) {
   app.post("/:id/attachments", MediaController.uploadAttachment);
   app.get("/:id/messages", ConversationController.getMessages);
   app.post("/:id/messages", ConversationController.sendMessage);
+  app.post("/:id/templates/send", ConversationController.sendWhatsAppTemplate);
   app.post("/:id/messages/:messageId/react", ConversationController.reactToMessage);
   app.post("/:id/messages/:messageId/pin", ConversationController.togglePin);
   app.post("/:id/star", ConversationController.toggleStar);

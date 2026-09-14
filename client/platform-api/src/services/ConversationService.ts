@@ -262,6 +262,11 @@ export class ConversationService {
 
     const unreadMap = await loadUnreadMap();
 
+    const blockedRows = await prisma.blockedContact.findMany({
+      select: { customerId: true },
+    });
+    const blockedCustomerIds = new Set(blockedRows.map((r) => r.customerId));
+
     // ── Batch fetch latest non-email messages (prevents N+1 per customer) ──────
     const nonEmailGroups = await prisma.message.groupBy({
       by: ["customerId", "channelType"],
@@ -370,6 +375,7 @@ export class ConversationService {
             : ("resolved" as const),
           hasUnread: contactHasUnread(customer.id, unreadMap),
           unreadByChannel: unreadMap.get(customer.id) ?? {},
+          blocked: blockedCustomerIds.has(customer.id),
         };
 
         const inboxMeta = {
