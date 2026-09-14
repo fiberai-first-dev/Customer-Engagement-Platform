@@ -1001,8 +1001,7 @@ export function ConversationThread({
           <div className="min-w-0">
             <p className="text-xs font-semibold text-destructive">This contact is blocked</p>
             <p className="text-[11px] text-muted-foreground">
-              Incoming messages are ignored on all channels. Unblock from the menu or Contacts →
-              Blocked.
+              Incoming messages are ignored on all channels.
             </p>
           </div>
         </div>

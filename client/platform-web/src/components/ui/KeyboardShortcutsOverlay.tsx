@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { Fragment, useEffect } from "react";
 import { X } from "lucide-react";
 import { cn } from "../../utils/utils";
 
@@ -8,10 +8,9 @@ interface ShortcutRow {
 }
 
 const SHORTCUTS: ShortcutRow[] = [
-  { key: "J", description: "Next conversation" },
-  { key: "K", description: "Previous conversation" },
-  { key: "R", description: "Focus reply box" },
-  { key: "E", description: "Resolve conversation" },
+  { key: "↓", description: "Next conversation" },
+  { key: "↑", description: "Previous conversation" },
+  { key: "R", description: "Resolve conversation" },
   { key: "?", description: "Show keyboard shortcuts" },
 ];
 
@@ -81,17 +80,12 @@ export function KeyboardShortcutsOverlay({
         {/* Shortcut grid */}
         <div className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-2.5">
           {SHORTCUTS.map(({ key, description }) => (
-            <>
-              <kbd
-                key={`key-${key}`}
-                className="inline-flex items-center rounded border border-border bg-muted px-2 py-0.5 font-mono text-xs font-medium text-foreground"
-              >
+            <Fragment key={key}>
+              <kbd className="inline-flex items-center rounded border border-border bg-muted px-2 py-0.5 font-mono text-xs font-medium text-foreground">
                 {key}
               </kbd>
-              <span key={`desc-${key}`} className="text-sm text-muted-foreground">
-                {description}
-              </span>
-            </>
+              <span className="text-sm text-muted-foreground">{description}</span>
+            </Fragment>
           ))}
         </div>
       </div>

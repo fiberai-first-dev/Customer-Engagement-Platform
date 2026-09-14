@@ -204,14 +204,14 @@ export function CustomerDetails({ contact, onClose }: Props) {
           </div>
         </div>
 
-        <div className="mt-4 grid grid-cols-4 gap-1 rounded-xl bg-muted p-1">
+        <div className="mt-4 grid grid-cols-3 gap-1 rounded-xl bg-muted p-1">
           {TABS.map((item) => (
             <button
               key={item.id}
               type="button"
               onClick={() => setTab(item.id)}
               className={cn(
-                "rounded-lg px-1.5 py-2 text-[10px] font-semibold transition-all",
+                "w-full rounded-lg px-1.5 py-2 text-center text-[10px] font-semibold transition-all",
                 tab === item.id
                   ? "bg-background text-foreground shadow-sm"
                   : "text-muted-foreground hover:text-foreground",

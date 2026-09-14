@@ -741,12 +741,6 @@ export function InboxPage() {
       const prev = listConversations[idx <= 0 ? listConversations.length - 1 : idx - 1];
       if (prev) setSelectedContactId(prev.contactId);
     },
-    onFocusReply: () => {
-      const el = document.querySelector<HTMLTextAreaElement>(
-        "textarea[placeholder*='Reply'], textarea[placeholder*='Message'], textarea[placeholder*='email']",
-      );
-      el?.focus();
-    },
     onResolve: handleResolve,
     onAssignToSelf: () => {
       toast.message("Assign from ticket detail — inbox claim is not enabled yet");

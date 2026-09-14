@@ -1,13 +1,11 @@
 import { useEffect } from "react";
 
 export interface InboxKeyboardShortcutsConfig {
-  /** `j` — move to the next conversation in the list */
+  /** ↓ — move to the next conversation in the list */
   onNextConversation: () => void;
-  /** `k` — move to the previous conversation in the list */
+  /** ↑ — move to the previous conversation in the list */
   onPrevConversation: () => void;
-  /** `r` — focus the reply composer */
-  onFocusReply: () => void;
-  /** `e` — resolve the current conversation */
+  /** `r` — resolve the current conversation */
   onResolve: () => void;
   /** `a` — assign the current conversation to self */
   onAssignToSelf: () => void;
@@ -25,7 +23,6 @@ export interface InboxKeyboardShortcutsConfig {
 export function useInboxKeyboardShortcuts({
   onNextConversation,
   onPrevConversation,
-  onFocusReply,
   onResolve,
   onAssignToSelf,
   onToggleShortcuts,
@@ -48,19 +45,16 @@ export function useInboxKeyboardShortcuts({
       }
 
       switch (e.key) {
-        case "j":
+        case "ArrowDown":
           e.preventDefault();
           onNextConversation();
           break;
-        case "k":
+        case "ArrowUp":
           e.preventDefault();
           onPrevConversation();
           break;
         case "r":
-          e.preventDefault();
-          onFocusReply();
-          break;
-        case "e":
+        case "R":
           e.preventDefault();
           onResolve();
           break;
@@ -85,7 +79,6 @@ export function useInboxKeyboardShortcuts({
     enabled,
     onNextConversation,
     onPrevConversation,
-    onFocusReply,
     onResolve,
     onAssignToSelf,
     onToggleShortcuts,
