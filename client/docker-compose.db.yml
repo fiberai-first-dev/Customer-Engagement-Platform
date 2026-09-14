@@ -6,7 +6,6 @@ services:
     environment:
       POSTGRES_USER: cep
       POSTGRES_PASSWORD: cep
-      POSTGRES_DB: cep_platform
     ports:
       - "5432:5432"
     volumes:

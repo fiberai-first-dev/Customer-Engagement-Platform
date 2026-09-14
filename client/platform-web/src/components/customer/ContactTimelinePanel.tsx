@@ -65,25 +65,28 @@ function TimelineEventRow({
   isLast: boolean;
 }) {
   const [expanded, setExpanded] = useState(false);
-  const style = EVENT_STYLES[event.type] ?? EVENT_STYLES.message;
+  const eventType = event.type ?? "message";
+  const style = EVENT_STYLES[eventType] ?? EVENT_STYLES.message;
   const Icon = style.icon;
-  const ts = formatDistanceToNow(new Date(event.timestamp), { addSuffix: true });
+  const ts = event.timestamp
+    ? formatDistanceToNow(new Date(event.timestamp), { addSuffix: true })
+    : "";
 
   const title =
-    event.type === "message"
+    eventType === "message"
       ? `${event.direction === "incoming" ? "Received" : "Sent"} message`
-      : event.type === "ticket"
-        ? `Ticket #${event.ticketNumber}${event.subject ? ` — ${event.subject}` : ""}`
-        : event.type === "ticket_note"
+      : eventType === "ticket"
+        ? `Ticket #${event.ticketNumber ?? ""}${event.subject ? ` — ${event.subject}` : ""}`
+        : eventType === "ticket_note"
           ? "Internal note"
           : `Broadcast · ${event.templateName ?? "Campaign"}`;
 
   const body =
-    event.type === "message"
+    eventType === "message"
       ? event.content
-      : event.type === "ticket_note"
+      : eventType === "ticket_note"
         ? event.body
-        : event.type === "broadcast"
+        : eventType === "broadcast"
           ? event.status === "failed"
             ? `Failed${event.error ? `: ${event.error}` : ""}`
             : "Sent via broadcast"
@@ -116,7 +119,7 @@ function TimelineEventRow({
               {channelLabel && (
                 <span className="text-[11px] text-muted-foreground">{channelLabel}</span>
               )}
-              {event.type === "ticket" && event.status && (
+              {eventType === "ticket" && event.status && (
                 <span
                   className={cn(
                     "rounded px-1.5 py-px text-[10px] font-semibold uppercase tracking-wide",
