@@ -5,7 +5,8 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "tsc -b && vite build",
+    "build": "tsc -b && vite build && npm run build:embed",
+    "build:embed": "vite build --config vite.config.embed.ts && node scripts/copy-embed.mjs",
     "preview": "vite preview",
     "test": "vitest run --passWithNoTests"
   },

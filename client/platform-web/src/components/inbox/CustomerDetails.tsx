@@ -10,8 +10,10 @@ import {
   UserRound,
   X,
   XCircle,
+  Ban,
 } from "lucide-react";
 import type { ChannelType, Contact, Conversation } from "../../api";
+import { useBlockedContacts } from "../../api";
 import {
   orderService,
   type CustomerCommerceResponse,
@@ -88,6 +90,10 @@ function emptyCommerce(): CustomerCommerceResponse {
 export function CustomerDetails({ contact, onClose }: Props) {
   const [tab, setTab] = useState<TabId>("profile");
   const queryClient = useQueryClient();
+  const { data: blockedRows } = useBlockedContacts();
+  const isContactBlocked =
+    Boolean(contact?.blocked) ||
+    Boolean(contact?.id && blockedRows?.some((row) => row.customerId === contact.id));
 
   const emails = listValues(contact?.email, contact?.emails);
   const whatsappRaw = listValues(
@@ -178,7 +184,15 @@ export function CustomerDetails({ contact, onClose }: Props) {
             <span className="absolute -bottom-0.5 -right-0.5 h-3 w-3 rounded-full border-2 border-card bg-emerald-500" />
           </div>
           <div className="min-w-0 flex-1">
-            <h4 className="truncate text-sm font-semibold tracking-tight text-foreground">{name}</h4>
+            <div className="flex min-w-0 items-center gap-2">
+              <h4 className="truncate text-sm font-semibold tracking-tight text-foreground">{name}</h4>
+              {isContactBlocked ? (
+                <span className="inline-flex shrink-0 items-center gap-1 rounded-md border border-destructive/30 bg-destructive/10 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-destructive">
+                  <Ban className="h-3 w-3" />
+                  Blocked
+                </span>
+              ) : null}
+            </div>
             <p className="truncate text-[11px] text-muted-foreground">
               {shopifyCustomerId
                 ? `Shopify #${shopifyCustomerId}`
@@ -197,7 +211,7 @@ export function CustomerDetails({ contact, onClose }: Props) {
               type="button"
               onClick={() => setTab(item.id)}
               className={cn(
-                "rounded-lg px-2 py-2 text-[11px] font-semibold transition-all",
+                "w-full rounded-lg px-1.5 py-2 text-center text-[10px] font-semibold transition-all",
                 tab === item.id
                   ? "bg-background text-foreground shadow-sm"
                   : "text-muted-foreground hover:text-foreground",
@@ -248,9 +262,7 @@ export function CustomerDetails({ contact, onClose }: Props) {
         <p className="text-center text-[10px] text-muted-foreground">
           {commerce.provider === "shopify"
             ? "Order data from Shopify"
-            : commerce.provider === "mock"
-              ? "Sample order data"
-              : "Shopify is not connected"}
+            : "Shopify is not connected"}
         </p>
       </div>
     </aside>

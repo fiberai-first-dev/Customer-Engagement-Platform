@@ -34,11 +34,11 @@ import {
 } from "lucide-react";
 
 const STATUS_CONFIG: Record<TicketStatus, { label: string; bg: string; text: string; border: string }> = {
-  OPEN: { label: "Open", bg: "bg-blue-600", text: "text-white", border: "border-blue-700" },
-  IN_PROGRESS: { label: "In Progress", bg: "bg-amber-600", text: "text-white", border: "border-amber-700" },
-  ESCALATED: { label: "Escalated", bg: "bg-orange-600", text: "text-white", border: "border-orange-700" },
-  RESOLVED: { label: "Resolved", bg: "bg-emerald-600", text: "text-white", border: "border-emerald-700" },
-  CLOSED: { label: "Closed", bg: "bg-slate-600", text: "text-white", border: "border-slate-700" },
+  OPEN: { label: "Open", bg: "bg-blue-500/10", text: "text-blue-700 dark:text-blue-400", border: "border-blue-500/20" },
+  IN_PROGRESS: { label: "In Progress", bg: "bg-amber-500/10", text: "text-amber-700 dark:text-amber-400", border: "border-amber-500/20" },
+  ESCALATED: { label: "Escalated", bg: "bg-orange-500/10", text: "text-orange-700 dark:text-orange-400", border: "border-orange-500/20" },
+  RESOLVED: { label: "Resolved", bg: "bg-emerald-500/10", text: "text-emerald-700 dark:text-emerald-400", border: "border-emerald-500/20" },
+  CLOSED: { label: "Closed", bg: "bg-slate-500/10", text: "text-slate-700 dark:text-slate-400", border: "border-slate-500/20" },
 };
 
 const PRIORITY_CONFIG: Record<TicketPriority, { label: string; bg: string; text: string; border: string }> = {
@@ -247,6 +247,16 @@ export function TicketDetailPage() {
         </div>
 
         <div className="flex items-center gap-2 shrink-0 self-center">
+          {ticket.conversationId && (
+            <button
+              type="button"
+              onClick={openInbox}
+              className="inline-flex items-center gap-1.5 rounded-md bg-primary px-3 py-2 text-xs font-semibold text-primary-foreground hover:bg-primary/90"
+            >
+              <MessageSquare className="w-3.5 h-3.5" />
+              Reply in Inbox
+            </button>
+          )}
           {canClaim && (
             <button
               type="button"

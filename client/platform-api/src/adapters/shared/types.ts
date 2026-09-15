@@ -1,4 +1,4 @@
-export type ChannelType = "whatsapp" | "instagram" | "facebook" | "email";
+export type ChannelType = "whatsapp" | "instagram" | "facebook" | "email" | "web_chat";
 
 export type MessageContentType = "text" | "html" | "image" | "file" | "audio" | "video" | "template" | "unknown";
 

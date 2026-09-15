@@ -7,12 +7,14 @@ import { whatsappConfig } from "../whatsapp/config.js";
 import { instagramConfig } from "../instagram/config.js";
 import { facebookConfig } from "../facebook/config.js";
 import { emailConfig } from "../email/config.js";
+import { webChatAdapter } from "../webchat/index.js";
 
 const adapters: Record<ChannelType, ChannelAdapter> = {
   whatsapp: whatsappAdapter as ChannelAdapter,
   instagram: instagramAdapter as ChannelAdapter,
   facebook: facebookAdapter as ChannelAdapter,
   email: emailAdapter as ChannelAdapter,
+  web_chat: webChatAdapter as ChannelAdapter,
 };
 
 export function getChannelAdapter(channelType: ChannelType): ChannelAdapter {
@@ -103,6 +105,9 @@ export function resolveChannelConfig(
   }
   if (channelType === "facebook") {
     return mergeConfig({ ...facebookConfig } as Record<string, unknown>, raw) as unknown as ChannelConfig;
+  }
+  if (channelType === "web_chat") {
+    return raw as unknown as ChannelConfig;
   }
   return mergeConfig({ ...emailConfig } as Record<string, unknown>, raw) as unknown as ChannelConfig;
 }

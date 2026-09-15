@@ -1,4 +1,6 @@
 import type { ChannelType, Conversation } from "../../api";
+import { useBlockedContacts } from "../../api";
+import { Ban, Pin } from "lucide-react";
 import {
   cn,
   contactDisplayName,
@@ -24,19 +26,8 @@ export function listReadScopeKey(
   return `${contactId}:${channelFilter}`;
 }
 
-function contactHasUnread(
-  conversation: Conversation,
-  channelFilter: "all" | ChannelType,
-): boolean {
-  if (channelFilter === "all") {
-    return Boolean(conversation.contact.hasUnread);
-  }
-  const n = conversation.contact.unreadByChannel?.[channelFilter] ?? 0;
-  return n > 0;
-}
-
 /** Total unread messages across all channels, or scoped to a specific channel. */
-function getUnreadCount(
+export function getUnreadCount(
   conversation: Conversation,
   channelFilter: "all" | ChannelType,
 ): number {
@@ -46,6 +37,17 @@ function getUnreadCount(
     return byChannel[channelFilter] ?? 0;
   }
   return Object.values(byChannel).reduce<number>((sum, n) => sum + (n ?? 0), 0);
+}
+
+function contactHasUnread(
+  conversation: Conversation,
+  channelFilter: "all" | ChannelType,
+): boolean {
+  if (channelFilter === "all") {
+    return Boolean(conversation.contact.hasUnread);
+  }
+  const n = conversation.contact.unreadByChannel?.[channelFilter] ?? 0;
+  return n > 0;
 }
 
 /** Strip HTML tags and CSS/script blocks so email previews are clean text. */
@@ -72,6 +74,9 @@ export function ConversationList({
   channelFilter = "all",
   readScopeKeys,
 }: Props) {
+  const { data: blockedRows } = useBlockedContacts();
+  const blockedIds = new Set((blockedRows ?? []).map((r) => r.customerId));
+
   if (conversations.length === 0) {
     return (
       <div className="flex flex-1 flex-col items-center justify-center gap-2 p-8 text-center">
@@ -101,12 +106,16 @@ export function ConversationList({
 
         const selected = selectedContactId === conversation.contactId;
         const scopeKey = listReadScopeKey(conversation.contactId, channelFilter);
+        const isBlocked =
+          Boolean(conversation.contact.blocked) || blockedIds.has(conversation.contactId);
         const hasUnread =
+          !isBlocked &&
           contactHasUnread(conversation, channelFilter) &&
           !readScopeKeys?.has(scopeKey);
-        const unreadCount = readScopeKeys?.has(scopeKey)
-          ? 0
-          : getUnreadCount(conversation, channelFilter);
+        const unreadCount =
+          isBlocked || readScopeKeys?.has(scopeKey)
+            ? 0
+            : getUnreadCount(conversation, channelFilter);
 
         return (
           <button
@@ -114,13 +123,12 @@ export function ConversationList({
             type="button"
             onClick={() => onSelect(conversation)}
             className={cn(
-              // No left border — badge conveys unread state instead
-              "flex w-full items-center gap-3 border-b border-border px-3 py-2.5 text-left",
+              "flex w-full items-center gap-2 border-b border-border px-3 py-2 text-left",
               selected ? "bg-muted" : "bg-card hover:bg-muted/50",
             )}
           >
             {/* Avatar with unread-count badge */}
-            <div className="relative flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-primary/10 text-xs font-semibold text-primary">
+            <div className="relative flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary/10 text-xs font-semibold text-primary">
               {initials(name)}
               {unreadCount > 0 && (
                 <span
@@ -133,26 +141,49 @@ export function ConversationList({
             </div>
 
             <div className="min-w-0 flex-1">
-              <div className="flex items-center justify-between gap-2">
-                <span
-                  className={cn(
-                    "truncate text-sm text-foreground",
-                    hasUnread ? "font-semibold" : "font-medium",
-                  )}
-                >
-                  {name}
+              <div className="flex items-center justify-between gap-1.5">
+                <span className="flex min-w-0 items-center gap-1.5">
+                  <span
+                    className={cn(
+                      "truncate text-[13px] text-foreground",
+                      hasUnread ? "font-semibold" : "font-medium",
+                    )}
+                  >
+                    {name}
+                  </span>
+                  {isBlocked ? (
+                    <span
+                      className="inline-flex shrink-0 items-center gap-0.5 rounded bg-destructive/10 px-1 py-0.5 text-[9px] font-bold uppercase tracking-wide text-destructive"
+                      title="Blocked — inbound messages are ignored"
+                    >
+                      <Ban className="h-2.5 w-2.5" />
+                      Blocked
+                    </span>
+                  ) : null}
                 </span>
-                <span className="shrink-0 text-[11px] text-muted-foreground">
-                  {formatMessageTime(conversation.lastMessageAt)}
-                </span>
+                <div className="flex shrink-0 items-center gap-1.5">
+                  {conversation.pinned ? (
+                    <Pin className="h-3 w-3 fill-primary text-primary" aria-label="Pinned" />
+                  ) : null}
+                  <span className="rounded bg-muted px-1 py-0.5 text-[9px] font-bold uppercase tracking-wider text-muted-foreground">
+                    {conversation.channelType === "whatsapp" ? "WA" : conversation.channelType === "instagram" ? "IG" : conversation.channelType === "facebook" ? "FB" : conversation.channelType === "web_chat" ? "Web" : "Email"}
+                  </span>
+                  <span className="text-[10px] text-muted-foreground">
+                    {formatMessageTime(conversation.lastMessageAt)}
+                  </span>
+                </div>
               </div>
               <p
                 className={cn(
                   "mt-0.5 truncate text-xs",
-                  hasUnread ? "text-foreground/80" : "text-muted-foreground",
+                  isBlocked
+                    ? "text-destructive/80"
+                    : hasUnread
+                      ? "text-foreground/80"
+                      : "text-muted-foreground",
                 )}
               >
-                {preview}
+                {isBlocked ? "Blocked — inbound messages ignored" : preview}
               </p>
             </div>
           </button>

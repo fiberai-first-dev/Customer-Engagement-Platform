@@ -45,8 +45,7 @@ export function CreateTicketModal({
 
   const isAdminOrAbove = user?.role === "ADMIN" || user?.role === "SUPER_ADMIN";
   const isManager = user?.role === "MANAGER";
-  const isAgent = user?.role === "AGENT";
-  const canAssign = isAdminOrAbove || isManager;
+  const canAssign = true;
 
   // Only Managers + Agents — never Super Admin / Admin
   const assignablePeople = useMemo(() => {
@@ -279,10 +278,6 @@ export function CreateTicketModal({
               </p>
             )}
           </div>
-          ) : isAgent ? (
-            <p className="text-[11px] text-muted-foreground rounded-md bg-muted/50 px-3 py-2">
-              This ticket will be assigned to you.
-            </p>
           ) : null}
 
           <div className="flex gap-2 pt-2 border-t border-border">

@@ -13,14 +13,27 @@ import {
   Square,
   Trash2,
   X,
-  FileImage,
   FileVideo,
   FileAudio,
   FileText,
+  FileImage,
+  Ban,
   AlertTriangle,
+  Quote,
+  TicketIcon,
+  Plus,
+  Pin,
 } from "lucide-react";
 import type { ChannelType, Conversation, Message } from "../../api";
-import { useFeatureFlag } from "../../api";
+import {
+  useFeatureFlag,
+  downloadTranscript,
+  useTogglePin,
+  useToggleContactPin,
+  useBlockCustomer,
+  useUnblockCustomer,
+  useBlockedContacts,
+} from "../../api";
 import { resolveConversationWindow } from "../../lib/messagingWindow";
 import {
   uploadConversationAttachment,
@@ -28,6 +41,7 @@ import {
   getChannelMediaLimit,
   formatBytes,
 } from "../../lib/channel-media";
+import { useDraft } from "../../lib/useDraft";
 import { useAuthStore } from "../../store/auth";
 import { MessageMedia } from "./MessageMedia";
 import {
@@ -37,6 +51,7 @@ import {
 } from "./ConversationWindowBanner";
 import { WhatsAppTemplateSelector } from "./WhatsAppTemplateSelector";
 import { Button } from "../ui/button";
+import { ConfirmDialog } from "../ui/confirm-dialog";
 import { toast } from "sonner";
 import {
   CHANNELS,
@@ -399,6 +414,10 @@ type Props = {
   customerContextOpen: boolean;
   onToggleCustomerContext: () => void;
   enabledChannels?: ChannelType[];
+  viewTicket?: any;
+  activeTicket?: any;
+  onViewTicket?: () => void;
+  onCreateTicket?: () => void;
 };
 
 export function ConversationThread({
@@ -426,13 +445,18 @@ export function ConversationThread({
   customerContextOpen,
   onToggleCustomerContext,
   enabledChannels,
+  viewTicket,
+  activeTicket,
+  onViewTicket,
+  onCreateTicket,
 }: Props) {
   const user = useAuthStore((s) => s.user);
   const isAdmin = user?.role === "SUPER_ADMIN" || user?.role === "ADMIN";
 
-  const [draft, setDraft] = useState("");
+  const { draft, setDraft, clearDraft } = useDraft(selectedConversation?.id);
   const [subject, setSubject] = useState("");
   const [pendingFile, setPendingFile] = useState<File | null>(null);
+  const messageRefs = useRef<Map<string, HTMLDivElement>>(new Map());
   const [fileError, setFileError] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -440,6 +464,19 @@ export function ConversationThread({
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [menuOpen, setMenuOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
+  const blockCustomer = useBlockCustomer();
+  const unblockCustomer = useUnblockCustomer();
+  const { data: blockedRows } = useBlockedContacts();
+  const [blockConfirmOpen, setBlockConfirmOpen] = useState(false);
+
+  const contactCustomerId =
+    contact?.id || selectedConversation?.contactId || selectedConversation?.contact?.id || null;
+  const isContactBlocked =
+    Boolean(contact?.blocked) ||
+    Boolean(selectedConversation?.contact?.blocked) ||
+    (contactCustomerId
+      ? Boolean(blockedRows?.some((row) => row.customerId === contactCustomerId))
+      : false);
 
   const { data: featureFlag } = useFeatureFlag("whatsapp_templates_enabled");
   const { data: instagramHumanAgentFlag } = useFeatureFlag("instagram_human_agent_enabled");
@@ -466,6 +503,9 @@ export function ConversationThread({
   const audioChunksRef = useRef<Blob[]>([]);
   const recordingTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const recordingCancelledRef = useRef(false);
+
+  const togglePin = useTogglePin();
+  const toggleContactPin = useToggleContactPin();
 
   const startRecording = async () => {
     if (isRecording) return;
@@ -552,13 +592,9 @@ export function ConversationThread({
     activeTab === "email" &&
     (composingNewEmail || selectedConversation?.id.endsWith(":email:new"));
   const showChatMenu =
-    Boolean(selectedConversation) &&
-    !selecting &&
-    !isNewEmailCompose &&
-    (Boolean(onDeleteMessages && hasMessages) || Boolean(onClearChat));
+    Boolean(selectedConversation) && !selecting && !isNewEmailCompose;
 
   useEffect(() => {
-    setDraft("");
     setPendingFile(null);
     setSelecting(false);
     setSelectedIds(new Set());
@@ -641,7 +677,7 @@ export function ConversationThread({
 
     const ok = await onSend(content, subjectValue, media);
     if (ok) {
-      setDraft("");
+      clearDraft();
       setSubject("");
       setPendingFile(null);
       setFileError(null);
@@ -695,9 +731,16 @@ export function ConversationThread({
           <div className="h-6 w-20 animate-pulse rounded bg-muted" />
           <div className="h-6 w-16 animate-pulse rounded bg-muted" />
         </div>
-        <div className="flex flex-1 flex-col items-center justify-center gap-3">
-          <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
-          <p className="text-xs text-muted-foreground">Loading conversation…</p>
+        <div className="flex flex-1 flex-col gap-4 p-4 overflow-hidden">
+          <div className="flex w-full justify-start">
+            <div className="h-10 w-2/3 animate-pulse rounded-2xl rounded-tl-sm bg-muted/60" />
+          </div>
+          <div className="flex w-full justify-end">
+            <div className="h-14 w-3/4 animate-pulse rounded-2xl rounded-tr-sm bg-primary/10" />
+          </div>
+          <div className="flex w-full justify-start">
+            <div className="h-20 w-1/2 animate-pulse rounded-2xl rounded-tl-sm bg-muted/60" />
+          </div>
         </div>
       </div>
     );
@@ -705,13 +748,54 @@ export function ConversationThread({
 
   return (
     <div className="flex h-full min-w-0 flex-1 flex-col bg-background">
+      <ConfirmDialog
+        open={blockConfirmOpen}
+        title="Block contact?"
+        description={
+          <>
+            New messages from this contact will no longer appear in your inbox.
+          </>
+        }
+        confirmLabel="Block"
+        cancelLabel="Cancel"
+        destructive
+        confirming={blockCustomer.isPending}
+        onConfirm={() => {
+          const customerId = selectedConversation?.contactId;
+          if (!customerId) {
+            setBlockConfirmOpen(false);
+            return;
+          }
+          blockCustomer.mutate(
+            { customerId },
+            {
+              onSuccess: () => {
+                toast.success("Contact blocked");
+                setBlockConfirmOpen(false);
+              },
+              onError: (err) => {
+                toast.error(err.message || "Failed to block contact");
+              },
+            },
+          );
+        }}
+        onCancel={() => setBlockConfirmOpen(false)}
+      />
       <div className="flex h-14 shrink-0 items-center justify-between gap-3 border-b border-border bg-card px-4">
         <div className="flex min-w-0 items-center gap-3">
           <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-primary/10 text-sm font-semibold text-primary">
             {initials(contactName)}
           </div>
           <div className="min-w-0">
-            <h2 className="truncate text-sm font-semibold text-foreground">{contactName}</h2>
+            <div className="flex min-w-0 items-center gap-2">
+              <h2 className="truncate text-sm font-semibold text-foreground">{contactName}</h2>
+              {isContactBlocked ? (
+                <span className="inline-flex shrink-0 items-center gap-1 rounded-md border border-destructive/30 bg-destructive/10 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-destructive">
+                  <Ban className="h-3 w-3" />
+                  Blocked
+                </span>
+              ) : null}
+            </div>
             <p className="truncate text-xs text-muted-foreground">
               {identity ? `${channelLabel(activeTab)}: ${identity}` : channelLabel(activeTab)}
             </p>
@@ -733,13 +817,45 @@ export function ConversationThread({
             </Button>
           )}
 
+          {selectedConversation && viewTicket && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={onViewTicket}
+              title={`View Ticket #${viewTicket.number}`}
+              className="gap-2"
+            >
+              <TicketIcon className="h-4 w-4 text-muted-foreground" />
+              <span className="hidden sm:inline">Ticket #{viewTicket.number}</span>
+              {!activeTicket && (
+                <span className="rounded border border-border bg-muted px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+                  {viewTicket.status === "RESOLVED" ? "Resolved" : "Closed"}
+                </span>
+              )}
+            </Button>
+          )}
+
+          {selectedConversation && onCreateTicket && (
+            <Button
+              variant="default"
+              size="sm"
+              onClick={onCreateTicket}
+              title={activeTicket ? "Create another ticket" : "Create Ticket"}
+              className="gap-2"
+            >
+              <Plus className="h-4 w-4" />
+              <span className="hidden sm:inline">{activeTicket ? "Create Another" : "Create Ticket"}</span>
+            </Button>
+          )}
+
           <Button
             variant={customerContextOpen ? "secondary" : "ghost"}
             size="icon"
             onClick={onToggleCustomerContext}
             className="h-9 w-9"
             aria-pressed={customerContextOpen}
-            title={customerContextOpen ? "Hide customer context" : "Show customer context"}
+            aria-label={customerContextOpen ? "Hide customer details" : "Show customer details"}
+            title={customerContextOpen ? "Hide customer details" : "Customer details"}
           >
             <PanelRight className="h-4 w-4" />
           </Button>
@@ -764,7 +880,32 @@ export function ConversationThread({
                   role="menu"
                   className="absolute right-0 top-full z-30 mt-1 w-52 overflow-hidden rounded-lg border border-border bg-card py-1 shadow-lg"
                 >
-                  {onDeleteMessages && hasMessages && (
+                  {selectedConversation && (
+                    <button
+                      type="button"
+                      role="menuitem"
+                      className="flex w-full items-center gap-2.5 px-3 py-2.5 text-left text-sm text-foreground hover:bg-muted"
+                      disabled={toggleContactPin.isPending}
+                      onClick={() => {
+                        setMenuOpen(false);
+                        toggleContactPin.mutate(selectedConversation.id, {
+                          onSuccess: (res) =>
+                            toast.success(res.pinned ? "Pinned to top" : "Unpinned"),
+                          onError: (err) =>
+                            toast.error(err.message || "Could not update pin"),
+                        });
+                      }}
+                    >
+                      <Pin
+                        className={cn(
+                          "h-4 w-4 text-muted-foreground",
+                          selectedConversation.pinned && "fill-primary text-primary",
+                        )}
+                      />
+                      {selectedConversation.pinned ? "Unpin contact" : "Pin contact"}
+                    </button>
+                  )}
+                  {isAdmin && onDeleteMessages && hasMessages && (
                     <button
                       type="button"
                       role="menuitem"
@@ -776,6 +917,56 @@ export function ConversationThread({
                     >
                       <CheckSquare className="h-4 w-4 text-muted-foreground" />
                       Select messages
+                    </button>
+                  )}
+                  {selectedConversation && (
+                    <button
+                      type="button"
+                      role="menuitem"
+                      className="flex w-full items-center gap-2.5 px-3 py-2.5 text-left text-sm text-foreground hover:bg-muted"
+                      onClick={() => {
+                        setMenuOpen(false);
+                        void downloadTranscript(selectedConversation.id).catch((err) => {
+                          toast.error(err?.message || "Failed to download transcript");
+                        });
+                      }}
+                    >
+                      <FileText className="h-4 w-4 text-muted-foreground" />
+                      Download transcript
+                    </button>
+                  )}
+                  {selectedConversation && !isContactBlocked && (
+                    <button
+                      type="button"
+                      role="menuitem"
+                      className="flex w-full items-center gap-2.5 px-3 py-2.5 text-left text-sm text-destructive hover:bg-destructive/10"
+                      onClick={() => {
+                        setMenuOpen(false);
+                        setBlockConfirmOpen(true);
+                      }}
+                    >
+                      <Ban className="h-4 w-4" />
+                      Block contact
+                    </button>
+                  )}
+                  {selectedConversation && isContactBlocked && (
+                    <button
+                      type="button"
+                      role="menuitem"
+                      className="flex w-full items-center gap-2.5 px-3 py-2.5 text-left text-sm text-foreground hover:bg-muted"
+                      disabled={unblockCustomer.isPending}
+                      onClick={() => {
+                        setMenuOpen(false);
+                        if (!contactCustomerId) return;
+                        unblockCustomer.mutate(contactCustomerId, {
+                          onSuccess: () => toast.success("Contact unblocked"),
+                          onError: (err) =>
+                            toast.error(err.message || "Failed to unblock contact"),
+                        });
+                      }}
+                    >
+                      <Ban className="h-4 w-4 text-muted-foreground" />
+                      Unblock contact
                     </button>
                   )}
                   {onClearChat && isAdmin && (
@@ -803,6 +994,18 @@ export function ConversationThread({
           )}
         </div>
       </div>
+
+      {isContactBlocked ? (
+        <div className="flex shrink-0 items-start gap-2 border-b border-destructive/20 bg-destructive/5 px-4 py-2.5">
+          <Ban className="mt-0.5 h-4 w-4 shrink-0 text-destructive" />
+          <div className="min-w-0">
+            <p className="text-xs font-semibold text-destructive">This contact is blocked</p>
+            <p className="text-[11px] text-muted-foreground">
+              Incoming messages are ignored on all channels.
+            </p>
+          </div>
+        </div>
+      ) : null}
 
       {selecting && (
         <div className="flex shrink-0 items-center justify-between gap-3 border-b border-border bg-muted/40 px-5 py-2">
@@ -855,7 +1058,7 @@ export function ConversationThread({
       <div className="flex h-11 shrink-0 items-stretch gap-0 border-b border-border bg-card px-2">
         {(enabledChannels
           ? CHANNELS.filter((c) => enabledChannels.includes(c.id))
-          : CHANNELS
+          : []
         ).map((channel) => {
           const conversation =
             channel.id === "email"
@@ -1044,15 +1247,25 @@ export function ConversationThread({
                     </div>
                   )}
                   <div
+                    ref={(el) => {
+                      if (el) messageRefs.current.set(message.id, el);
+                      else messageRefs.current.delete(message.id);
+                    }}
+                    className={cn(
+                      "flex w-fit max-w-[min(100%,48rem)] items-end group rounded-lg",
+                      incoming ? "mr-auto" : "ml-auto flex-row-reverse",
+                    )}
+                  >
+                  <div
                     className={cn(
                       "flex w-fit flex-col",
                       message.contentType === "html" || message.subject
-                        ? "max-w-[min(100%,48rem)] w-full"
-                        : "max-w-[min(75%,32rem)]",
-                      incoming ? "mr-auto items-start" : "ml-auto items-end",
+                        ? "max-w-full w-full"
+                        : "max-w-[min(100%,32rem)]",
+                      incoming ? "items-start" : "items-end",
                     )}
                   >
-                    <div className="flex max-w-full items-end gap-2">
+                    <div className="flex max-w-full items-end gap-2 relative">
                       {selecting && (
                         <button
                           type="button"
@@ -1109,6 +1322,12 @@ export function ConversationThread({
                             </strong>
                           </div>
                         )}
+                        {message.pinned && (
+                          <div className="flex items-center gap-1 mb-1 text-primary">
+                            <Pin className="h-3 w-3 fill-current" />
+                            <span className="text-[10px] font-semibold uppercase tracking-wider">Pinned</span>
+                          </div>
+                        )}
                         <MessageBody
                           message={message}
                           showBodyLabel={Boolean(message.subject)}
@@ -1142,6 +1361,50 @@ export function ConversationThread({
                       </p>
                     )}
                   </div>
+                  
+                  {/* Hover Toolbar for Quote / React */}
+                  <div className={cn(
+                    "opacity-0 group-hover:opacity-100 transition-opacity flex items-center gap-1 mt-auto mb-2",
+                    incoming ? "ml-2" : "mr-2"
+                  )}>
+                    <div className="bg-background border border-border shadow-sm rounded-full flex items-center p-0.5">
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon"
+                        className="h-7 w-7 rounded-full text-muted-foreground hover:text-foreground"
+                        title="Quote Reply"
+                        onClick={() => {
+                          if (message.content) {
+                            setDraft((prev) => `${prev}\n\n> ${message.content.split('\n').join('\n> ')}\n\n`);
+                          }
+                        }}
+                      >
+                        <Quote className="h-3.5 w-3.5" />
+                      </Button>
+                      
+                      <div className="h-4 w-px bg-border/50 mx-0.5" />
+
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon"
+                        className="h-7 w-7 rounded-full text-muted-foreground hover:text-foreground"
+                        title={message.pinned ? "Unpin message" : "Pin message"}
+                        onClick={() => {
+                          if (selectedConversation) {
+                            togglePin.mutate({
+                              conversationId: selectedConversation.id,
+                              messageId: message.id,
+                            });
+                          }
+                        }}
+                      >
+                        <Pin className={cn("h-3.5 w-3.5", message.pinned ? "fill-primary text-primary" : "")} />
+                      </Button>
+                    </div>
+                  </div>
+                </div>
                 </Fragment>
               );
             })}
@@ -1335,25 +1598,27 @@ export function ConversationThread({
                       </Button>
                     </div>
                   ) : (
-                    <textarea
-                      value={draft}
-                      onChange={(e) => setDraft(e.target.value)}
-                      onKeyDown={(e) => {
-                        if (e.key === "Enter" && !e.shiftKey) {
-                          e.preventDefault();
-                          handleSend();
+                    <div className="relative flex-1">
+                      <textarea
+                        value={draft}
+                        onChange={(e) => setDraft(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
+                            e.preventDefault();
+                            handleSend();
+                          }
+                        }}
+                        placeholder={
+                          isNewEmailCompose
+                            ? "Write a new email…"
+                            : isLinkedAwaitingFirst && canInitiateChannel
+                              ? `Message on ${channelLabel(activeTab)}…`
+                              : `Reply on ${channelLabel(activeTab)}…`
                         }
-                      }}
-                      placeholder={
-                        isNewEmailCompose
-                          ? "Write a new email…"
-                          : isLinkedAwaitingFirst && canInitiateChannel
-                            ? `Message on ${channelLabel(activeTab)}…`
-                            : `Reply on ${channelLabel(activeTab)}…`
-                      }
-                      rows={1}
-                      className="max-h-[120px] min-h-[40px] flex-1 resize-none bg-transparent px-2 py-2 text-sm leading-relaxed focus:outline-none"
-                    />
+                        rows={1}
+                        className="max-h-[120px] min-h-[40px] w-full resize-none bg-transparent px-2 py-2 text-sm leading-relaxed focus:outline-none"
+                      />
+                    </div>
                   )}
                   <Button
                     size="icon"
@@ -1377,7 +1642,7 @@ export function ConversationThread({
               )}
               {selectedConversation?.windowState?.canSendNormalMessage !== false && (
                 <p className="mt-1.5 text-center text-[10px] text-muted-foreground">
-                  Enter to send · Shift+Enter for new line
+                  ⌘/Ctrl+Enter to send
                 </p>
               )}
               </div>

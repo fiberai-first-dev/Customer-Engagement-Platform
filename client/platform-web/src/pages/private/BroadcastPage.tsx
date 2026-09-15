@@ -5,6 +5,9 @@ import {
   useAccounts,
   useBroadcasts,
   useSendBroadcast,
+  usePauseBroadcast,
+  useCancelBroadcast,
+  useBroadcastNoReply,
   useFeatureFlag,
   useEnabledChannelTypes,
   useContactTags,
@@ -31,6 +34,10 @@ import {
   FileText,
   Eye,
   Clock,
+  Pause,
+  X as XIcon,
+  MessageSquareOff,
+  CalendarClock,
 } from "lucide-react";
 import { toast } from "sonner";
 import { motion, AnimatePresence } from "framer-motion";
@@ -59,7 +66,34 @@ function renderTemplatePreview(template: WhatsAppTemplate, variables: Record<str
   });
 }
 
-function statusBadge(status: BroadcastJob["status"]) {
+function statusBadge(
+  status: BroadcastJob["status"],
+  opts?: { scheduled?: boolean; paused?: boolean; cancelled?: boolean },
+) {
+  if (opts?.cancelled) {
+    return (
+      <span className="inline-flex items-center gap-1.5 rounded-full border border-red-500/20 bg-red-500/10 px-2.5 py-0.5 text-xs font-medium text-red-600 dark:text-red-400">
+        <XIcon className="h-3 w-3" />
+        Cancelled
+      </span>
+    );
+  }
+  if (opts?.paused) {
+    return (
+      <span className="inline-flex items-center gap-1.5 rounded-full border border-amber-500/20 bg-amber-500/10 px-2.5 py-0.5 text-xs font-medium text-amber-700 dark:text-amber-400">
+        <Pause className="h-3 w-3" />
+        Paused
+      </span>
+    );
+  }
+  if (opts?.scheduled && status === "pending") {
+    return (
+      <span className="inline-flex items-center gap-1.5 rounded-full border border-amber-500/20 bg-amber-500/10 px-2.5 py-0.5 text-xs font-medium text-amber-700 dark:text-amber-400">
+        <CalendarClock className="h-3 w-3" />
+        Scheduled
+      </span>
+    );
+  }
   const cfg = {
     pending: {
       label: "Sending",
@@ -86,10 +120,20 @@ function statusBadge(status: BroadcastJob["status"]) {
   const Icon = c.Icon;
   return (
     <span className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-xs font-medium ${c.cls}`}>
-      <Icon className={`h-3 w-3 ${status === "pending" ? "animate-spin" : ""}`} />
+      <Icon className={`h-3 w-3 ${status === "pending" && !opts?.scheduled ? "animate-spin" : ""}`} />
       {c.label}
     </span>
   );
+}
+
+function recipientStatusLabel(r: {
+  status: string;
+  deliveredAt?: string | null;
+}) {
+  if (r.status === "failed") return { label: "Failed", cls: "text-red-600", dot: "bg-red-500" };
+  if (r.status === "sent" || r.status === "delivered" || r.deliveredAt)
+    return { label: "Sent", cls: "text-emerald-600", dot: "bg-emerald-500" };
+  return { label: "Queued", cls: "text-muted-foreground", dot: "bg-muted-foreground/40" };
 }
 
 function WhatsAppBubblePreview({
@@ -109,7 +153,9 @@ function WhatsAppBubblePreview({
       <div className="max-w-[280px]">
         <div className="overflow-hidden rounded-lg rounded-tl-none bg-white shadow-sm dark:bg-[#202c33]">
           {header?.text && (
-            <p className="px-3 pt-2 text-sm font-semibold text-[#111b21] dark:text-[#e9edef]">{header.text}</p>
+            <p className="px-3 pt-2 text-sm font-semibold text-[#111b21] dark:text-[#e9edef]">
+              {header.text}
+            </p>
           )}
           <p className="whitespace-pre-wrap px-3 py-2 text-sm leading-relaxed text-[#111b21] dark:text-[#e9edef]">
             {preview || <span className="italic opacity-50">Fill variables to preview…</span>}
@@ -142,109 +188,233 @@ function WhatsAppBubblePreview({
 
 function HistoryJobRow({ job }: { job: BroadcastJob }) {
   const [expanded, setExpanded] = useState(false);
-  const deliveredCount = job.recipients.filter(
-    (r) => r.status === "delivered" || r.deliveredAt || r.readAt,
-  ).length;
-  const readCount = job.recipients.filter((r) => r.readAt).length;
+  const [noReplyJobId, setNoReplyJobId] = useState<string | null>(null);
+  const sentCount = Math.max(
+    job.succeeded ?? 0,
+    job.recipients.filter((r) => r.status === "sent" || r.status === "delivered" || !!r.deliveredAt)
+      .length,
+  );
+
+  const pauseBroadcast = usePauseBroadcast();
+  const cancelBroadcast = useCancelBroadcast();
+  const { data: noReplyData, isLoading: noReplyLoading } = useBroadcastNoReply(noReplyJobId as string);
+
+  const isScheduled = Boolean(job.scheduledAt && new Date(job.scheduledAt) > new Date());
+  const isPaused = Boolean(job.pausedAt);
+  const isCancelled = Boolean(job.cancelledAt);
+  const canControl =
+    job.status === "pending" && !isPaused && !isCancelled;
 
   return (
     <div className="overflow-hidden rounded-xl border border-border bg-card">
-      <button
-        type="button"
-        className="flex w-full items-center justify-between px-5 py-4 text-left transition-colors hover:bg-muted/30"
-        onClick={() => setExpanded((p) => !p)}
-      >
-        <div className="flex min-w-0 items-center gap-4">
-          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-primary/10">
-            {job.status === "pending" ? (
+      <div className="flex items-start gap-3 px-4 py-3.5 sm:items-center sm:px-5">
+        <button
+          type="button"
+          className="flex min-w-0 flex-1 items-start gap-3 text-left sm:items-center"
+          onClick={() => setExpanded((p) => !p)}
+        >
+          <div className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-primary/10 sm:mt-0">
+            {job.status === "pending" && !isPaused && !isScheduled ? (
               <Loader2 className="h-4 w-4 animate-spin text-primary" />
+            ) : isScheduled ? (
+              <CalendarClock className="h-4 w-4 text-amber-600" />
             ) : (
               <Radio className="h-4 w-4 text-primary" />
             )}
           </div>
-          <div className="min-w-0">
-            <p className="truncate font-medium text-foreground">{job.templateName}</p>
-            <p className="text-xs text-muted-foreground">
-              {new Date(job.createdAt).toLocaleString()} · {job.total} recipient
-              {job.total !== 1 ? "s" : ""}
+          <div className="min-w-0 flex-1">
+            <div className="flex flex-wrap items-center gap-2">
+              <p className="truncate font-medium text-foreground">{job.templateName}</p>
+              {statusBadge(job.status, {
+                scheduled: isScheduled,
+                paused: isPaused,
+                cancelled: isCancelled,
+              })}
+            </div>
+            <p className="mt-0.5 text-xs text-muted-foreground">
+              {isScheduled ? (
+                <span className="text-amber-700 dark:text-amber-400">
+                  Starts {new Date(job.scheduledAt!).toLocaleString()}
+                  {job.recurrence && job.recurrence !== "none"
+                    ? ` · repeats ${job.recurrence}`
+                    : " · one-time"}
+                </span>
+              ) : (
+                <>
+                  {new Date(job.createdAt).toLocaleString()} · {job.total} recipient
+                  {job.total !== 1 ? "s" : ""}
+                </>
+              )}
             </p>
-          </div>
-        </div>
-        <div className="flex shrink-0 items-center gap-4 sm:gap-6">
-          {statusBadge(job.status)}
-          <div className="hidden items-center gap-4 border-l border-border pl-4 sm:flex">
-            <div className="flex flex-col items-center">
-              <span className="text-xs font-semibold text-emerald-600 dark:text-emerald-400">
-                {job.succeeded}
+            <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-[11px] text-muted-foreground sm:hidden">
+              <span>
+                <strong className="text-emerald-600">{sentCount}</strong> sent
               </span>
-              <span className="text-[10px] uppercase tracking-wider text-muted-foreground">Sent</span>
-            </div>
-            <div className="flex flex-col items-center">
-              <span className="text-xs font-semibold text-blue-600 dark:text-blue-400">
-                {deliveredCount}
+              <span>
+                <strong className="text-red-600">{job.failed}</strong> failed
               </span>
-              <span className="text-[10px] uppercase tracking-wider text-muted-foreground">Dlvrd</span>
-            </div>
-            <div className="flex flex-col items-center">
-              <span className="text-xs font-semibold text-violet-600 dark:text-violet-400">
-                {readCount}
-              </span>
-              <span className="text-[10px] uppercase tracking-wider text-muted-foreground">Read</span>
-            </div>
-            <div className="flex flex-col items-center">
-              <span className="text-xs font-semibold text-red-600 dark:text-red-400">{job.failed}</span>
-              <span className="text-[10px] uppercase tracking-wider text-muted-foreground">Fail</span>
             </div>
           </div>
-          {expanded ? (
-            <ChevronUp className="h-4 w-4 text-muted-foreground" />
-          ) : (
-            <ChevronDown className="h-4 w-4 text-muted-foreground" />
+        </button>
+
+        <div className="flex shrink-0 flex-col items-end gap-2 sm:flex-row sm:items-center sm:gap-3">
+          <div className="hidden items-center gap-3 text-center sm:flex">
+            <div>
+              <p className="text-xs font-semibold tabular-nums text-emerald-600">{sentCount}</p>
+              <p className="text-[10px] uppercase tracking-wide text-muted-foreground">Sent</p>
+            </div>
+            <div>
+              <p className="text-xs font-semibold tabular-nums text-red-600">{job.failed}</p>
+              <p className="text-[10px] uppercase tracking-wide text-muted-foreground">Fail</p>
+            </div>
+          </div>
+
+          {canControl && (
+            <div className="flex items-center gap-1.5">
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="h-8 gap-1.5 px-2.5 text-xs"
+                disabled={pauseBroadcast.isPending}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  void pauseBroadcast
+                    .mutateAsync(job.id)
+                    .catch((err: any) => toast.error(err.message ?? "Pause failed"));
+                }}
+              >
+                <Pause className="h-3 w-3" />
+                Pause
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="h-8 gap-1.5 px-2.5 text-xs text-destructive hover:bg-destructive/10 hover:text-destructive"
+                disabled={cancelBroadcast.isPending}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  void cancelBroadcast
+                    .mutateAsync(job.id)
+                    .catch((err: any) => toast.error(err.message ?? "Cancel failed"));
+                }}
+              >
+                <XIcon className="h-3 w-3" />
+                Cancel
+              </Button>
+            </div>
           )}
+
+          <button
+            type="button"
+            className="rounded-md p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground"
+            onClick={() => setExpanded((p) => !p)}
+            aria-label={expanded ? "Collapse" : "Expand"}
+          >
+            {expanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+          </button>
         </div>
-      </button>
+      </div>
+
       {expanded && (
-        <div className="max-h-64 divide-y divide-border overflow-y-auto border-t border-border">
-          {job.recipients.length === 0 ? (
-            <p className="px-5 py-4 text-sm text-muted-foreground">
-              {job.status === "pending" ? "Recipients updating as messages send…" : "No recipient details"}
-            </p>
-          ) : (
-            job.recipients.map((r) => {
-              const isDelivered = r.status === "delivered" || !!r.deliveredAt;
-              const isRead = !!r.readAt;
-              return (
-                <div key={r.id} className="flex items-center gap-3 px-5 py-2.5">
-                  <div
-                    className={`h-2 w-2 shrink-0 rounded-full ${
-                      r.status === "failed"
-                        ? "bg-red-500"
-                        : isRead
-                          ? "bg-violet-500"
-                          : isDelivered
-                            ? "bg-blue-500"
-                            : "bg-emerald-500"
-                    }`}
-                  />
-                  <span className="min-w-0 flex-1 truncate text-sm">{r.customerName || r.customerId}</span>
-                  {r.error && (
-                    <span className="max-w-[180px] truncate text-xs text-red-500" title={r.error}>
-                      {r.error}
-                    </span>
+        <div className="border-t border-border">
+          {(job.status === "completed" || job.status === "partial") && (
+            <div className="border-b border-border px-4 py-3 sm:px-5">
+              {noReplyJobId !== job.id ? (
+                <button
+                  type="button"
+                  onClick={() => setNoReplyJobId(job.id)}
+                  className="inline-flex items-center gap-1.5 text-xs font-medium text-muted-foreground hover:text-foreground"
+                >
+                  <MessageSquareOff className="h-3.5 w-3.5" />
+                  View &quot;Didn&apos;t Reply&quot; list
+                </button>
+              ) : (
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <p className="flex items-center gap-1.5 text-xs font-semibold text-foreground">
+                      <MessageSquareOff className="h-3.5 w-3.5 text-muted-foreground" />
+                      Didn&apos;t Reply
+                      {noReplyData && (
+                        <span className="ml-1 rounded-full bg-muted px-1.5 py-0.5 text-[10px] font-semibold">
+                          {noReplyData.total}
+                        </span>
+                      )}
+                    </p>
+                    <button
+                      type="button"
+                      onClick={() => setNoReplyJobId(null)}
+                      className="text-xs text-muted-foreground hover:text-foreground"
+                    >
+                      Close
+                    </button>
+                  </div>
+                  {noReplyLoading ? (
+                    <div className="flex items-center gap-2 py-2 text-xs text-muted-foreground">
+                      <Loader2 className="h-3 w-3 animate-spin" /> Loading…
+                    </div>
+                  ) : noReplyData?.contacts.length === 0 ? (
+                    <p className="py-1 text-xs text-emerald-600">All recipients have replied ✓</p>
+                  ) : (
+                    <div className="max-h-48 divide-y divide-border overflow-y-auto rounded-lg border border-border">
+                      {noReplyData?.contacts.map((c: any) => (
+                        <div
+                          key={c.recipientId}
+                          className="flex items-center justify-between gap-3 px-3 py-2"
+                        >
+                          <span className="truncate text-xs text-foreground">
+                            {c.customerName || c.customerId}
+                          </span>
+                          {c.conversationId && (
+                            <a
+                              href="/inbox"
+                              className="shrink-0 text-[10px] text-primary hover:underline"
+                            >
+                              Open Conversation
+                            </a>
+                          )}
+                        </div>
+                      ))}
+                    </div>
                   )}
-                  <span className="shrink-0 text-xs font-medium text-muted-foreground">
-                    {r.status === "failed"
-                      ? "Failed"
-                      : isRead
-                        ? "Read"
-                        : isDelivered
-                          ? "Delivered"
-                          : "Sent"}
-                  </span>
                 </div>
-              );
-            })
+              )}
+            </div>
           )}
+
+          <div className="max-h-64 divide-y divide-border overflow-y-auto">
+            {job.recipients.length === 0 ? (
+              <p className="px-4 py-4 text-sm text-muted-foreground sm:px-5">
+                {isScheduled
+                  ? "Recipients will be processed when the send time arrives."
+                  : job.status === "pending"
+                    ? "Waiting for recipients…"
+                    : "No recipient details"}
+              </p>
+            ) : (
+              job.recipients.map((r) => {
+                const st = recipientStatusLabel(r);
+                return (
+                  <div key={r.id} className="flex items-center gap-3 px-4 py-2.5 sm:px-5">
+                    <div className={`h-2 w-2 shrink-0 rounded-full ${st.dot}`} />
+                    <span className="min-w-0 flex-1 truncate text-sm">
+                      {r.customerName || r.customerId}
+                    </span>
+                    {r.error && (
+                      <span
+                        className="max-w-[160px] truncate text-xs text-red-500"
+                        title={r.error}
+                      >
+                        {r.error}
+                      </span>
+                    )}
+                    <span className={`shrink-0 text-xs font-medium ${st.cls}`}>{st.label}</span>
+                  </div>
+                );
+              })
+            )}
+          </div>
         </div>
       )}
     </div>
@@ -280,10 +450,21 @@ export function BroadcastPage() {
   const templateDropRef = useRef<HTMLDivElement>(null);
 
   const [variables, setVariables] = useState<Record<string, string>>({});
+  // Multi-tag include/exclude
+  const [includeTags, setIncludeTags] = useState<string[]>([]);
+  const [excludeTags, setExcludeTags] = useState<string[]>([]);
+  // Legacy single tag filter (for contact list UI search)
   const [tagFilter, setTagFilter] = useState("");
   const [contactSearch, setContactSearch] = useState("");
   const [selectedContactIds, setSelectedContactIds] = useState<Set<string>>(new Set());
   const [confirmOpen, setConfirmOpen] = useState(false);
+  // Scheduled send
+  const [useSchedule, setUseSchedule] = useState(false);
+  const [scheduledAt, setScheduledAt] = useState("");
+  /** When scheduling: one-shot vs repeating job */
+  const [scheduleMode, setScheduleMode] = useState<"once" | "repeat">("once");
+  const [recurrence, setRecurrence] = useState<"weekly" | "monthly">("weekly");
+  const [suppressionDays, setSuppressionDays] = useState<number | "">("");
 
   const [historySearch, setHistorySearch] = useState("");
   const [historyStatus, setHistoryStatus] = useState<string>("ALL");
@@ -320,28 +501,28 @@ export function BroadcastPage() {
   const waContacts = useMemo(
     () =>
       contacts.filter(
-        (c) => (c.whatsappId || (c.whatsappIds?.length ?? 0) > 0) && c.whatsappEnabled !== false,
+        (c: any) => (c.whatsappId || (c.whatsappIds?.length ?? 0) > 0) && c.whatsappEnabled !== false,
       ),
     [contacts],
   );
 
   const filteredContacts = useMemo(() => {
     let list = waContacts;
-    if (tagFilter) list = list.filter((c) => c.tag === tagFilter);
+    if (tagFilter) list = list.filter((c: any) => c.tag === tagFilter);
     if (contactSearch) {
       const q = contactSearch.toLowerCase();
       list = list.filter(
-        (c) =>
+        (c: any) =>
           (c.name ?? "").toLowerCase().includes(q) ||
           (c.whatsappId ?? "").includes(q) ||
-          (c.whatsappIds ?? []).some((id) => id.includes(q)),
+          (c.whatsappIds ?? []).some((id: any) => id.includes(q)),
       );
     }
     return list;
   }, [waContacts, tagFilter, contactSearch]);
 
   const allVisible =
-    filteredContacts.length > 0 && filteredContacts.every((c) => selectedContactIds.has(c.id));
+    filteredContacts.length > 0 && filteredContacts.every((c: any) => selectedContactIds.has(c.id));
 
   const varsReady = templateVars.every((v) => Boolean(variables[v]?.trim()));
   const canGoRecipients = Boolean(selectedTemplateId) && varsReady;
@@ -377,8 +558,8 @@ export function BroadcastPage() {
   const toggleAll = () => {
     setSelectedContactIds((prev) => {
       const next = new Set(prev);
-      if (allVisible) filteredContacts.forEach((c) => next.delete(c.id));
-      else filteredContacts.forEach((c) => next.add(c.id));
+      if (allVisible) filteredContacts.forEach((c: any) => next.delete(c.id));
+      else filteredContacts.forEach((c: any) => next.add(c.id));
       return next;
     });
   };
@@ -401,14 +582,31 @@ export function BroadcastPage() {
         templateId: selectedTemplateId,
         customerIds: [...selectedContactIds],
         variables,
-        ...(tagFilter ? { tag: tagFilter } : {}),
+        ...(includeTags.length > 0 ? { includeTags } : {}),
+        ...(excludeTags.length > 0 ? { excludeTags } : {}),
+        ...(useSchedule && scheduledAt ? { scheduledAt: new Date(scheduledAt).toISOString() } : {}),
+        ...(useSchedule && scheduleMode === "repeat" ? { recurrence } : { recurrence: "none" }),
+        ...(useSchedule && scheduleMode === "repeat" && suppressionDays !== ""
+          ? { suppressionDays: Number(suppressionDays) }
+          : {}),
       });
       setConfirmOpen(false);
       setSelectedContactIds(new Set());
+      setIncludeTags([]);
+      setExcludeTags([]);
+      setUseSchedule(false);
+      setScheduledAt("");
+      setScheduleMode("once");
+      setRecurrence("weekly");
+      setSuppressionDays("");
       setStep(1);
       setActiveTab("history");
       toast.success(
-        res.status === "pending"
+        useSchedule && scheduledAt
+          ? scheduleMode === "repeat"
+            ? `Repeating broadcast scheduled (${recurrence}) starting ${new Date(scheduledAt).toLocaleString()}`
+            : `Broadcast scheduled once for ${new Date(scheduledAt).toLocaleString()}`
+          : res.status === "pending"
           ? `Broadcast queued for ${res.total} contacts`
           : `Broadcast finished: ${res.succeeded}/${res.total} sent`,
       );
@@ -417,6 +615,7 @@ export function BroadcastPage() {
     }
   };
 
+
   const resetForm = () => {
     setSelectedTemplateId("");
     setVariables({});
@@ -424,6 +623,11 @@ export function BroadcastPage() {
     setContactSearch("");
     setTemplateSearch("");
     setTagFilter("");
+    setUseSchedule(false);
+    setScheduledAt("");
+    setScheduleMode("once");
+    setRecurrence("weekly");
+    setSuppressionDays("");
     setStep(1);
   };
 
@@ -441,10 +645,9 @@ export function BroadcastPage() {
         <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-muted">
           <Lock className="h-8 w-8 text-muted-foreground" />
         </div>
-        <h2 className="text-xl font-semibold">Broadcasting is disabled</h2>
+        <h2 className="text-xl font-semibold">Broadcasts are currently disabled for this workspace</h2>
         <p className="max-w-sm text-center text-sm text-muted-foreground">
-          Ask an admin to enable <code className="rounded bg-muted px-1.5 py-0.5 text-xs">broadcast_enabled</code>{" "}
-          in the admin panel.
+          Ask an admin to enable broadcasts in the admin panel.
         </p>
       </div>
     );
@@ -468,12 +671,40 @@ export function BroadcastPage() {
     <div className="flex h-full flex-1 flex-col overflow-hidden bg-background">
       <ConfirmDialog
         open={confirmOpen}
-        title="Send broadcast?"
+        title={
+          useSchedule
+            ? scheduleMode === "repeat"
+              ? "Schedule repeating broadcast?"
+              : "Schedule one-time broadcast?"
+            : "Send broadcast?"
+        }
         description={
           <>
-            Send <strong>{selectedTemplate?.name}</strong> to{" "}
-            <strong>{selectedContactIds.size}</strong> contact
-            {selectedContactIds.size !== 1 ? "s" : ""}. Meta template messaging charges may apply.
+            {useSchedule && scheduledAt ? (
+              scheduleMode === "repeat" ? (
+                <>
+                  Schedule <strong>{selectedTemplate?.name}</strong> to{" "}
+                  <strong>{selectedContactIds.size}</strong> contact
+                  {selectedContactIds.size !== 1 ? "s" : ""}, first send{" "}
+                  <strong>{new Date(scheduledAt).toLocaleString()}</strong>, then every{" "}
+                  <strong>{recurrence === "weekly" ? "week" : "month"}</strong>.
+                </>
+              ) : (
+                <>
+                  Schedule <strong>{selectedTemplate?.name}</strong> once to{" "}
+                  <strong>{selectedContactIds.size}</strong> contact
+                  {selectedContactIds.size !== 1 ? "s" : ""} on{" "}
+                  <strong>{new Date(scheduledAt).toLocaleString()}</strong>.
+                </>
+              )
+            ) : (
+              <>
+                Send <strong>{selectedTemplate?.name}</strong> to{" "}
+                <strong>{selectedContactIds.size}</strong> contact
+                {selectedContactIds.size !== 1 ? "s" : ""}. Meta template messaging charges may
+                apply.
+              </>
+            )}
           </>
         }
         confirmLabel={sendBroadcast.isPending ? "Sending…" : "Send now"}
@@ -482,46 +713,46 @@ export function BroadcastPage() {
         onCancel={() => setConfirmOpen(false)}
       />
 
-      <div className="mx-auto flex w-full max-w-6xl flex-1 flex-col overflow-hidden px-6 pt-8 sm:px-8">
-        <div className="flex flex-wrap items-start justify-between gap-4 shrink-0">
-          <div className="min-w-0">
-            <h1 className="text-3xl font-bold tracking-tight">Broadcast</h1>
-            <p className="mt-1 text-sm text-muted-foreground">
-              Send an approved WhatsApp template to many contacts at once.
-            </p>
-          </div>
-          <div className="flex rounded-xl bg-muted/40 p-1">
-            <button
-              type="button"
-              onClick={() => setActiveTab("new")}
-              className={`flex items-center gap-1.5 rounded-lg px-4 py-1.5 text-sm font-medium transition-all ${
-                activeTab === "new"
-                  ? "bg-background text-foreground shadow-sm"
-                  : "text-muted-foreground hover:text-foreground"
-              }`}
-            >
-              <Send className="h-3.5 w-3.5" />
-              New
-            </button>
-            <button
-              type="button"
-              onClick={() => setActiveTab("history")}
-              className={`flex items-center gap-1.5 rounded-lg px-4 py-1.5 text-sm font-medium transition-all ${
-                activeTab === "history"
-                  ? "bg-background text-foreground shadow-sm"
-                  : "text-muted-foreground hover:text-foreground"
-              }`}
-            >
-              <BarChart3 className="h-3.5 w-3.5" />
-              History
-              {broadcastJobs.length > 0 && (
-                <span className="ml-0.5 text-xs opacity-60">{broadcastJobs.length}</span>
-              )}
-            </button>
-          </div>
+      <div className="flex shrink-0 flex-wrap items-start justify-between gap-4 border-b border-border bg-card/50 px-6 py-6 sm:px-8">
+        <div>
+          <h1 className="text-lg font-semibold leading-tight text-foreground">Broadcast</h1>
+          <p className="text-xs text-muted-foreground">
+            Send WhatsApp templates to multiple contacts.
+          </p>
         </div>
+        <div className="flex rounded-xl bg-muted/40 p-1">
+          <button
+            type="button"
+            onClick={() => setActiveTab("new")}
+            className={`flex items-center gap-1.5 rounded-lg px-4 py-1.5 text-sm font-medium transition-all ${
+              activeTab === "new"
+                ? "bg-background text-foreground shadow-sm"
+                : "text-muted-foreground hover:text-foreground"
+            }`}
+          >
+            <Send className="h-3.5 w-3.5" />
+            New
+          </button>
+          <button
+            type="button"
+            onClick={() => setActiveTab("history")}
+            className={`flex items-center gap-1.5 rounded-lg px-4 py-1.5 text-sm font-medium transition-all ${
+              activeTab === "history"
+                ? "bg-background text-foreground shadow-sm"
+                : "text-muted-foreground hover:text-foreground"
+            }`}
+          >
+            <BarChart3 className="h-3.5 w-3.5" />
+            History
+            {broadcastJobs.length > 0 && (
+              <span className="ml-0.5 text-xs opacity-60">{broadcastJobs.length}</span>
+            )}
+          </button>
+        </div>
+      </div>
 
-        <div className="mt-6 min-h-0 flex-1 overflow-y-auto pb-8">
+      <div className="min-h-0 flex-1 overflow-y-auto px-6 py-6 sm:px-8">
+        <div className="pb-8">
           {activeTab === "new" && (
             <div className="space-y-6">
               {/* Stepper */}
@@ -739,42 +970,85 @@ export function BroadcastPage() {
                       ) : (
                         <>
                           {allTags.length > 0 && (
-                            <div className="mb-3 flex flex-wrap gap-2">
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  setTagFilter("");
-                                  setSelectedContactIds(new Set());
-                                }}
-                                className={`rounded-full border px-3 py-1 text-xs font-medium ${
-                                  !tagFilter
-                                    ? "border-primary bg-primary/10 text-primary"
-                                    : "border-border text-muted-foreground hover:text-foreground"
-                                }`}
-                              >
-                                All ({waContacts.length})
-                              </button>
-                              {allTags.map((t) => {
-                                const count = waContacts.filter((c) => c.tag === t).length;
-                                return (
-                                  <button
-                                    key={t}
-                                    type="button"
-                                    onClick={() => {
-                                      setTagFilter(t === tagFilter ? "" : t);
-                                      setSelectedContactIds(new Set());
-                                    }}
-                                    className={`inline-flex items-center gap-1 rounded-full border px-3 py-1 text-xs font-medium ${
-                                      tagFilter === t
-                                        ? "border-primary bg-primary/10 text-primary"
-                                        : "border-border text-muted-foreground hover:text-foreground"
-                                    }`}
-                                  >
-                                    <Tag className="h-2.5 w-2.5" />
-                                    {t} ({count})
-                                  </button>
-                                );
-                              })}
+                            <div className="mb-4 space-y-3">
+                              {/* Include tags */}
+                              <div>
+                                <p className="text-xs font-semibold text-foreground mb-1.5 flex items-center gap-1.5">
+                                  <Tag className="h-3 w-3 text-primary" />
+                                  Include contacts with tags
+                                  <span className="font-normal text-muted-foreground">(any match)</span>
+                                </p>
+                                <div className="flex flex-wrap gap-1.5">
+                                  {allTags.map((t) => {
+                                    const active = includeTags.includes(t);
+                                    return (
+                                      <button
+                                        key={t}
+                                        type="button"
+                                        onClick={() => {
+                                          setIncludeTags((prev) =>
+                                            active ? prev.filter((x) => x !== t) : [...prev, t],
+                                          );
+                                          setSelectedContactIds(new Set());
+                                        }}
+                                        className={`inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-xs font-medium transition-colors ${
+                                          active
+                                            ? "border-primary bg-primary/10 text-primary"
+                                            : "border-border text-muted-foreground hover:text-foreground"
+                                        }`}
+                                      >
+                                        <Tag className="h-2.5 w-2.5" />
+                                        {t}
+                                      </button>
+                                    );
+                                  })}
+                                </div>
+                              </div>
+                              {/* Exclude tags */}
+                              <div>
+                                <p className="text-xs font-semibold text-foreground mb-1.5 flex items-center gap-1.5">
+                                  <XIcon className="h-3 w-3 text-red-500" />
+                                  Exclude contacts with tags
+                                </p>
+                                <div className="flex flex-wrap gap-1.5">
+                                  {allTags.map((t) => {
+                                    const active = excludeTags.includes(t);
+                                    return (
+                                      <button
+                                        key={t}
+                                        type="button"
+                                        onClick={() => {
+                                          setExcludeTags((prev) =>
+                                            active ? prev.filter((x) => x !== t) : [...prev, t],
+                                          );
+                                          setSelectedContactIds(new Set());
+                                        }}
+                                        className={`inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-xs font-medium transition-colors ${
+                                          active
+                                            ? "border-red-400 bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400"
+                                            : "border-border text-muted-foreground hover:text-foreground"
+                                        }`}
+                                      >
+                                        <XIcon className="h-2.5 w-2.5" />
+                                        {t}
+                                      </button>
+                                    );
+                                  })}
+                                </div>
+                              </div>
+                              {(includeTags.length > 0 || excludeTags.length > 0) && (
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setIncludeTags([]);
+                                    setExcludeTags([]);
+                                    setSelectedContactIds(new Set());
+                                  }}
+                                  className="text-xs text-muted-foreground hover:text-foreground"
+                                >
+                                  Clear tag filters
+                                </button>
+                              )}
                             </div>
                           )}
 
@@ -799,7 +1073,7 @@ export function BroadcastPage() {
                                 No contacts match
                               </p>
                             ) : (
-                              filteredContacts.map((c) => {
+                              filteredContacts.map((c: any) => {
                                 const selected = selectedContactIds.has(c.id);
                                 const wa = c.whatsappIds?.[0] ?? c.whatsappId ?? "";
                                 return (
@@ -819,7 +1093,7 @@ export function BroadcastPage() {
                                       {c.name
                                         ? c.name
                                             .split(" ")
-                                            .map((n) => n[0])
+                                            .map((n: any) => n[0])
                                             .join("")
                                             .slice(0, 2)
                                             .toUpperCase()
@@ -905,7 +1179,160 @@ export function BroadcastPage() {
                             </dd>
                           </div>
                         )}
+                        {(includeTags.length > 0 || excludeTags.length > 0) && (
+                          <div className="border-t border-border pt-3 space-y-1.5">
+                            {includeTags.length > 0 && (
+                              <div className="flex justify-between gap-4">
+                                <dt className="text-muted-foreground">Include tags</dt>
+                                <dd className="font-medium text-right">{includeTags.join(", ")}</dd>
+                              </div>
+                            )}
+                            {excludeTags.length > 0 && (
+                              <div className="flex justify-between gap-4">
+                                <dt className="text-muted-foreground">Exclude tags</dt>
+                                <dd className="font-medium text-right text-red-600">{excludeTags.join(", ")}</dd>
+                              </div>
+                            )}
+                          </div>
+                        )}
                       </dl>
+
+                      {/* Scheduled send */}
+                      <div className="mt-4 rounded-xl border border-border bg-muted/20 p-4 space-y-3">
+                        <label className="flex items-center justify-between cursor-pointer">
+                          <span className="flex items-center gap-2 text-sm font-medium">
+                            <CalendarClock className="h-4 w-4 text-amber-600" />
+                            Schedule for later
+                          </span>
+                          <button
+                            type="button"
+                            role="switch"
+                            aria-checked={useSchedule}
+                            onClick={() => {
+                              setUseSchedule((p) => {
+                                const next = !p;
+                                if (!next) {
+                                  setScheduleMode("once");
+                                  setScheduledAt("");
+                                  setSuppressionDays("");
+                                }
+                                return next;
+                              });
+                            }}
+                            className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors ${
+                              useSchedule ? "bg-primary" : "bg-muted-foreground/30"
+                            }`}
+                          >
+                            <span
+                              className={`inline-block h-4 w-4 rounded-full bg-white shadow transition-transform ${
+                                useSchedule ? "translate-x-4" : "translate-x-0.5"
+                              }`}
+                            />
+                          </button>
+                        </label>
+                        {useSchedule && (
+                          <div className="space-y-4">
+                            <div className="space-y-1.5">
+                              <p className="text-sm font-medium">How should it run?</p>
+                              <div className="grid grid-cols-2 gap-2">
+                                <button
+                                  type="button"
+                                  onClick={() => setScheduleMode("once")}
+                                  className={`rounded-lg border px-3 py-2.5 text-left text-sm transition-colors ${
+                                    scheduleMode === "once"
+                                      ? "border-primary bg-primary/5 text-foreground"
+                                      : "border-border bg-background text-muted-foreground hover:bg-muted/40"
+                                  }`}
+                                >
+                                  <span className="block font-medium text-foreground">Send once</span>
+                                  <span className="mt-0.5 block text-[11px] leading-snug">
+                                    One send at the date and time below
+                                  </span>
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => setScheduleMode("repeat")}
+                                  className={`rounded-lg border px-3 py-2.5 text-left text-sm transition-colors ${
+                                    scheduleMode === "repeat"
+                                      ? "border-primary bg-primary/5 text-foreground"
+                                      : "border-border bg-background text-muted-foreground hover:bg-muted/40"
+                                  }`}
+                                >
+                                  <span className="block font-medium text-foreground">Repeat</span>
+                                  <span className="mt-0.5 block text-[11px] leading-snug">
+                                    First send then weekly or monthly
+                                  </span>
+                                </button>
+                              </div>
+                            </div>
+
+                            <div>
+                              <label className="mb-1.5 block text-sm font-medium">
+                                {scheduleMode === "repeat" ? "First send at" : "Send at"}
+                              </label>
+                              <input
+                                type="datetime-local"
+                                value={scheduledAt}
+                                min={new Date(Date.now() + 60_000).toISOString().slice(0, 16)}
+                                onChange={(e) => setScheduledAt(e.target.value)}
+                                className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/20"
+                              />
+                              {scheduledAt && scheduleMode === "once" && (
+                                <p className="mt-1.5 text-xs text-amber-600">
+                                  Will send once on {new Date(scheduledAt).toLocaleString()} (server
+                                  time)
+                                </p>
+                              )}
+                              {scheduledAt && scheduleMode === "repeat" && (
+                                <p className="mt-1.5 text-xs text-amber-600">
+                                  First send {new Date(scheduledAt).toLocaleString()}, then{" "}
+                                  {recurrence}
+                                </p>
+                              )}
+                            </div>
+
+                            {scheduleMode === "repeat" && (
+                              <div className="space-y-4 border-t border-border/50 pt-4">
+                                <div className="space-y-1.5">
+                                  <label className="text-sm font-medium">Repeat every</label>
+                                  <select
+                                    value={recurrence}
+                                    onChange={(e) =>
+                                      setRecurrence(e.target.value as "weekly" | "monthly")
+                                    }
+                                    className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/20"
+                                  >
+                                    <option value="weekly">Week</option>
+                                    <option value="monthly">Month</option>
+                                  </select>
+                                </div>
+
+                                <div className="space-y-1.5">
+                                  <label className="text-sm font-medium">
+                                    Skip if contacted recently (days)
+                                  </label>
+                                  <input
+                                    type="number"
+                                    min="0"
+                                    placeholder="Optional — e.g. 14"
+                                    value={suppressionDays}
+                                    onChange={(e) =>
+                                      setSuppressionDays(
+                                        e.target.value ? Number(e.target.value) : "",
+                                      )
+                                    }
+                                    className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/20"
+                                  />
+                                  <p className="text-xs text-muted-foreground">
+                                    On later runs, skip contacts who already got this broadcast
+                                    within that window.
+                                  </p>
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        )}
+                      </div>
 
                       <div className="mt-6 flex flex-wrap justify-between gap-2">
                         <div className="flex gap-2">
@@ -918,16 +1345,21 @@ export function BroadcastPage() {
                         </div>
                         <Button
                           className="gap-2"
-                          disabled={!canSend}
+                          disabled={!canSend || (useSchedule && !scheduledAt)}
                           onClick={() => setConfirmOpen(true)}
                         >
-                          <Send className="h-4 w-4" />
-                          Send to {selectedContactIds.size} contact
+                          {useSchedule ? <CalendarClock className="h-4 w-4" /> : <Send className="h-4 w-4" />}
+                          {useSchedule
+                            ? scheduleMode === "repeat"
+                              ? `Schedule repeating to ${selectedContactIds.size} contact`
+                              : `Schedule once to ${selectedContactIds.size} contact`
+                            : `Send to ${selectedContactIds.size} contact`}
                           {selectedContactIds.size !== 1 ? "s" : ""}
                         </Button>
                       </div>
                     </section>
                   )}
+
                 </div>
 
                 {/* Sticky preview */}

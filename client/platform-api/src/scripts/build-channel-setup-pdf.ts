@@ -79,7 +79,7 @@ function drawFooter(doc: PDFKit.PDFDocument, pageNo: number) {
     doc.save();
     doc.moveTo(PAGE.margin, y - 10).lineTo(width - PAGE.margin, y - 10).strokeColor(C.line).lineWidth(0.8).stroke();
     doc.font("Helvetica").fontSize(8).fillColor(C.muted);
-    doc.text("FiberAI CEP · Channel setup", PAGE.margin, y, {
+    doc.text("FyBud CEP · Channel setup", PAGE.margin, y, {
       width: 240,
       lineBreak: false,
     });
@@ -106,7 +106,7 @@ function drawCover(doc: PDFKit.PDFDocument) {
     doc.restore();
 
     doc.fillColor(C.navy).font("Helvetica-Bold").fontSize(32);
-    doc.text("FiberAI", x, brandY, { width: textW, align: "center", lineBreak: false });
+    doc.text("FyBud", x, brandY, { width: textW, align: "center", lineBreak: false });
 
     const ruleW = 48;
     const ruleY = brandY + 44;
@@ -435,7 +435,7 @@ async function main() {
     },
     info: {
       Title: "CEP Channel Setup Guide",
-      Author: "FiberAI",
+      Author: "FyBud",
       Subject: "WhatsApp, Instagram, Gmail, Shopify setup",
     },
   });

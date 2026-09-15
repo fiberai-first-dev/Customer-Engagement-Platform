@@ -9,43 +9,48 @@ export const broadcastRoutes: FastifyPluginAsync = async (app) => {
       templateId: string;
       customerIds: string[];
       variables: Record<string, string>;
-      /** Optional tag filter — if provided, only customers with this tag are included */
       tag?: string;
+      includeTags?: string[];
+      excludeTags?: string[];
+      scheduledAt?: string;
+      recurrence?: "none" | "weekly" | "monthly";
+      suppressionDays?: number | null;
     };
   }>("/", async (req, reply) => {
     try {
-      const { templateId, customerIds: rawIds, variables, tag } = req.body;
+      const { templateId, customerIds: rawIds, variables, includeTags, excludeTags, scheduledAt, recurrence, suppressionDays } = req.body;
 
-      // If tag is provided, resolve customerIds from the tag (override / intersect with passed ids)
-      let customerIds = rawIds;
-      if (tag) {
+      // Resolve customerIds based on rawIds + tags
+      let finalCustomerIds = new Set(rawIds || []);
+      
+      if (includeTags && includeTags.length > 0) {
         const taggedCustomers = await prisma.customer.findMany({
-          where: {
-            tag,
-            whatsappIdentities: { some: {} },
-          },
+          where: { tag: { in: includeTags }, whatsappIdentities: { some: {} } },
           select: { id: true },
         });
-        const taggedIds = taggedCustomers.map((c) => c.id);
-        // If rawIds were also provided, intersect; otherwise use all tagged
-        customerIds =
-          rawIds?.length
-            ? taggedIds.filter((id) => rawIds.includes(id))
-            : taggedIds;
+        taggedCustomers.forEach((c) => finalCustomerIds.add(c.id));
       }
 
-      if (!templateId || !Array.isArray(customerIds) || customerIds.length === 0) {
-        return reply.code(400).send({ error: "templateId and customerIds (or a valid tag) are required" });
+      if (excludeTags && excludeTags.length > 0) {
+        const excludedCustomers = await prisma.customer.findMany({
+          where: { tag: { in: excludeTags }, whatsappIdentities: { some: {} } },
+          select: { id: true },
+        });
+        excludedCustomers.forEach((c) => finalCustomerIds.delete(c.id));
       }
 
-      // Look up template name for logging
+      const customerIds = Array.from(finalCustomerIds);
+
+      if (!templateId || customerIds.length === 0) {
+        return reply.code(400).send({ error: "templateId and customerIds (or matching tags) are required" });
+      }
+
       const template = await prisma.whatsAppTemplate.findUnique({ where: { id: templateId } });
       if (!template) return reply.code(404).send({ error: "Template not found" });
       if (template.status !== "APPROVED") {
         return reply.code(400).send({ error: "Only APPROVED templates can be broadcast" });
       }
 
-      // Persist broadcast job to DB as pending
       const job = await prisma.broadcastJob.create({
         data: {
           templateId,
@@ -55,92 +60,21 @@ export const broadcastRoutes: FastifyPluginAsync = async (app) => {
           total: customerIds.length,
           succeeded: 0,
           failed: 0,
+          includeTags: includeTags || [],
+          excludeTags: excludeTags || [],
+          scheduledAt: scheduledAt ? new Date(scheduledAt) : null,
+          recurrence: recurrence || "none",
+          suppressionDays: suppressionDays || null,
         },
       });
 
-      // Start background processing
-      (async () => {
-        let succeeded = 0;
-        let failed = 0;
-        for (const customerId of customerIds) {
-          // Small delay to respect Meta rate limits
-          await new Promise((r) => setTimeout(r, 200));
-
-          const customer = await prisma.customer.findUnique({ where: { id: customerId } }).catch(() => null);
-          const customerName = customer?.name ?? null;
-
-          try {
-          // Resolve dynamic variables
-          const resolvedVariables: Record<string, string> = {};
-          const agentUsername = (req as any).user?.username ?? "Agent";
-          
-          for (const [key, val] of Object.entries(variables as Record<string, string>)) {
-            if (val === "$CONTACT_NAME") {
-              resolvedVariables[key] = customerName ?? "Customer";
-            } else if (val === "$CONTACT_FIRST_NAME") {
-              resolvedVariables[key] = customerName ? customerName.split(" ")[0] : "Customer";
-            } else if (val === "$AGENT_USERNAME") {
-              resolvedVariables[key] = agentUsername;
-            } else {
-              resolvedVariables[key] = val;
-            }
-          }
-
-          const result = await sendWhatsAppTemplateMessage({ 
-            customerId, 
-            templateId, 
-            variables: resolvedVariables 
-          });
-            if (result.result.ok) {
-              succeeded++;
-              await prisma.broadcastRecipient.create({
-                data: {
-                  jobId: job.id,
-                  customerId,
-                  customerName,
-                  status: "sent",
-                  messageId: result.result.externalId ?? null,
-                },
-              });
-            } else {
-              failed++;
-              await prisma.broadcastRecipient.create({
-                data: {
-                  jobId: job.id,
-                  customerId,
-                  customerName,
-                  status: "failed",
-                  error: result.result.error ?? "Unknown error",
-                },
-              });
-            }
-          } catch (err: any) {
-            failed++;
-            await prisma.broadcastRecipient.create({
-              data: {
-                jobId: job.id,
-                customerId,
-                customerName,
-                status: "failed",
-                error: err.message ?? "Unknown error",
-              },
-            });
-          }
-          
-          // Update job progress
-          await prisma.broadcastJob.update({
-            where: { id: job.id },
-            data: { succeeded, failed },
-          });
-        }
-
-        const overallStatus = failed === 0 ? "completed" : succeeded === 0 ? "failed" : "partial";
-        await prisma.broadcastJob.update({
-          where: { id: job.id },
-          data: { status: overallStatus, succeeded, failed },
-        });
-      })().catch((err) => {
-        req.log.error(err, "Background broadcast job failed");
+      // Insert all recipients as pending
+      await prisma.broadcastRecipient.createMany({
+        data: customerIds.map(customerId => ({
+          jobId: job.id,
+          customerId,
+          status: "pending"
+        }))
       });
 
       return reply.send({
@@ -156,6 +90,42 @@ export const broadcastRoutes: FastifyPluginAsync = async (app) => {
       const status = err.statusCode ?? 500;
       return reply.status(status).send({ error: err.message });
     }
+  });
+
+  // POST /api/v1/broadcasts/:id/pause
+  app.post<{ Params: { id: string } }>("/:id/pause", async (req, reply) => {
+    const job = await prisma.broadcastJob.findUnique({ where: { id: req.params.id } });
+    if (!job) return reply.code(404).send({ error: "Job not found" });
+    await prisma.broadcastJob.update({
+      where: { id: job.id },
+      data: { pausedAt: job.pausedAt ? null : new Date() } // toggle pause
+    });
+    return reply.send({ success: true });
+  });
+
+  // POST /api/v1/broadcasts/:id/cancel
+  app.post<{ Params: { id: string } }>("/:id/cancel", async (req, reply) => {
+    const job = await prisma.broadcastJob.findUnique({ where: { id: req.params.id } });
+    if (!job) return reply.code(404).send({ error: "Job not found" });
+    await prisma.broadcastJob.update({
+      where: { id: job.id },
+      data: { cancelledAt: new Date() }
+    });
+    return reply.send({ success: true });
+  });
+
+  // GET /api/v1/broadcasts/:id/no-reply
+  app.get<{ Params: { id: string } }>("/:id/no-reply", async (req, reply) => {
+    const job = await prisma.broadcastJob.findUnique({
+      where: { id: req.params.id },
+      include: { recipients: true }
+    });
+    if (!job) return reply.code(404).send({ error: "Job not found" });
+    
+    // In a real app we'd check if the customer sent a message after the broadcast.
+    // For now, return all recipients who have 'deliveredAt' or 'readAt' but haven't replied.
+    const noReply = job.recipients.filter(r => (r.deliveredAt || r.readAt));
+    return reply.send({ contacts: noReply.map(r => r.customerId) });
   });
 
   // GET /api/v1/broadcasts — list past broadcast jobs

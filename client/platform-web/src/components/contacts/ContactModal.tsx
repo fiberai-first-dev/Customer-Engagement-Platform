@@ -194,9 +194,7 @@ export function ContactModal({
   const updateContact = useUpdateContact();
   const mergeContacts = useMergeContacts();
 
-  const channels = enabledChannels?.length
-    ? enabledChannels
-    : (["whatsapp", "instagram", "facebook", "email"] as ChannelType[]);
+  const channels = enabledChannels ?? [];
   const showEmail = channels.includes("email");
   const showWa = channels.includes("whatsapp");
   const showIg = channels.includes("instagram");

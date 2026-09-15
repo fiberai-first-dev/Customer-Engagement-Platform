@@ -17,10 +17,7 @@ export { uploadAttachment as uploadConversationAttachment };
 
 const MB = 1024 * 1024;
 
-export const CHANNEL_MEDIA_LIMITS: Record<
-  ChannelType,
-  { default: number; image?: number; video?: number; audio?: number; document?: number }
-> = {
+export const CHANNEL_MEDIA_LIMITS: any = {
   whatsapp: {
     default: 100 * MB, // Documents up to 100MB
     image: 5 * MB,

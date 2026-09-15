@@ -101,7 +101,7 @@ async function createDemoOrders(customerId: number) {
       fulfillment_status: "fulfilled",
       created_at: new Date(Date.now() - 14 * 864e5).toISOString(),
       line_items: [
-        { title: "FiberAI Router Pro", price: "4999.00", quantity: 1 },
+        { title: "FyBud Router Pro", price: "4999.00", quantity: 1 },
         { title: "Ethernet Cable 5m", price: "299.00", quantity: 2 },
       ],
     },

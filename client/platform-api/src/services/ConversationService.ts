@@ -214,6 +214,28 @@ function contactHasUnread(
  * Email: one row per Gmail thread under the customer.
  */
 export class ConversationService {
+  static async searchMessages(query: string) {
+    const messages = await prisma.message.findMany({
+      where: { content: { contains: query, mode: 'insensitive' } },
+      orderBy: { createdAt: 'desc' },
+      take: 50,
+    });
+    
+    // We need to return customer info and a computed conversationId for the UI
+    const customerIds = [...new Set(messages.map(m => m.customerId))];
+    const customers = await prisma.customer.findMany({
+      where: { id: { in: customerIds } }
+    });
+    
+    return messages.map(msg => {
+      const customer = customers.find(c => c.id === msg.customerId);
+      return {
+        ...msg,
+        customerName: customer?.name || "Unknown",
+        conversationId: buildConversationId(msg.customerId, msg.channelType, msg.externalThreadId ?? undefined)
+      };
+    });
+  }
   static parseConversationId = parseConversationId;
 
   static async list(status?: "active" | "resolved" | "all") {
@@ -233,16 +255,22 @@ export class ConversationService {
         instagramIdentities: true,
         facebookIdentities: true,
         emailIdentities: true,
+        webChatIdentities: true,
       },
       orderBy: { updatedAt: "desc" },
     });
 
     const unreadMap = await loadUnreadMap();
 
+    const blockedRows = await prisma.blockedContact.findMany({
+      select: { customerId: true },
+    });
+    const blockedCustomerIds = new Set(blockedRows.map((r) => r.customerId));
+
     // ── Batch fetch latest non-email messages (prevents N+1 per customer) ──────
     const nonEmailGroups = await prisma.message.groupBy({
       by: ["customerId", "channelType"],
-      where: { channelType: { in: ["whatsapp", "instagram", "facebook"] } },
+      where: { channelType: { in: ["whatsapp", "instagram", "facebook", "web_chat"] } },
       _max: { createdAt: true },
     });
     const latestNonEmailMsgs = nonEmailGroups.length > 0
@@ -302,7 +330,7 @@ export class ConversationService {
       const shaped = shapeCustomer(customer);
       const channelStatuses: Partial<Record<ChannelType, "open" | "resolved">> = {};
 
-      for (const type of ["whatsapp", "instagram", "facebook", "email"] as ChannelType[]) {
+      for (const type of ["whatsapp", "instagram", "facebook", "email", "web_chat"] as ChannelType[]) {
         if (!enabledTypes.has(type)) continue;
         const identities =
           type === "whatsapp"
@@ -311,14 +339,16 @@ export class ConversationService {
               ? customer.instagramIdentities
               : type === "facebook"
                 ? customer.facebookIdentities
-                : customer.emailIdentities;
+                : type === "web_chat"
+                  ? customer.webChatIdentities
+                  : customer.emailIdentities;
         const active = identities.filter((i) => i.lastMessageAt != null);
         if (!active.length) continue;
         const unresolved = active.some((i) => !i.resolved);
         channelStatuses[type] = unresolved ? "open" : "resolved";
       }
 
-      for (const type of ["whatsapp", "instagram", "facebook", "email"] as ChannelType[]) {
+      for (const type of ["whatsapp", "instagram", "facebook", "email", "web_chat"] as ChannelType[]) {
         if (!enabledTypes.has(type)) continue;
         const identities =
           type === "whatsapp"
@@ -327,7 +357,9 @@ export class ConversationService {
               ? customer.instagramIdentities
               : type === "facebook"
                 ? customer.facebookIdentities
-                : customer.emailIdentities;
+                : type === "web_chat"
+                  ? customer.webChatIdentities
+                  : customer.emailIdentities;
         const active = identities.filter((i) => i.lastMessageAt != null);
         if (!active.length) continue;
 
@@ -343,6 +375,7 @@ export class ConversationService {
             : ("resolved" as const),
           hasUnread: contactHasUnread(customer.id, unreadMap),
           unreadByChannel: unreadMap.get(customer.id) ?? {},
+          blocked: blockedCustomerIds.has(customer.id),
         };
 
         const inboxMeta = {
@@ -354,7 +387,9 @@ export class ConversationService {
                 ? "Instagram"
                 : type === "facebook"
                   ? "Facebook"
-                  : "Email",
+                  : type === "web_chat"
+                    ? "Web Chat"
+                    : "Email",
           channelType: type,
         };
 
@@ -592,6 +627,11 @@ export class ConversationService {
         });
       } else if (channelType === "facebook") {
         await prisma.facebookChannel.updateMany({
+          where: { customerId },
+          data: { resolved: false },
+        });
+      } else if (channelType === "web_chat") {
+        await prisma.webChatChannel.updateMany({
           where: { customerId },
           data: { resolved: false },
         });

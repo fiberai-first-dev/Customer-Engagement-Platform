@@ -7,6 +7,7 @@ export const CHANNELS: { id: ChannelType; label: string }[] = [
   { id: "instagram", label: "Instagram" },
   { id: "facebook", label: "Facebook" },
   { id: "email", label: "Email" },
+  { id: "web_chat", label: "Web Chat" },
 ];
 
 export function channelLabel(channel: ChannelType): string {

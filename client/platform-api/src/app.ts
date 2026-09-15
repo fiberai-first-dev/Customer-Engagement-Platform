@@ -6,7 +6,10 @@ import { mediaConfig } from "./config/media.js";
 
 export async function buildApp() {
   const app = Fastify({ logger: true });
-  await app.register(cors, { origin: true });
+  await app.register(cors, {
+    origin: true,
+    allowedHeaders: ["Content-Type", "Authorization"],
+  });
   await app.register(multipart, {
     limits: { fileSize: mediaConfig.maxBytes },
   });

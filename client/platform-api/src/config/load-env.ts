@@ -8,3 +8,5 @@ const apiRoot = path.resolve(here, "../..");
 const repoRoot = path.resolve(here, "../../../..");
 dotenv.config({ path: path.join(repoRoot, ".env") });
 dotenv.config({ path: path.join(apiRoot, ".env") });
+dotenv.config({ path: path.join(apiRoot, ".env.local") });
+dotenv.config({ path: path.join(apiRoot, ".env.demo") });

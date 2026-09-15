@@ -16,6 +16,8 @@ import {
   useUpdateShopifyConfig,
   setupGuidePdfUrl,
   useFeatureFlag,
+  useWebChatSettings,
+  useUpdateWebChatSettings,
   type Inbox,
 } from "../../api";
 import { ConfirmDialog } from "../../components/ui/confirm-dialog";
@@ -25,10 +27,28 @@ import {
   EyeOff,
   Loader2,
   X,
+  Copy,
+  Check,
+  Plus,
+  Trash2,
 } from "lucide-react";
+import { cn } from "../../utils/utils";
 
 type ChannelKey = "whatsapp" | "instagram" | "facebook" | "email" | "shopify";
 type ModalKey = Exclude<ChannelKey, "email">;
+
+function normalizeDomainInput(raw: string): string | null {
+  const trimmed = raw.trim();
+  if (!trimmed) return null;
+  try {
+    const withScheme = trimmed.includes("://") ? trimmed : `https://${trimmed}`;
+    const u = new URL(withScheme);
+    if (!u.hostname) return null;
+    return `${u.protocol}//${u.host}`.toLowerCase();
+  } catch {
+    return null;
+  }
+}
 
 type FieldDef = {
   key: string;
@@ -239,12 +259,16 @@ function ChannelRow({
   linked,
   onConnect,
   onDisconnect,
+  connectLabel = "Connect",
+  linkedLabel = "Disconnect",
 }: {
   name: string;
   busy?: boolean;
   linked: boolean;
   onConnect: () => void;
   onDisconnect: () => void;
+  connectLabel?: string;
+  linkedLabel?: string;
 }) {
   return (
     <div className="flex min-h-14 items-center justify-between gap-3 px-4 py-2.5">
@@ -257,17 +281,231 @@ function ChannelRow({
             size="sm"
             disabled={busy}
             onClick={onDisconnect}
-            className="h-9 min-w-[8.5rem] border-destructive/40 text-destructive hover:bg-destructive/10 hover:text-destructive"
+            className={cn(
+              "h-9 min-w-[8.5rem]",
+              linkedLabel === "Disconnect" &&
+                "border-destructive/40 text-destructive hover:bg-destructive/10 hover:text-destructive",
+            )}
           >
             {busy ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
-            {busy ? "Disconnecting" : "Disconnect"}
+            {busy ? "Working…" : linkedLabel}
           </Button>
         ) : (
           <Button type="button" size="sm" onClick={onConnect} disabled={busy} className="h-9 min-w-[8.5rem]">
             {busy ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
-            {busy ? "Connecting" : "Connect"}
+            {busy ? "Connecting" : connectLabel}
           </Button>
         )}
+      </div>
+    </div>
+  );
+}
+
+function WebChatSetupModal({ open, onClose }: { open: boolean; onClose: () => void }) {
+  const [copied, setCopied] = useState(false);
+  const [domains, setDomains] = useState<string[]>([]);
+  const [newDomain, setNewDomain] = useState("");
+  const { data: settings, isLoading } = useWebChatSettings();
+  const updateSettings = useUpdateWebChatSettings();
+
+  useEffect(() => {
+    if (open && settings) {
+      setDomains([...(settings.allowedOrigins ?? [])]);
+      setNewDomain("");
+    }
+  }, [open, settings]);
+
+  if (!open) return null;
+
+  const webOrigin =
+    typeof window !== "undefined" ? window.location.origin : "https://cep-demo.fybud.com";
+  const apiBase =
+    (import.meta.env.VITE_API_BASE_URL as string | undefined)?.replace(/\/$/, "") || "";
+  const scriptSrc = `${apiBase || webOrigin}/embed/webchat.js`;
+  const snippet = `<script src="${scriptSrc}" async></script>`;
+  const hasDomains = domains.length > 0;
+  const busy = updateSettings.isPending;
+
+  const persistDomains = (next: string[], opts?: { success?: string }) => {
+    setDomains(next);
+    updateSettings.mutate(
+      { allowedOrigins: next },
+      {
+        onSuccess: () => {
+          if (opts?.success) toast.success(opts.success);
+        },
+        onError: (err) => {
+          setDomains([...(settings?.allowedOrigins ?? [])]);
+          toast.error(err.message || "Could not update domains");
+        },
+      },
+    );
+  };
+
+  const addDomain = () => {
+    const normalized = normalizeDomainInput(newDomain);
+    if (!normalized) {
+      toast.error("Enter a valid domain (e.g. https://www.example.com)");
+      return;
+    }
+    if (domains.includes(normalized)) {
+      toast.error("Domain already added");
+      return;
+    }
+    setNewDomain("");
+    persistDomains([...domains, normalized], { success: "Domain added" });
+  };
+
+  const removeDomain = (origin: string) => {
+    persistDomains(
+      domains.filter((d) => d !== origin),
+      { success: "Domain removed" },
+    );
+  };
+
+  const copySnippet = async () => {
+    try {
+      await navigator.clipboard.writeText(snippet);
+      setCopied(true);
+      toast.success("Snippet copied");
+      setTimeout(() => setCopied(false), 1600);
+    } catch {
+      toast.error("Could not copy");
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-background/80 p-4 backdrop-blur-sm">
+      <div
+        className="flex max-h-[90vh] w-full max-w-lg flex-col rounded-xl border border-border bg-card shadow-lg"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="webchat-modal-title"
+      >
+        <div className="flex items-center justify-between gap-4 border-b border-border px-6 py-4">
+          <div>
+            <h2 id="webchat-modal-title" className="text-lg font-semibold tracking-tight">
+              Web Chat
+            </h2>
+            <p className="mt-0.5 text-xs text-muted-foreground">
+              Authorized domains for your embed
+            </p>
+          </div>
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
+            onClick={onClose}
+            className="h-9 w-9 shrink-0 rounded-full"
+          >
+            <X className="h-4 w-4" />
+          </Button>
+        </div>
+
+        <div className="flex-1 space-y-5 overflow-y-auto p-6">
+          {isLoading ? (
+            <div className="flex justify-center py-10">
+              <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+            </div>
+          ) : (
+            <>
+              <div className="space-y-3">
+                <div>
+                  <label className="text-sm font-medium">Authorized domains</label>
+                  <p className="mt-0.5 text-xs text-muted-foreground">
+                    Sites allowed to load the widget. CEP preview is always allowed.
+                  </p>
+                </div>
+
+                {domains.length > 0 && (
+                  <ul className="overflow-hidden rounded-lg border border-border divide-y divide-border">
+                    {domains.map((origin) => (
+                      <li
+                        key={origin}
+                        className="flex items-center gap-3 px-3 py-2.5"
+                      >
+                        <span className="min-w-0 flex-1 truncate font-mono text-xs text-foreground">
+                          {origin}
+                        </span>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon"
+                          className="h-8 w-8 shrink-0 text-muted-foreground hover:text-destructive"
+                          disabled={busy}
+                          title="Remove domain"
+                          onClick={() => removeDomain(origin)}
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </Button>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+
+                <div className="flex gap-2">
+                  <Input
+                    value={newDomain}
+                    onChange={(e) => setNewDomain(e.target.value)}
+                    placeholder="https://www.example.com"
+                    className="h-10 font-mono text-xs"
+                    disabled={busy}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") {
+                        e.preventDefault();
+                        if (newDomain.trim()) addDomain();
+                      }
+                    }}
+                  />
+                  <Button
+                    type="button"
+                    className="h-10 shrink-0 gap-1.5 px-3"
+                    disabled={busy || !newDomain.trim()}
+                    onClick={addDomain}
+                  >
+                    {busy ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <Plus className="h-4 w-4" />
+                    )}
+                    Add
+                  </Button>
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <label className="text-sm font-medium">Embed snippet</label>
+                <pre className="overflow-x-auto rounded-lg border border-border bg-muted/50 p-3 font-mono text-[11px] leading-relaxed text-foreground">
+                  {snippet}
+                </pre>
+                <div className="flex flex-wrap gap-2">
+                  <Button
+                    type="button"
+                    size="sm"
+                    className="h-9 gap-2"
+                    disabled={!hasDomains}
+                    title={hasDomains ? undefined : "Add at least one domain first"}
+                    onClick={() => void copySnippet()}
+                  >
+                    {copied ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
+                    Copy snippet
+                  </Button>
+                  <Button type="button" size="sm" variant="outline" className="h-9" asChild>
+                    <a href="/chat" target="_blank" rel="noreferrer">
+                      Preview
+                    </a>
+                  </Button>
+                </div>
+              </div>
+            </>
+          )}
+        </div>
+
+        <div className="flex justify-end border-t border-border bg-muted/40 px-6 py-4">
+          <Button type="button" onClick={onClose}>
+            Done
+          </Button>
+        </div>
       </div>
     </div>
   );
@@ -277,6 +515,7 @@ export function SettingsPage() {
   const [searchParams, setSearchParams] = useSearchParams();
   const queryClient = useQueryClient();
   const user = useAuthStore((s) => s.user);
+
 
   const { data: accounts, isLoading: accountsLoading } = useAccounts();
   const activeAccount = accounts?.[0];
@@ -288,19 +527,29 @@ export function SettingsPage() {
   const { mutateAsync: updateShopifyAsync, isPending: shopifyBusy } = useUpdateShopifyConfig();
 
 
-  // Per-channel admin flags (default true = channel shown)
-  const { data: waChannelFlag } = useFeatureFlag("whatsapp_channel");
-  const { data: igChannelFlag } = useFeatureFlag("instagram_channel");
-  const { data: fbChannelFlag } = useFeatureFlag("facebook_channel");
-  const { data: emailChannelFlag } = useFeatureFlag("email_channel");
+  // Per-channel admin flags — only show rows after flags resolve, and only if enabled
+  const { data: waChannelFlag, isFetched: waFlagFetched } = useFeatureFlag("whatsapp_channel");
+  const { data: igChannelFlag, isFetched: igFlagFetched } = useFeatureFlag("instagram_channel");
+  const { data: fbChannelFlag, isFetched: fbFlagFetched } = useFeatureFlag("facebook_channel");
+  const { data: emailChannelFlag, isFetched: emailFlagFetched } = useFeatureFlag("email_channel");
+  const { data: webChatChannelFlag, isFetched: webChatFlagFetched } =
+    useFeatureFlag("web_chat_channel");
 
-  const showWaRow = waChannelFlag?.enabled === true;
-  const showIgRow = igChannelFlag?.enabled === true;
-  const showFbRow = fbChannelFlag?.enabled === true;
-  const showEmailRow = emailChannelFlag?.enabled === true;
+  const channelFlagsReady =
+    waFlagFetched && igFlagFetched && fbFlagFetched && emailFlagFetched && webChatFlagFetched;
+
+  const showWaRow = channelFlagsReady && waChannelFlag?.enabled === true;
+  const showIgRow = channelFlagsReady && igChannelFlag?.enabled === true;
+  const showFbRow = channelFlagsReady && fbChannelFlag?.enabled === true;
+  const showEmailRow = channelFlagsReady && emailChannelFlag?.enabled === true;
+  const showWebChat = channelFlagsReady && webChatChannelFlag?.enabled === true;
+
+  const { data: webChatSettings } = useWebChatSettings(showWebChat);
+  const webChatLinked = (webChatSettings?.allowedOrigins?.length ?? 0) > 0;
 
   const [connecting, setConnecting] = useState<"gmail" | "instagram" | "shopify" | null>(null);
   const [modal, setModal] = useState<ModalKey | null>(null);
+  const [webChatModalOpen, setWebChatModalOpen] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [disconnectTarget, setDisconnectTarget] = useState<ChannelKey | null>(null);
 
@@ -519,7 +768,7 @@ export function SettingsPage() {
     return <Navigate to="/inbox" replace />;
   }
 
-  if (accountsLoading || inboxesLoading || shopifyLoading) {
+  if (accountsLoading || inboxesLoading || shopifyLoading || !channelFlagsReady) {
     return (
       <div className="flex flex-1 items-center justify-center bg-background">
         <Loader2 className="h-8 w-8 animate-spin text-primary" />
@@ -536,7 +785,7 @@ export function SettingsPage() {
           <div className="min-w-0">
             <h1 className="text-3xl font-bold tracking-tight">Settings</h1>
             <p className="mt-1 text-sm text-muted-foreground">
-              Connect WhatsApp, Instagram, Facebook, Gmail, and Shopify.
+              Connect messaging channels and Shopify.
             </p>
           </div>
           <Button variant="outline" className="h-10 shrink-0 gap-2" asChild>
@@ -550,9 +799,6 @@ export function SettingsPage() {
         <section className="space-y-3">
           <div>
             <h2 className="text-base font-semibold leading-none">Channels</h2>
-            <p className="mt-2 text-sm text-muted-foreground">
-              WhatsApp, Instagram, Facebook, and Gmail.
-            </p>
           </div>
 
           <div className="divide-y divide-border overflow-hidden rounded-xl border border-border bg-card shadow-sm">
@@ -605,9 +851,18 @@ export function SettingsPage() {
                 onDisconnect={() => setDisconnectTarget("email")}
               />
             )}
-            {!showWaRow && !showIgRow && !showFbRow && !showEmailRow && (
+            {showWebChat && (
+              <ChannelRow
+                name="Web Chat"
+                linked={webChatLinked}
+                onConnect={() => setWebChatModalOpen(true)}
+                onDisconnect={() => setWebChatModalOpen(true)}
+                linkedLabel="Manage"
+              />
+            )}
+            {!showWaRow && !showIgRow && !showFbRow && !showEmailRow && !showWebChat && (
               <p className="px-4 py-6 text-center text-sm text-muted-foreground">
-                No communication channels are currently active. Please contact your administrator to enable channels for your workspace.
+                No channels enabled. Contact your administrator.
               </p>
             )}
           </div>
@@ -616,9 +871,6 @@ export function SettingsPage() {
         <section className="space-y-3">
           <div>
             <h2 className="text-base font-semibold leading-none">Shopify</h2>
-            <p className="mt-2 text-sm text-muted-foreground">
-              Customer and order details in the inbox.
-            </p>
           </div>
           <div className="overflow-hidden rounded-xl border border-border bg-card shadow-sm">
             <ChannelRow
@@ -634,7 +886,12 @@ export function SettingsPage() {
             />
           </div>
         </section>
+
       </div>
+
+      {showWebChat ? (
+        <WebChatSetupModal open={webChatModalOpen} onClose={() => setWebChatModalOpen(false)} />
+      ) : null}
 
       {modal && modalConfig && (
         <ConnectModal

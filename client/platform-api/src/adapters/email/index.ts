@@ -341,7 +341,7 @@ export const emailAdapter: ChannelAdapter<EmailChannelConfig> = {
         }
         raw = buildRawEmail({
           to,
-          subject: message.subject || "Message from FiberAI",
+          subject: message.subject || "Message from FyBud",
           content: text,
           inReplyTo,
           references,

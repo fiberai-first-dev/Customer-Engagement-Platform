@@ -19,4 +19,5 @@ ENV NODE_ENV=production
 COPY --from=build /app/dist ./dist
 RUN npm install -g serve
 EXPOSE 5173
+# serve -s: SPA fallback; real files under /embed/webchat.js are still served
 CMD ["serve", "-s", "dist", "-l", "5173"]

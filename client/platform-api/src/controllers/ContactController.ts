@@ -301,4 +301,145 @@ export class ContactController {
       return reply.code(500).send({ error: err.message });
     }
   }
+
+  static async getTimeline(request: FastifyRequest<{ Params: { id: string } }>, reply: FastifyReply) {
+    try {
+      const customerId = request.params.id;
+      const customer = await prisma.customer.findUnique({ where: { id: customerId } });
+      if (!customer) return reply.code(404).send({ error: "Contact not found" });
+
+      const [messages, tickets, broadcasts] = await Promise.all([
+        prisma.message.findMany({
+          where: { customerId },
+          orderBy: { createdAt: "desc" },
+          take: 100,
+          select: {
+            id: true,
+            channelType: true,
+            direction: true,
+            content: true,
+            createdAt: true,
+            status: true,
+          },
+        }),
+        prisma.ticket.findMany({
+          where: { customerId },
+          orderBy: { createdAt: "desc" },
+          take: 50,
+          include: {
+            notes: {
+              orderBy: { createdAt: "desc" },
+              take: 20,
+              select: { id: true, body: true, createdAt: true },
+            },
+          },
+        }),
+        prisma.broadcastRecipient.findMany({
+          where: { customerId },
+          orderBy: { createdAt: "desc" },
+          take: 50,
+          include: {
+            job: { select: { templateName: true, status: true } },
+          },
+        }),
+      ]);
+
+      const events: Array<Record<string, unknown>> = [];
+
+      for (const m of messages) {
+        events.push({
+          id: `msg_${m.id}`,
+          type: "message",
+          channelType: m.channelType,
+          direction: m.direction,
+          content: m.content,
+          status: m.status,
+          timestamp: m.createdAt.toISOString(),
+        });
+      }
+
+      for (const t of tickets) {
+        events.push({
+          id: `ticket_${t.id}`,
+          type: "ticket",
+          ticketNumber: t.number,
+          subject: t.subject,
+          status: t.status,
+          timestamp: t.createdAt.toISOString(),
+        });
+        for (const n of t.notes) {
+          events.push({
+            id: `ticket_note_${n.id}`,
+            type: "ticket_note",
+            body: n.body,
+            timestamp: n.createdAt.toISOString(),
+          });
+        }
+      }
+
+      for (const r of broadcasts) {
+        events.push({
+          id: `broadcast_${r.id}`,
+          type: "broadcast",
+          templateName: r.job?.templateName,
+          status: r.status,
+          error: r.error,
+          timestamp: r.createdAt.toISOString(),
+        });
+      }
+
+      events.sort(
+        (a, b) =>
+          new Date(String(b.timestamp)).getTime() - new Date(String(a.timestamp)).getTime(),
+      );
+
+      const customFields =
+        customer.customFields && typeof customer.customFields === "object" && !Array.isArray(customer.customFields)
+          ? (customer.customFields as Record<string, string>)
+          : {};
+
+      return reply.send({ events, customFields });
+    } catch (err: any) {
+      return reply.code(500).send({ error: err.message });
+    }
+  }
+
+  static async updateCustomFields(
+    request: FastifyRequest<{ Params: { id: string }; Body: Record<string, string | null> }>,
+    reply: FastifyReply,
+  ) {
+    try {
+      const customer = await prisma.customer.findUnique({ where: { id: request.params.id } });
+      if (!customer) return reply.code(404).send({ error: "Contact not found" });
+
+      const current =
+        customer.customFields && typeof customer.customFields === "object" && !Array.isArray(customer.customFields)
+          ? { ...(customer.customFields as Record<string, string>) }
+          : {};
+
+      const patch = request.body ?? {};
+      for (const [key, value] of Object.entries(patch)) {
+        if (!key.trim()) continue;
+        if (value === null) {
+          delete current[key];
+        } else {
+          current[key] = String(value);
+        }
+      }
+
+      const updated = await prisma.customer.update({
+        where: { id: request.params.id },
+        data: { customFields: current },
+      });
+
+      const customFields =
+        updated.customFields && typeof updated.customFields === "object" && !Array.isArray(updated.customFields)
+          ? (updated.customFields as Record<string, string>)
+          : {};
+
+      return reply.send({ customFields });
+    } catch (err: any) {
+      return reply.code(500).send({ error: err.message });
+    }
+  }
 }

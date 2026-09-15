@@ -7,7 +7,7 @@ function isActiveIdentity(row: { lastMessageAt: Date | null; resolved: boolean }
 
 /** Customer.resolved = true iff every *active* channel identity is resolved (or none active). */
 export async function recomputeCustomerResolved(customerId: string): Promise<boolean> {
-  const [wa, ig, fb, em] = await Promise.all([
+  const [wa, ig, fb, em, wc] = await Promise.all([
     prisma.whatsAppChannel.findMany({
       where: { customerId },
       select: { resolved: true, lastMessageAt: true },
@@ -24,8 +24,12 @@ export async function recomputeCustomerResolved(customerId: string): Promise<boo
       where: { customerId },
       select: { resolved: true, lastMessageAt: true },
     }),
+    prisma.webChatChannel.findMany({
+      where: { customerId },
+      select: { resolved: true, lastMessageAt: true },
+    }),
   ]);
-  const all = [...wa, ...ig, ...fb, ...em].filter(isActiveIdentity);
+  const all = [...wa, ...ig, ...fb, ...em, ...wc].filter(isActiveIdentity);
   const resolved = all.length === 0 ? true : all.every((r) => r.resolved);
   await prisma.customer.update({
     where: { id: customerId },
@@ -35,7 +39,7 @@ export async function recomputeCustomerResolved(customerId: string): Promise<boo
 }
 
 export async function setChannelResolved(input: {
-  channelType: "whatsapp" | "instagram" | "facebook" | "email";
+  channelType: "whatsapp" | "instagram" | "facebook" | "email" | "web_chat";
   channelId: string;
   resolved: boolean;
 }): Promise<{ customerId: string; customerResolved: boolean }> {
@@ -63,17 +67,28 @@ export async function setChannelResolved(input: {
     const customerResolved = await recomputeCustomerResolved(row.customerId);
     return { customerId: row.customerId, customerResolved };
   }
-  const row = await prisma.emailChannel.update({
-    where: { id: input.channelId },
-    data: { resolved: input.resolved },
-  });
-  const customerResolved = await recomputeCustomerResolved(row.customerId);
-  return { customerId: row.customerId, customerResolved };
+  if (input.channelType === "email") {
+    const row = await prisma.emailChannel.update({
+      where: { id: input.channelId },
+      data: { resolved: input.resolved },
+    });
+    const customerResolved = await recomputeCustomerResolved(row.customerId);
+    return { customerId: row.customerId, customerResolved };
+  }
+  if (input.channelType === "web_chat") {
+    const row = await prisma.webChatChannel.update({
+      where: { id: input.channelId },
+      data: { resolved: input.resolved },
+    });
+    const customerResolved = await recomputeCustomerResolved(row.customerId);
+    return { customerId: row.customerId, customerResolved };
+  }
+  throw new Error("Unknown channel for resolving");
 }
 
 export async function resolveAllIdentitiesForCustomerChannel(input: {
   customerId: string;
-  channelType: "whatsapp" | "instagram" | "facebook" | "email";
+  channelType: "whatsapp" | "instagram" | "facebook" | "email" | "web_chat";
 }): Promise<boolean> {
   if (input.channelType === "whatsapp") {
     await prisma.whatsAppChannel.updateMany({
@@ -90,8 +105,13 @@ export async function resolveAllIdentitiesForCustomerChannel(input: {
       where: { customerId: input.customerId },
       data: { resolved: true },
     });
-  } else {
+  } else if (input.channelType === "email") {
     await prisma.emailChannel.updateMany({
+      where: { customerId: input.customerId },
+      data: { resolved: true },
+    });
+  } else if (input.channelType === "web_chat") {
+    await prisma.webChatChannel.updateMany({
       where: { customerId: input.customerId },
       data: { resolved: true },
     });

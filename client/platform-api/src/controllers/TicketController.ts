@@ -88,8 +88,8 @@ function validateTransition(
 
   // AGENT allowed transitions
   const agentAllowed: Record<string, string[]> = {
-    OPEN: ["IN_PROGRESS"],
-    IN_PROGRESS: ["OPEN", "RESOLVED"],
+    OPEN: ["IN_PROGRESS", "ESCALATED"],
+    IN_PROGRESS: ["OPEN", "RESOLVED", "ESCALATED"],
     ESCALATED: [], // Read-only while escalated
     RESOLVED: ["OPEN"], // Can reopen
     CLOSED: [],
@@ -138,10 +138,7 @@ export class TicketController {
 
     // Assignee: agents always self. Others may assign Manager/Agent only.
     let assignedTo = request.body.assignedTo ?? null;
-    if (user.role === "AGENT") {
-      assignedTo = user.id;
-      teamId = user.teamId ?? teamId;
-    } else if (assignedTo) {
+    if (assignedTo) {
       const assignee = await prisma.user.findUnique({
         where: { id: assignedTo },
         select: { id: true, role: true, teamId: true, isActive: true },

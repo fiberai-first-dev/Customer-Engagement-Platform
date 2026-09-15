@@ -11,17 +11,21 @@ import { UsersPage } from "../pages/private/UsersPage";
 import { TeamsPage } from "../pages/private/TeamsPage";
 import { TemplatesPage } from "../pages/private/TemplatesPage";
 import { BroadcastPage } from "../pages/private/BroadcastPage";
+import { DashboardPage } from "../pages/private/Dashboard";
 import { LoginPage } from "../pages/public/Login";
+import { WebChatPage } from "../pages/public/WebChatPage";
 
 export function AppRoutes() {
   return (
     <BrowserRouter>
       <Routes>
         <Route path="/login" element={<LoginPage />} />
+        <Route path="/chat" element={<WebChatPage />} />
 
         <Route element={<ProtectedRoute />}>
           <Route path="/" element={<DashboardLayout />}>
             <Route index element={<Navigate to="/inbox" replace />} />
+            <Route path="dashboard" element={<DashboardPage />} />
             <Route path="inbox" element={<InboxPage />} />
             <Route path="contacts" element={<ContactsPage />} />
             <Route path="tickets" element={<TicketsPage />} />

@@ -66,7 +66,12 @@ export function LoginPage() {
 
       <div className="relative z-10 mx-4 w-full max-w-sm">
         <div className="mb-8 text-center">
-          <h1 className="text-3xl font-bold tracking-tight text-foreground">Fybud</h1>
+          <h1 className="text-3xl font-bold tracking-tight" aria-label="FyBud">
+            <span className="text-foreground">Fy</span>
+            <span className="bg-[linear-gradient(110deg,#b8a7f5_0%,#8b7df0_45%,#5c4db5_70%,#b8a7f5_100%)] bg-[length:200%_auto] bg-clip-text text-transparent">
+              Bud
+            </span>
+          </h1>
         </div>
 
         <div className="rounded-2xl border border-border bg-card p-8 shadow-2xl">
