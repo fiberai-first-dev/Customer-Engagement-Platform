@@ -19,5 +19,6 @@ client/platform-api/src/generated
 client/platform-web/dist
 packages/channels/dist
 
+
 # Local admin tools
 
