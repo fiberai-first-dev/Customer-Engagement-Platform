@@ -1,4 +1,4 @@
-import type { ChannelType } from "@prisma/client";
+import type { ChannelType } from "../generated/client/index.js";
 import { prisma } from "../config/db.js";
 import { env } from "../config/env.js";
 import { isFeatureEnabled } from "./FeatureService.js";
