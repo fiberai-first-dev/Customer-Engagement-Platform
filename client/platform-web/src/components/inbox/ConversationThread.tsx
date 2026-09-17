@@ -19,7 +19,6 @@ import {
   FileImage,
   Ban,
   AlertTriangle,
-  Quote,
   TicketIcon,
   Plus,
   Pin,
@@ -28,7 +27,6 @@ import type { ChannelType, Conversation, Message } from "../../api";
 import {
   useFeatureFlag,
   downloadTranscript,
-  useTogglePin,
   useToggleContactPin,
   useBlockCustomer,
   useUnblockCustomer,
@@ -504,7 +502,6 @@ export function ConversationThread({
   const recordingTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const recordingCancelledRef = useRef(false);
 
-  const togglePin = useTogglePin();
   const toggleContactPin = useToggleContactPin();
 
   const startRecording = async () => {
@@ -1360,49 +1357,6 @@ export function ConversationThread({
                         {message.errorMessage ? `Failed: ${message.errorMessage}` : "Failed to send"}
                       </p>
                     )}
-                  </div>
-                  
-                  {/* Hover Toolbar for Quote / React */}
-                  <div className={cn(
-                    "opacity-0 group-hover:opacity-100 transition-opacity flex items-center gap-1 mt-auto mb-2",
-                    incoming ? "ml-2" : "mr-2"
-                  )}>
-                    <div className="bg-background border border-border shadow-sm rounded-full flex items-center p-0.5">
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="icon"
-                        className="h-7 w-7 rounded-full text-muted-foreground hover:text-foreground"
-                        title="Quote Reply"
-                        onClick={() => {
-                          if (message.content) {
-                            setDraft((prev) => `${prev}\n\n> ${message.content.split('\n').join('\n> ')}\n\n`);
-                          }
-                        }}
-                      >
-                        <Quote className="h-3.5 w-3.5" />
-                      </Button>
-                      
-                      <div className="h-4 w-px bg-border/50 mx-0.5" />
-
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="icon"
-                        className="h-7 w-7 rounded-full text-muted-foreground hover:text-foreground"
-                        title={message.pinned ? "Unpin message" : "Pin message"}
-                        onClick={() => {
-                          if (selectedConversation) {
-                            togglePin.mutate({
-                              conversationId: selectedConversation.id,
-                              messageId: message.id,
-                            });
-                          }
-                        }}
-                      >
-                        <Pin className={cn("h-3.5 w-3.5", message.pinned ? "fill-primary text-primary" : "")} />
-                      </Button>
-                    </div>
                   </div>
                 </div>
                 </Fragment>
