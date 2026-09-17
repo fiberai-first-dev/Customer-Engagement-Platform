@@ -67,7 +67,7 @@ Enable **Intent Classifier** in admin feature flags. Until that flag is on:
 ## Docker
 
 ```bash
-# from this folder (model must already exist in ./models)
+# from this folder (uses bundled_model/ baked into the image)
 docker compose up -d --build
 ```
 
@@ -75,4 +75,12 @@ CEP on the same Docker network can use:
 
 ```
 INTENT_CLASSIFIER_URL=http://intent-classifier:8091
+```
+
+After retraining, refresh the bake:
+
+```bash
+copy models\intent_clf.joblib bundled_model\
+copy models\meta.json bundled_model\
+docker compose up -d --build
 ```

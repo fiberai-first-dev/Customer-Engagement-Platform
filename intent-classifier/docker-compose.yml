@@ -6,14 +6,19 @@ services:
     environment:
       HOST: "0.0.0.0"
       PORT: "8091"
-      # Optional override; defaults to models/intent_clf.joblib inside the image
-      # INTENT_MODEL_PATH: /app/models/intent_clf.joblib
-    volumes:
-      # Persist / swap trained model without rebuild
-      - ./models:/app/models:ro
+      INTENT_MODEL_PATH: /app/models/intent_clf.joblib
+    # Optional: override baked model with a host-trained one
+    # volumes:
+    #   - ./models:/app/models:ro
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8091/health')"]
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8091/health')",
+        ]
       interval: 30s
       timeout: 5s
       retries: 3

@@ -4,5 +4,7 @@ __pycache__/
 data/
 models/
 .cache/
-*.joblib
 .env
+# Keep the Docker-baked artifact; ignore other joblibs elsewhere
+*.joblib
+!bundled_model/intent_clf.joblib

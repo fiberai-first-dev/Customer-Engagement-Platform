@@ -1,0 +1,13 @@
+{
+  "model": "tfidf_logreg",
+  "intents": [
+    "pre_purchase",
+    "order_status",
+    "post_purchase_issue",
+    "non_customer_noise"
+  ],
+  "train_rows": 3575,
+  "test_rows": 631,
+  "report": "                     precision    recall  f1-score   support\n\n non_customer_noise      0.946     1.000     0.972        35\n       order_status      0.987     1.000     0.993       150\npost_purchase_issue      0.987     0.958     0.973       240\n       pre_purchase      0.967     0.981     0.973       206\n\n           accuracy                          0.978       631\n          macro avg      0.972     0.985     0.978       631\n       weighted avg      0.978     0.978     0.978       631\n",
+  "note": "Classic ML classifier \u2014 not an LLM."
+}
