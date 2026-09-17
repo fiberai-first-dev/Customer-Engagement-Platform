@@ -14,6 +14,7 @@ import {
   useConversations,
   useDeleteMessages,
   useEnabledChannelTypes,
+  useFeatureFlag,
   useMessages,
   useSendMessage,
   useSuppressConversation,
@@ -114,11 +115,31 @@ const CHANNEL_FILTER_ICONS: Record<ChannelType, ComponentType<{ className?: stri
   web_chat: MessageCircle,
 };
 
+const INTENT_FILTERS = [
+  { id: "all" as const, label: "All intents", short: "All" },
+  { id: "pre_purchase" as const, label: "Pre-purchase", short: "Pre" },
+  { id: "order_status" as const, label: "Order status", short: "Order" },
+  { id: "post_purchase_issue" as const, label: "Post-purchase", short: "Issue" },
+  { id: "non_customer_noise" as const, label: "Noise", short: "Noise" },
+];
+
+type IntentFilter = (typeof INTENT_FILTERS)[number]["id"];
+
 export function InboxPage() {
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState<"active" | "all">("active");
   const [channelFilter, setChannelFilter] = useState<ChannelFilter>("all");
+  const [intentFilter, setIntentFilter] = useState<IntentFilter>("all");
   const [activeTab, setActiveTab] = useState<ChannelType>("whatsapp");
+  const { data: intentFlag } = useFeatureFlag("intent_classifier_enabled");
+  const intentClassifierEnabled = intentFlag?.enabled === true;
+
+  useEffect(() => {
+    if (!intentClassifierEnabled && intentFilter !== "all") {
+      setIntentFilter("all");
+    }
+  }, [intentClassifierEnabled, intentFilter]);
+
   const [customerContextOpen, setCustomerContextOpen] = useState(() => {
     try {
       const saved = localStorage.getItem("inbox-customer-context-open");
@@ -193,6 +214,14 @@ export function InboxPage() {
         }
       }
 
+      if (intentClassifierEnabled && intentFilter !== "all") {
+        if (channelFilter === "all") {
+          if (!channelConvs.some((c) => c.intent === intentFilter)) continue;
+        } else if (listRow.intent !== intentFilter) {
+          continue;
+        }
+      }
+
       if (!query) {
         items.push({
           ...listRow,
@@ -241,7 +270,7 @@ export function InboxPage() {
       const bTime = b.lastMessageAt ? new Date(b.lastMessageAt).getTime() : 0;
       return bTime - aTime;
     });
-  }, [conversationsByContact, statusFilter, channelFilter, searchQuery]);
+  }, [conversationsByContact, statusFilter, channelFilter, searchQuery, intentFilter, intentClassifierEnabled]);
 
   /** New inbound while a thread is open — show the unread bar again only if count rose. */
   useEffect(() => {
@@ -963,6 +992,35 @@ export function InboxPage() {
             })}
           </div>
           ) : null}
+          {intentClassifierEnabled ? (
+            <div
+              className="flex gap-1 overflow-x-auto scrollbar-hide"
+              role="tablist"
+              aria-label="Intent filter"
+            >
+              {INTENT_FILTERS.map((option) => {
+                const selected = intentFilter === option.id;
+                return (
+                  <button
+                    key={option.id}
+                    type="button"
+                    role="tab"
+                    aria-selected={selected}
+                    onClick={() => setIntentFilter(option.id)}
+                    title={option.label}
+                    className={cn(
+                      "inline-flex h-7 shrink-0 items-center rounded-md px-2 text-[11px] font-medium leading-none transition-colors",
+                      selected
+                        ? "bg-primary/10 text-foreground ring-1 ring-primary/30"
+                        : "text-muted-foreground hover:bg-muted/60 hover:text-foreground",
+                    )}
+                  >
+                    {option.short}
+                  </button>
+                );
+              })}
+            </div>
+          ) : null}
         </div>
 
         <ConversationList
@@ -973,6 +1031,7 @@ export function InboxPage() {
           emptyHint={listEmptyHint}
           channelFilter={channelFilter}
           readScopeKeys={readScopeKeys}
+          showIntent={intentClassifierEnabled}
         />
       </Panel>
 

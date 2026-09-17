@@ -201,6 +201,66 @@ async function ensureCriticalSchema(prisma: PrismaClient) {
       name: "customers.custom_fields",
       sql: `ALTER TABLE "customers" ADD COLUMN IF NOT EXISTS "custom_fields" JSONB`,
     },
+    {
+      name: "whatsapp_channel.intent",
+      sql: `ALTER TABLE "whatsapp_channel" ADD COLUMN IF NOT EXISTS "intent" TEXT`,
+    },
+    {
+      name: "whatsapp_channel.intent_confidence",
+      sql: `ALTER TABLE "whatsapp_channel" ADD COLUMN IF NOT EXISTS "intent_confidence" DOUBLE PRECISION`,
+    },
+    {
+      name: "whatsapp_channel.intent_updated_at",
+      sql: `ALTER TABLE "whatsapp_channel" ADD COLUMN IF NOT EXISTS "intent_updated_at" TIMESTAMP(3)`,
+    },
+    {
+      name: "instagram_channel.intent",
+      sql: `ALTER TABLE "instagram_channel" ADD COLUMN IF NOT EXISTS "intent" TEXT`,
+    },
+    {
+      name: "instagram_channel.intent_confidence",
+      sql: `ALTER TABLE "instagram_channel" ADD COLUMN IF NOT EXISTS "intent_confidence" DOUBLE PRECISION`,
+    },
+    {
+      name: "instagram_channel.intent_updated_at",
+      sql: `ALTER TABLE "instagram_channel" ADD COLUMN IF NOT EXISTS "intent_updated_at" TIMESTAMP(3)`,
+    },
+    {
+      name: "facebook_channel.intent",
+      sql: `ALTER TABLE "facebook_channel" ADD COLUMN IF NOT EXISTS "intent" TEXT`,
+    },
+    {
+      name: "facebook_channel.intent_confidence",
+      sql: `ALTER TABLE "facebook_channel" ADD COLUMN IF NOT EXISTS "intent_confidence" DOUBLE PRECISION`,
+    },
+    {
+      name: "facebook_channel.intent_updated_at",
+      sql: `ALTER TABLE "facebook_channel" ADD COLUMN IF NOT EXISTS "intent_updated_at" TIMESTAMP(3)`,
+    },
+    {
+      name: "email_channel.intent",
+      sql: `ALTER TABLE "email_channel" ADD COLUMN IF NOT EXISTS "intent" TEXT`,
+    },
+    {
+      name: "email_channel.intent_confidence",
+      sql: `ALTER TABLE "email_channel" ADD COLUMN IF NOT EXISTS "intent_confidence" DOUBLE PRECISION`,
+    },
+    {
+      name: "email_channel.intent_updated_at",
+      sql: `ALTER TABLE "email_channel" ADD COLUMN IF NOT EXISTS "intent_updated_at" TIMESTAMP(3)`,
+    },
+    {
+      name: "web_chat_channel.intent",
+      sql: `ALTER TABLE "web_chat_channel" ADD COLUMN IF NOT EXISTS "intent" TEXT`,
+    },
+    {
+      name: "web_chat_channel.intent_confidence",
+      sql: `ALTER TABLE "web_chat_channel" ADD COLUMN IF NOT EXISTS "intent_confidence" DOUBLE PRECISION`,
+    },
+    {
+      name: "web_chat_channel.intent_updated_at",
+      sql: `ALTER TABLE "web_chat_channel" ADD COLUMN IF NOT EXISTS "intent_updated_at" TIMESTAMP(3)`,
+    },
   ];
 
   for (const patch of patches) {

@@ -218,6 +218,10 @@ export interface Conversation {
   };
   /** Per-agent pin — pinned contacts sort to the top of the inbox list. */
   pinned?: boolean;
+  /** Latest inbound intent for this channel conversation (when classifier enabled). */
+  intent?: string | null;
+  intentConfidence?: number | null;
+  intentUpdatedAt?: string | null;
 }
 
 export interface ShopifyConfig {
@@ -1348,6 +1352,7 @@ export const useToggleFeatureFlag = () => {
         "facebook_channel",
         "email_channel",
         "web_chat_channel",
+        "intent_classifier_enabled",
       ]);
       if (channelFlags.has(variables.key)) {
         queryClient.invalidateQueries({ queryKey: ["conversations"] });

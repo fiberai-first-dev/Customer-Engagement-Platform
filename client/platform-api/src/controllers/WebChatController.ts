@@ -243,6 +243,15 @@ export class WebChatController {
         data: { resolved: false, updatedAt: now },
       });
 
+      const { classifyInboundMessageAsync } = await import(
+        "../services/IntentClassifierService.js"
+      );
+      classifyInboundMessageAsync({
+        channelType: "web_chat",
+        channelId: channel.id,
+        content: content.trim(),
+      });
+
       return reply.send(message);
     } catch (err: any) {
       return reply.code(500).send({ error: err.message });

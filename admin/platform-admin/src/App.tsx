@@ -763,6 +763,7 @@ export function App() {
                         { key: "facebook_channel", description: "Enable Facebook channel" },
                         { key: "email_channel", description: "Enable Email channel" },
                         { key: "web_chat_channel", description: "Enable Web Chat channel (site embed widget)" },
+                        { key: "intent_classifier_enabled", description: "Classify inbound messages into pre-purchase / order-status / post-purchase / noise and show intent filters in Inbox" },
                       ];
                       
                       const allFeatures = [...features];
@@ -788,6 +789,7 @@ export function App() {
                         "facebook_channel": "Facebook Channel",
                         "email_channel": "Email Channel",
                         "web_chat_channel": "Web Chat Channel",
+                        "intent_classifier_enabled": "Intent Classifier",
                       };
                       
                       const filteredFeatures = allFeatures.filter(f => {

@@ -66,6 +66,8 @@ export const env = {
   gmailClientId: optional("GMAIL_CLIENT_ID"),
   gmailClientSecret: optional("GMAIL_CLIENT_SECRET"),
   gmailPubsubTopic: optional("GMAIL_PUBSUB_TOPIC"),
+  /** Classic ML intent classifier service (not an LLM). Empty = disabled. */
+  intentClassifierUrl: optional("INTENT_CLASSIFIER_URL") || "http://127.0.0.1:8091",
   MOCK: optional("mock")?.toLowerCase() === "true" || optional("MOCK")?.toLowerCase() === "true",
 };
 

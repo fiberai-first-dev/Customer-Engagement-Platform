@@ -980,6 +980,17 @@ export async function ingestInboundMessages(input: {
         },
       });
       created.push(message);
+
+      if (direction === "incoming" && content?.trim()) {
+        const { classifyInboundMessageAsync } = await import(
+          "./IntentClassifierService.js"
+        );
+        classifyInboundMessageAsync({
+          channelType: link.channelType,
+          channelId: link.channelId,
+          content,
+        });
+      }
     } catch {
       // duplicate external id for this identity
     }

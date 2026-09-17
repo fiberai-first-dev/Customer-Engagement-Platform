@@ -159,6 +159,10 @@ model WhatsAppChannel {
   resolved      Boolean   @default(false)
   lastMessageAt DateTime? @map("last_message_at")
   lastCustomerMessageAt DateTime? @map("last_customer_message_at")
+  /// Latest inbound intent from classifier (conversation-scoped)
+  intent            String?   @map("intent")
+  intentConfidence  Float?    @map("intent_confidence")
+  intentUpdatedAt   DateTime? @map("intent_updated_at")
   metadata      Json      @default("{}")
   createdAt     DateTime  @default(now()) @map("created_at")
   updatedAt     DateTime  @updatedAt @map("updated_at")
@@ -169,6 +173,7 @@ model WhatsAppChannel {
   @@index([customerId])
   @@index([customerId, resolved])
   @@index([lastMessageAt])
+  @@index([intent])
   @@map("whatsapp_channel")
 }
 
@@ -180,6 +185,9 @@ model InstagramChannel {
   resolved      Boolean   @default(false)
   lastMessageAt DateTime? @map("last_message_at")
   lastCustomerMessageAt DateTime? @map("last_customer_message_at")
+  intent            String?   @map("intent")
+  intentConfidence  Float?    @map("intent_confidence")
+  intentUpdatedAt   DateTime? @map("intent_updated_at")
   metadata      Json      @default("{}")
   createdAt     DateTime  @default(now()) @map("created_at")
   updatedAt     DateTime  @updatedAt @map("updated_at")
@@ -190,6 +198,7 @@ model InstagramChannel {
   @@index([customerId])
   @@index([customerId, resolved])
   @@index([lastMessageAt])
+  @@index([intent])
   @@map("instagram_channel")
 }
 
@@ -201,6 +210,9 @@ model FacebookChannel {
   resolved      Boolean   @default(false)
   lastMessageAt DateTime? @map("last_message_at")
   lastCustomerMessageAt DateTime? @map("last_customer_message_at")
+  intent            String?   @map("intent")
+  intentConfidence  Float?    @map("intent_confidence")
+  intentUpdatedAt   DateTime? @map("intent_updated_at")
   metadata      Json      @default("{}")
   createdAt     DateTime  @default(now()) @map("created_at")
   updatedAt     DateTime  @updatedAt @map("updated_at")
@@ -211,6 +223,7 @@ model FacebookChannel {
   @@index([customerId])
   @@index([customerId, resolved])
   @@index([lastMessageAt])
+  @@index([intent])
   @@map("facebook_channel")
 }
 
@@ -222,6 +235,9 @@ model EmailChannel {
   resolved      Boolean   @default(false)
   lastMessageAt DateTime? @map("last_message_at")
   lastCustomerMessageAt DateTime? @map("last_customer_message_at")
+  intent            String?   @map("intent")
+  intentConfidence  Float?    @map("intent_confidence")
+  intentUpdatedAt   DateTime? @map("intent_updated_at")
   metadata      Json      @default("{}")
   createdAt     DateTime  @default(now()) @map("created_at")
   updatedAt     DateTime  @updatedAt @map("updated_at")
@@ -232,6 +248,7 @@ model EmailChannel {
   @@index([customerId])
   @@index([customerId, resolved])
   @@index([lastMessageAt])
+  @@index([intent])
   @@map("email_channel")
 }
 
@@ -243,6 +260,9 @@ model WebChatChannel {
   resolved      Boolean   @default(false)
   lastMessageAt DateTime? @map("last_message_at")
   lastCustomerMessageAt DateTime? @map("last_customer_message_at")
+  intent            String?   @map("intent")
+  intentConfidence  Float?    @map("intent_confidence")
+  intentUpdatedAt   DateTime? @map("intent_updated_at")
   metadata      Json      @default("{}")
   createdAt     DateTime  @default(now()) @map("created_at")
   updatedAt     DateTime  @updatedAt @map("updated_at")
@@ -253,6 +273,7 @@ model WebChatChannel {
   @@index([customerId])
   @@index([customerId, resolved])
   @@index([lastMessageAt])
+  @@index([intent])
   @@map("web_chat_channel")
 }
 

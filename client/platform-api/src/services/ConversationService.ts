@@ -417,6 +417,12 @@ export class ConversationService {
             externalThreadId: null as string | null,
             threadSubject: null as string | null,
             hasUnread: (unreadMap.get(customer.id)?.[type] ?? 0) > 0,
+            intent: (latest as { intent?: string | null }).intent ?? null,
+            intentConfidence:
+              (latest as { intentConfidence?: number | null }).intentConfidence ?? null,
+            intentUpdatedAt:
+              (latest as { intentUpdatedAt?: Date | null }).intentUpdatedAt?.toISOString() ??
+              null,
             inbox: inboxMeta,
             contact: contactBase,
             windowState,
@@ -443,6 +449,11 @@ export class ConversationService {
             .reverse()
             .find((m) => m.subject?.trim());
           const conversationId = buildConversationId(customer.id, "email", threadId);
+          const emailIdentity = active[0] as {
+            intent?: string | null;
+            intentConfidence?: number | null;
+            intentUpdatedAt?: Date | null;
+          };
           rows.push({
             id: conversationId,
             contactId: customer.id,
@@ -455,6 +466,9 @@ export class ConversationService {
               oldestWithSubject?.subject ?? lastMsg.subject,
             ),
             hasUnread: (unreadMap.get(customer.id)?.email ?? 0) > 0,
+            intent: emailIdentity?.intent ?? null,
+            intentConfidence: emailIdentity?.intentConfidence ?? null,
+            intentUpdatedAt: emailIdentity?.intentUpdatedAt?.toISOString() ?? null,
             inbox: inboxMeta,
             contact: contactBase,
             windowState: serializeConversationWindow(
