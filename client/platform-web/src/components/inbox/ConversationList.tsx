@@ -19,6 +19,8 @@ type Props = {
   readScopeKeys?: ReadonlySet<string>;
   /** Show intent chips (admin intent_classifier_enabled). */
   showIntent?: boolean;
+  /** When a specific intent is filtered, hide the redundant intent badge. */
+  intentFilterActive?: boolean;
 };
 
 export function listReadScopeKey(
@@ -76,9 +78,12 @@ export function ConversationList({
   channelFilter = "all",
   readScopeKeys,
   showIntent = false,
+  intentFilterActive = false,
 }: Props) {
   const { data: blockedRows } = useBlockedContacts();
   const blockedIds = new Set((blockedRows ?? []).map((r) => r.customerId));
+  const showChannelBadge = channelFilter === "all";
+  const showIntentBadge = showIntent && !intentFilterActive;
 
   if (conversations.length === 0) {
     return (
@@ -168,7 +173,7 @@ export function ConversationList({
                   {conversation.pinned ? (
                     <Pin className="h-3 w-3 fill-primary text-primary" aria-label="Pinned" />
                   ) : null}
-                  {showIntent && conversation.intent ? (
+                  {showIntentBadge && conversation.intent ? (
                     <span
                       className="max-w-[4.5rem] truncate rounded bg-primary/10 px-1 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-foreground"
                       title={conversation.intent.replaceAll("_", " ")}
@@ -184,9 +189,19 @@ export function ConversationList({
                               : conversation.intent}
                     </span>
                   ) : null}
-                  <span className="rounded bg-muted px-1 py-0.5 text-[9px] font-bold uppercase tracking-wider text-muted-foreground">
-                    {conversation.channelType === "whatsapp" ? "WA" : conversation.channelType === "instagram" ? "IG" : conversation.channelType === "facebook" ? "FB" : conversation.channelType === "web_chat" ? "Web" : "Email"}
-                  </span>
+                  {showChannelBadge ? (
+                    <span className="rounded bg-muted px-1 py-0.5 text-[9px] font-bold uppercase tracking-wider text-muted-foreground">
+                      {conversation.channelType === "whatsapp"
+                        ? "WA"
+                        : conversation.channelType === "instagram"
+                          ? "IG"
+                          : conversation.channelType === "facebook"
+                            ? "FB"
+                            : conversation.channelType === "web_chat"
+                              ? "Web"
+                              : "Email"}
+                    </span>
+                  ) : null}
                   <span className="text-[10px] text-muted-foreground">
                     {formatMessageTime(conversation.lastMessageAt)}
                   </span>

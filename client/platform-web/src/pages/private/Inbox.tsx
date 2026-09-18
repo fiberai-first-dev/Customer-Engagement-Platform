@@ -1081,6 +1081,7 @@ export function InboxPage() {
           channelFilter={channelFilter}
           readScopeKeys={readScopeKeys}
           showIntent={intentClassifierEnabled}
+          intentFilterActive={intentFilter !== "all"}
         />
       </Panel>
 
