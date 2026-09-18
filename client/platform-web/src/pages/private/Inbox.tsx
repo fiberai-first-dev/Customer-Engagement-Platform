@@ -948,77 +948,83 @@ export function InboxPage() {
               className="h-9 w-full rounded-md border border-border bg-background py-0 pl-9 pr-3 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-primary"
             />
           </div>
-          {channelFilterOptions.length > 0 ? (
-          <div
-            className="flex gap-1 overflow-x-auto scrollbar-hide"
-            role="tablist"
-            aria-label="Channel filter"
-          >
-            {channelFilterOptions.map((option) => {
-              const selected = channelFilter === option.id;
-              const Icon =
-                option.id === "all" ? null : CHANNEL_FILTER_ICONS[option.id];
-              const shortLabel =
-                option.id === "whatsapp"
-                  ? "WA"
-                  : option.id === "instagram"
-                    ? "IG"
-                    : option.id === "facebook"
-                      ? "FB"
-                      : option.id === "web_chat"
-                        ? "Web"
-                        : option.id === "email"
-                          ? "Email"
-                          : option.label;
-              return (
-                <button
-                  key={option.id}
-                  type="button"
-                  role="tab"
-                  aria-selected={selected}
-                  onClick={() => setChannelFilter(option.id)}
-                  title={option.label}
-                  className={cn(
-                    "inline-flex h-7 shrink-0 items-center gap-1 rounded-md px-2 text-[11px] font-medium leading-none transition-colors",
-                    selected
-                      ? "bg-muted text-foreground"
-                      : "text-muted-foreground hover:bg-muted/60 hover:text-foreground",
-                  )}
+          {(channelFilterOptions.length > 0 || intentClassifierEnabled) ? (
+            <div className="flex min-w-0 items-center gap-2">
+              {channelFilterOptions.length > 0 ? (
+                <div
+                  className="flex min-w-0 flex-1 gap-1 overflow-x-auto scrollbar-hide"
+                  role="tablist"
+                  aria-label="Channel filter"
                 >
-                  {Icon ? <Icon className="h-3 w-3" /> : null}
-                  <span>{shortLabel}</span>
-                </button>
-              );
-            })}
-          </div>
-          ) : null}
-          {intentClassifierEnabled ? (
-            <div
-              className="flex gap-1 overflow-x-auto scrollbar-hide"
-              role="tablist"
-              aria-label="Intent filter"
-            >
-              {INTENT_FILTERS.map((option) => {
-                const selected = intentFilter === option.id;
-                return (
-                  <button
-                    key={option.id}
-                    type="button"
-                    role="tab"
-                    aria-selected={selected}
-                    onClick={() => setIntentFilter(option.id)}
-                    title={option.label}
-                    className={cn(
-                      "inline-flex h-7 shrink-0 items-center rounded-md px-2 text-[11px] font-medium leading-none transition-colors",
-                      selected
-                        ? "bg-primary/10 text-foreground ring-1 ring-primary/30"
-                        : "text-muted-foreground hover:bg-muted/60 hover:text-foreground",
-                    )}
-                  >
-                    {option.short}
-                  </button>
-                );
-              })}
+                  {channelFilterOptions.map((option) => {
+                    const selected = channelFilter === option.id;
+                    const Icon =
+                      option.id === "all" ? null : CHANNEL_FILTER_ICONS[option.id];
+                    const shortLabel =
+                      option.id === "whatsapp"
+                        ? "WA"
+                        : option.id === "instagram"
+                          ? "IG"
+                          : option.id === "facebook"
+                            ? "FB"
+                            : option.id === "web_chat"
+                              ? "Web"
+                              : option.id === "email"
+                                ? "Email"
+                                : option.label;
+                    return (
+                      <button
+                        key={option.id}
+                        type="button"
+                        role="tab"
+                        aria-selected={selected}
+                        onClick={() => setChannelFilter(option.id)}
+                        title={option.label}
+                        className={cn(
+                          "inline-flex h-7 shrink-0 items-center gap-1 rounded-md px-2 text-[11px] font-medium leading-none transition-colors",
+                          selected
+                            ? "bg-muted text-foreground"
+                            : "text-muted-foreground hover:bg-muted/60 hover:text-foreground",
+                        )}
+                      >
+                        {Icon ? <Icon className="h-3 w-3" /> : null}
+                        <span>{shortLabel}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              ) : (
+                <div className="flex-1" />
+              )}
+              {intentClassifierEnabled ? (
+                <div
+                  className="ml-auto flex shrink-0 gap-1 overflow-x-auto scrollbar-hide"
+                  role="tablist"
+                  aria-label="Intent filter"
+                >
+                  {INTENT_FILTERS.map((option) => {
+                    const selected = intentFilter === option.id;
+                    return (
+                      <button
+                        key={option.id}
+                        type="button"
+                        role="tab"
+                        aria-selected={selected}
+                        onClick={() => setIntentFilter(option.id)}
+                        title={option.label}
+                        className={cn(
+                          "inline-flex h-7 shrink-0 items-center rounded-md px-2 text-[11px] font-medium leading-none transition-colors",
+                          selected
+                            ? "bg-primary/10 text-foreground ring-1 ring-primary/30"
+                            : "text-muted-foreground hover:bg-muted/60 hover:text-foreground",
+                        )}
+                      >
+                        {option.short}
+                      </button>
+                    );
+                  })}
+                </div>
+              ) : null}
             </div>
           ) : null}
         </div>
