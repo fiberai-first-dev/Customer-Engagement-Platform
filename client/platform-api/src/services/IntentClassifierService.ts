@@ -119,3 +119,120 @@ export function classifyInboundMessageAsync(input: {
     );
   });
 }
+
+const CHANNEL_TYPES: ChannelType[] = [
+  "whatsapp",
+  "instagram",
+  "facebook",
+  "email",
+  "web_chat",
+];
+
+let backfillRunning = false;
+
+/**
+ * Classify latest inbound for identities that still have no intent.
+ * Used so older threads (or failed classifier calls) catch up after the ML service is reachable.
+ */
+export function backfillMissingIntentsAsync(limit = 40): void {
+  if (backfillRunning) return;
+  backfillRunning = true;
+  void (async () => {
+    try {
+      if (!(await shouldClassifyIntent())) return;
+
+      const identities: Array<{
+        channelType: ChannelType;
+        channelId: string;
+      }> = [];
+
+      for (const channelType of CHANNEL_TYPES) {
+        switch (channelType) {
+          case "whatsapp": {
+            const rows = await prisma.whatsAppChannel.findMany({
+              where: { intent: null },
+              select: { id: true },
+              take: limit,
+            });
+            for (const r of rows) {
+              identities.push({ channelType, channelId: r.id });
+            }
+            break;
+          }
+          case "instagram": {
+            const rows = await prisma.instagramChannel.findMany({
+              where: { intent: null },
+              select: { id: true },
+              take: limit,
+            });
+            for (const r of rows) {
+              identities.push({ channelType, channelId: r.id });
+            }
+            break;
+          }
+          case "facebook": {
+            const rows = await prisma.facebookChannel.findMany({
+              where: { intent: null },
+              select: { id: true },
+              take: limit,
+            });
+            for (const r of rows) {
+              identities.push({ channelType, channelId: r.id });
+            }
+            break;
+          }
+          case "email": {
+            const rows = await prisma.emailChannel.findMany({
+              where: { intent: null },
+              select: { id: true },
+              take: limit,
+            });
+            for (const r of rows) {
+              identities.push({ channelType, channelId: r.id });
+            }
+            break;
+          }
+          case "web_chat": {
+            const rows = await prisma.webChatChannel.findMany({
+              where: { intent: null },
+              select: { id: true },
+              take: limit,
+            });
+            for (const r of rows) {
+              identities.push({ channelType, channelId: r.id });
+            }
+            break;
+          }
+          default:
+            break;
+        }
+      }
+
+      const capped = identities.slice(0, limit);
+      for (const item of capped) {
+        const lastInbound = await prisma.message.findFirst({
+          where: {
+            channelType: item.channelType,
+            channelId: item.channelId,
+            direction: "incoming",
+            content: { not: null },
+          },
+          orderBy: { createdAt: "desc" },
+          select: { content: true },
+        });
+        const text = lastInbound?.content?.trim();
+        if (!text) continue;
+        const result = await classifyMessageText(text, item.channelType);
+        if (!result) continue;
+        await updateIdentityIntent(item.channelType, item.channelId, result);
+      }
+    } catch (err) {
+      console.warn(
+        "[intent] backfill failed:",
+        err instanceof Error ? err.message : err,
+      );
+    } finally {
+      backfillRunning = false;
+    }
+  })();
+}

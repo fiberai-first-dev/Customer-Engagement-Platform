@@ -33,6 +33,11 @@ export class ConversationController {
           : "all";
     const conversations = await ConversationService.list(mapped);
 
+    // Catch up intents for threads that arrived while the classifier was unreachable.
+    void import("../services/IntentClassifierService.js").then(({ backfillMissingIntentsAsync }) => {
+      backfillMissingIntentsAsync();
+    });
+
     const userId = request.user?.id;
     if (!userId) {
       return reply.send(conversations);

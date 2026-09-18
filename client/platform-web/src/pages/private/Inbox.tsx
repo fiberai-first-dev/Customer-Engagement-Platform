@@ -7,7 +7,7 @@ import {
   type ComponentType,
 } from "react";
 import { toast } from "sonner";
-import { Mail, MessageCircle, Search, TicketIcon, Plus } from "lucide-react";
+import { Mail, MessageCircle, Search, TicketIcon, Plus, ChevronDown } from "lucide-react";
 import {
   useAccounts,
   useContacts,
@@ -130,6 +130,8 @@ export function InboxPage() {
   const [statusFilter, setStatusFilter] = useState<"active" | "all">("active");
   const [channelFilter, setChannelFilter] = useState<ChannelFilter>("all");
   const [intentFilter, setIntentFilter] = useState<IntentFilter>("all");
+  const [intentMenuOpen, setIntentMenuOpen] = useState(false);
+  const intentMenuRef = useRef<HTMLDivElement>(null);
   const [activeTab, setActiveTab] = useState<ChannelType>("whatsapp");
   const { data: intentFlag } = useFeatureFlag("intent_classifier_enabled");
   const intentClassifierEnabled = intentFlag?.enabled === true;
@@ -139,6 +141,27 @@ export function InboxPage() {
       setIntentFilter("all");
     }
   }, [intentClassifierEnabled, intentFilter]);
+
+  useEffect(() => {
+    if (!intentMenuOpen) return;
+    const onPointerDown = (e: MouseEvent) => {
+      if (!intentMenuRef.current?.contains(e.target as Node)) {
+        setIntentMenuOpen(false);
+      }
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setIntentMenuOpen(false);
+    };
+    document.addEventListener("mousedown", onPointerDown);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("mousedown", onPointerDown);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [intentMenuOpen]);
+
+  const intentFilterLabel =
+    INTENT_FILTERS.find((o) => o.id === intentFilter)?.short ?? "All";
 
   const [customerContextOpen, setCustomerContextOpen] = useState(() => {
     try {
@@ -997,32 +1020,52 @@ export function InboxPage() {
                 <div className="flex-1" />
               )}
               {intentClassifierEnabled ? (
-                <div
-                  className="ml-auto flex shrink-0 gap-1 overflow-x-auto scrollbar-hide"
-                  role="tablist"
-                  aria-label="Intent filter"
-                >
-                  {INTENT_FILTERS.map((option) => {
-                    const selected = intentFilter === option.id;
-                    return (
-                      <button
-                        key={option.id}
-                        type="button"
-                        role="tab"
-                        aria-selected={selected}
-                        onClick={() => setIntentFilter(option.id)}
-                        title={option.label}
-                        className={cn(
-                          "inline-flex h-7 shrink-0 items-center rounded-md px-2 text-[11px] font-medium leading-none transition-colors",
-                          selected
-                            ? "bg-primary/10 text-foreground ring-1 ring-primary/30"
-                            : "text-muted-foreground hover:bg-muted/60 hover:text-foreground",
-                        )}
-                      >
-                        {option.short}
-                      </button>
-                    );
-                  })}
+                <div className="relative ml-auto shrink-0" ref={intentMenuRef}>
+                  <button
+                    type="button"
+                    aria-haspopup="listbox"
+                    aria-expanded={intentMenuOpen}
+                    onClick={() => setIntentMenuOpen((open) => !open)}
+                    className={cn(
+                      "inline-flex h-7 items-center gap-1 rounded-md border border-border bg-background px-2 text-[11px] font-medium leading-none text-foreground transition-colors hover:bg-muted/60",
+                      intentFilter !== "all" && "border-primary/40 bg-primary/5",
+                    )}
+                  >
+                    <span className="text-muted-foreground">Intent</span>
+                    <span>{intentFilterLabel}</span>
+                    <ChevronDown className="h-3 w-3 text-muted-foreground" />
+                  </button>
+                  {intentMenuOpen ? (
+                    <div
+                      role="listbox"
+                      aria-label="Intent filter"
+                      className="absolute right-0 top-full z-40 mt-1 min-w-[9.5rem] overflow-hidden rounded-lg border border-border bg-card py-1 shadow-lg"
+                    >
+                      {INTENT_FILTERS.map((option) => {
+                        const selected = intentFilter === option.id;
+                        return (
+                          <button
+                            key={option.id}
+                            type="button"
+                            role="option"
+                            aria-selected={selected}
+                            onClick={() => {
+                              setIntentFilter(option.id);
+                              setIntentMenuOpen(false);
+                            }}
+                            className={cn(
+                              "flex w-full items-center px-3 py-2 text-left text-xs transition-colors",
+                              selected
+                                ? "bg-muted font-medium text-foreground"
+                                : "text-muted-foreground hover:bg-muted/60 hover:text-foreground",
+                            )}
+                          >
+                            {option.label}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  ) : null}
                 </div>
               ) : null}
             </div>

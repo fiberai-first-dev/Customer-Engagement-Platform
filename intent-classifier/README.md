@@ -57,21 +57,25 @@ curl -s http://127.0.0.1:8091/classify -H "Content-Type: application/json" -d "{
 Set in `client/platform-api/.env.local`:
 
 ```
-INTENT_CLASSIFIER_URL=http://127.0.0.1:8091
+INTENT_CLASSIFIER_URL=http://intent-classifier:8091
 ```
 
 Enable **Intent Classifier** in admin feature flags. Until that flag is on:
 - CEP will **not** call this service
 - Inbox will **not** show intent filters
 
-## Docker
+## Docker (shared — run once for demo + svasthyaa)
+
+Do **not** embed this in `docker-compose.demo.yml` / `docker-compose.svasthyaa.yml`.
+Run one container on the shared `cep-network` (same network as `cep-postgres` and both APIs):
 
 ```bash
 # from this folder (uses bundled_model/ baked into the image)
 docker compose up -d --build
+# → container name: intent-classifier on cep-network, port 8091
 ```
 
-CEP on the same Docker network can use:
+Both tenant APIs must use (never `127.0.0.1` from inside an API container):
 
 ```
 INTENT_CLASSIFIER_URL=http://intent-classifier:8091
@@ -80,7 +84,7 @@ INTENT_CLASSIFIER_URL=http://intent-classifier:8091
 After retraining, refresh the bake:
 
 ```bash
-copy models\intent_clf.joblib bundled_model\
-copy models\meta.json bundled_model\
+cp models/intent_clf.joblib bundled_model/
+cp models/meta.json bundled_model/
 docker compose up -d --build
 ```

@@ -7,6 +7,9 @@ services:
       dockerfile: Dockerfile
     env_file:
       - ./platform-api/.env.local
+    environment:
+      # Shared classifier on cep-network (run separately from intent-classifier/)
+      INTENT_CLASSIFIER_URL: http://intent-classifier:8091
     ports:
       - "4100:4100"
     networks:
