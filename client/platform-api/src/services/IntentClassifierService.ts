@@ -215,7 +215,6 @@ export function backfillMissingIntentsAsync(limit = 40): void {
             channelType: item.channelType,
             channelId: item.channelId,
             direction: "incoming",
-            content: { not: null },
           },
           orderBy: { createdAt: "desc" },
           select: { content: true },
